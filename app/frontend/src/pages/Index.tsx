@@ -18,7 +18,6 @@ import {
   isDevRoleSwitcherHost,
   persistDemoSignIn,
   readDemoLocalStorageUser,
-  shouldLoadProjectListViaAllEndpoint,
   type DevAppRole,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
@@ -78,18 +77,12 @@ function IndexContent({
       return;
     }
 
-    try {
-      const res = await client.auth.me();
-      if (res?.data) {
-        setUser(res.data);
-      } else {
-        setUser(readDemoLocalStorageUser());
-      }
-    } catch {
-      setUser(readDemoLocalStorageUser());
-    } finally {
-      setLoading(false);
-    }
+    // Deployed demo: do not wait on auth.me() for UI or project list; localStorage demo (or null) first.
+    setUser(readDemoLocalStorageUser());
+    setLoading(false);
+    void client.auth.me().then((res) => {
+      if (res?.data) setUser(res.data);
+    }).catch(() => {});
   }, [sessionActive]);
 
   useEffect(() => {
@@ -97,13 +90,33 @@ function IndexContent({
   }, [checkAuth]);
 
   const loadProjects = useCallback(async () => {
-    if (!user) return;
+    const devHost = isDevRoleSwitcherHost();
+    const useProjectsAll = !devHost;
+    // Localhost: list only when signed in. Deployed: load from /all whenever demo session or API user exists (no auth.me gate).
+    const canLoad =
+      devHost ? !!user : readDemoLocalStorageUser() !== null || !!user;
+    if (!canLoad) return;
     try {
-      const res = shouldLoadProjectListViaAllEndpoint()
+      const res = useProjectsAll
         ? await client.entities.projects.queryAll({ sort: '-created_at' })
         : await client.entities.projects.query({ sort: '-created_at' });
       setProjects(res?.data?.items || []);
-    } catch {
+    } catch (err: unknown) {
+      const ax = err as {
+        message?: string;
+        response?: { status?: number; data?: unknown };
+        config?: { baseURL?: string; url?: string; params?: unknown; method?: string };
+      };
+      const fullUrl = [ax.config?.baseURL, ax.config?.url].filter(Boolean).join('') || ax.config?.url;
+      console.error('[Shepherd] loadProjects failed', {
+        listEndpoint: useProjectsAll ? 'GET /api/v1/entities/projects/all' : 'GET /api/v1/entities/projects',
+        message: ax.message,
+        httpStatus: ax.response?.status,
+        responseBody: ax.response?.data,
+        requestMethod: ax.config?.method,
+        requestUrl: fullUrl,
+        requestParams: ax.config?.params,
+      });
       toast.error('Failed to load projects');
     }
   }, [user]);
@@ -411,24 +424,28 @@ export default function Index() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    const check = async () => {
-      ensureDemoBearerToken();
-      try {
-        const res = await client.auth.me();
-        let u = res?.data ?? null;
-        if (!u && !isDevRoleSwitcherHost()) {
-          u = readDemoLocalStorageUser();
+    if (isDevRoleSwitcherHost()) {
+      void (async () => {
+        ensureDemoBearerToken();
+        try {
+          const res = await client.auth.me();
+          setApiUser(res?.data ?? null);
+        } catch {
+          setApiUser(null);
+        } finally {
+          setChecking(false);
         }
-        setApiUser(u);
-      } catch {
-        setApiUser(
-          isDevRoleSwitcherHost() ? null : readDemoLocalStorageUser()
-        );
-      } finally {
-        setChecking(false);
-      }
-    };
-    check();
+      })();
+      return;
+    }
+
+    // Deployed: show app immediately from localStorage demo; refresh apiUser if auth.me() succeeds later.
+    ensureDemoBearerToken();
+    setApiUser(readDemoLocalStorageUser());
+    setChecking(false);
+    void client.auth.me().then((res) => {
+      if (res?.data) setApiUser(res.data);
+    }).catch(() => {});
   }, []);
 
   const devSignedIn = sessionActive && !!getLocalDevUser();

@@ -78,22 +78,6 @@ export function ensureDemoBearerToken(): void {
   }
 }
 
-/**
- * Use GET .../entities/projects/all for listing on real hosts during the demo flow.
- * We match either stored demo `user` or the synthetic demo bearer (create/update still need that token);
- * otherwise a protected list request can still hit GET .../projects without a usable session and return 401.
- */
-export function shouldLoadProjectListViaAllEndpoint(): boolean {
-  if (typeof window === 'undefined') return false;
-  if (isDevRoleSwitcherHost()) return false;
-  if (readDemoLocalStorageUser() !== null) return true;
-  try {
-    return localStorage.getItem('token') === DEMO_BEARER_TOKEN;
-  } catch {
-    return false;
-  }
-}
-
 export const DEV_ROLE_OPTIONS: { value: DevAppRole; label: string }[] = [
   { value: 'admin', label: 'Admin' },
   { value: 'manager', label: 'Manager (BAS / Prosjektleder)' },
