@@ -643,14 +643,14 @@ function FloorDetailContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
+      <div className="h-dvh bg-slate-50 dark:bg-background flex items-center justify-center">
         <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-background">
+    <div className="flex h-dvh flex-col overflow-hidden bg-slate-50 dark:bg-background">
       <Header
         breadcrumbs={[
           { label: 'Projects', path: '/' },
@@ -658,8 +658,9 @@ function FloorDetailContent() {
           { label: floor?.name || `Floor ${floor?.floor_number}` },
         ]}
       />
-      <div className="space-y-4 pb-4">
-        <div className="px-4 pt-4 max-w-lg mx-auto space-y-4">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="shrink-0 space-y-4">
+          <div className="px-4 pt-4 pb-4 max-w-lg mx-auto space-y-4">
         {/* Floor Name (editable) */}
         <div className="flex items-center gap-2 group/flname">
           {editingFloorName ? (
@@ -829,10 +830,11 @@ function FloorDetailContent() {
         )}
 
         </div>
+        </div>
 
         {/* Room Views — list/empty stay narrow; kanban uses full width (Trello-style on desktop) */}
         {rooms.length === 0 ? (
-          <div className="px-4 max-w-lg mx-auto">
+          <div className="shrink-0 px-4 pb-4 max-w-lg mx-auto">
             <Card className="p-8 text-center">
               <DoorOpen className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
               <p className="text-muted-foreground mb-2">No rooms yet</p>
@@ -844,7 +846,7 @@ function FloorDetailContent() {
             </Card>
           </div>
         ) : viewMode === 'kanban' ? (
-          <div className="w-full min-w-0 px-4">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col px-4 pb-4">
             <PhaseBoard
               rooms={rooms}
               checklistByRoomId={checklistByRoomId}
@@ -861,7 +863,7 @@ function FloorDetailContent() {
             />
           </div>
         ) : (
-          <div className="px-4 max-w-lg mx-auto space-y-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 max-w-lg mx-auto space-y-2">
             {rooms.map((room) => {
               const summary = checklistByRoomId[room.id];
               const completed = summary?.completed ?? 0;

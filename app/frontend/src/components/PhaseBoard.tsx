@@ -59,18 +59,18 @@ export default function PhaseBoard({
   };
 
   return (
-    <div className="flex flex-row flex-nowrap gap-4 overflow-x-auto overflow-y-visible pb-4 snap-x snap-mandatory [-webkit-overflow-scrolling:touch]">
+    <div className="flex min-h-0 min-w-0 w-full flex-1 flex-row flex-nowrap gap-4 overflow-x-auto overflow-y-hidden snap-x snap-mandatory [-webkit-overflow-scrolling:touch]">
       {phases.map((phase) => {
         const defaultKey = phases[0]?.key ?? 'demontering';
         const phaseRooms = rooms.filter((r) => (r.phase || defaultKey) === phase.key);
         return (
           <div
             key={phase.key}
-            className="flex-shrink-0 snap-start w-[min(20rem,calc(100vw-2rem))] sm:w-[21rem]"
+            className="flex min-h-0 min-w-0 flex-shrink-0 flex-col snap-start w-[min(20rem,calc(100vw-2rem))] sm:w-[21rem]"
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, phase.key)}
           >
-            <div className="rounded-t-lg px-3 py-2 bg-slate-100 dark:bg-slate-800">
+            <div className="shrink-0 rounded-t-lg px-3 py-2 bg-slate-100 dark:bg-slate-800">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold">{phase.label}</span>
                 <span className="ml-auto text-[10px] font-semibold tabular-nums rounded-md bg-white/80 dark:bg-slate-700 px-1.5 py-0.5">
@@ -78,7 +78,7 @@ export default function PhaseBoard({
                 </span>
               </div>
             </div>
-            <div className="bg-gray-50 dark:bg-slate-800/50 rounded-b-lg p-2 min-h-[200px] space-y-2">
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-b-lg bg-gray-50 dark:bg-slate-800/50 p-2 space-y-2 [-webkit-overflow-scrolling:touch]">
               {phaseRooms.map((room) => {
                 const summary = checklistByRoomId?.[room.id];
                 const total = summary?.total ?? 0;
