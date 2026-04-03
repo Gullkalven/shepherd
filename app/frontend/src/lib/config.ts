@@ -44,13 +44,25 @@ export async function loadRuntimeConfig(): Promise<void> {
   }
 }
 
+/** Production API origin from Vite (baked in at build time). VITE_API_URL is preferred; VITE_API_BASE_URL kept for older setups. */
+function viteResolvedApiOrigin(): string | null {
+  const primary = import.meta.env.VITE_API_URL;
+  if (typeof primary === 'string' && primary.trim() !== '') {
+    return primary.trim().replace(/\/$/, '');
+  }
+  const legacy = import.meta.env.VITE_API_BASE_URL;
+  if (typeof legacy === 'string' && legacy.trim() !== '') {
+    return legacy.trim().replace(/\/$/, '');
+  }
+  return null;
+}
+
 // Get current configuration
 export function getConfig() {
-  // Vite env is baked in at build time — use it first so API base is correct even before
-  // loadRuntimeConfig() finishes (avoids axios/fetch using the frontend origin on Render).
-  const viteUrl = import.meta.env.VITE_API_BASE_URL;
-  if (typeof viteUrl === 'string' && viteUrl.trim() !== '') {
-    return { API_BASE_URL: viteUrl.trim().replace(/\/$/, '') };
+  // Vite env first — correct before loadRuntimeConfig() finishes (avoids hitting the frontend host on Render).
+  const fromVite = viteResolvedApiOrigin();
+  if (fromVite) {
+    return { API_BASE_URL: fromVite };
   }
 
   if (configLoading) {
