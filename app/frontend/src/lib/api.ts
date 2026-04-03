@@ -1,8 +1,14 @@
 import { createClient } from '@metagptx/web-sdk';
 import { getAPIBaseURL } from './config';
 
-// Create client instance
-export const client = createClient();
+function axiosBaseURL(): string {
+  const base = getAPIBaseURL().replace(/\/$/, '');
+  if (!base) return '/';
+  return `${base}/`;
+}
+
+// Same backend origin for every SDK request (paths are like /api/v1/...).
+export const client = createClient({ baseURL: axiosBaseURL() });
 
 const PROJECTS_ALL_PATH = '/api/v1/entities/projects/all';
 
