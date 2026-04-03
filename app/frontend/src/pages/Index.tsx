@@ -98,7 +98,11 @@ function IndexContent({
   const loadProjects = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await client.entities.projects.query({ sort: '-created_at' });
+      const useUnscopedList =
+        !isDevRoleSwitcherHost() && readDemoLocalStorageUser() !== null;
+      const res = useUnscopedList
+        ? await client.entities.projects.queryAll({ sort: '-created_at' })
+        : await client.entities.projects.query({ sort: '-created_at' });
       setProjects(res?.data?.items || []);
     } catch {
       toast.error('Failed to load projects');
