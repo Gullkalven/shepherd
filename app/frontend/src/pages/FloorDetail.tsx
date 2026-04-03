@@ -4,17 +4,14 @@ import { client } from '@/lib/api';
 import { PermissionProvider, usePermissions } from '@/lib/permissions';
 import Header from '@/components/Header';
 import PhaseBoard, { type ChecklistSummaryMap } from '@/components/PhaseBoard';
+import RoomDashboardCard from '@/components/RoomDashboardCard';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
-import { Plus, DoorOpen, LayoutGrid, Columns3, User, Zap, Pencil, Check, X, Ban, Trash2 } from 'lucide-react';
+import { Plus, DoorOpen, LayoutGrid, Columns3, Zap, Pencil, Check, X, Ban, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Checkbox } from '@/components/ui/checkbox';
-import { STATUS_CONFIG } from '@/lib/roomStatus';
-
 interface Room {
   id: number;
   room_number: string;
@@ -23,6 +20,7 @@ interface Room {
   assigned_worker?: string;
   comment?: string;
   blocked_reason?: string;
+  updated_at?: string;
 }
 
 interface ChecklistTemplate {
@@ -723,6 +721,10 @@ function FloorDetailContent() {
             <PhaseBoard
               rooms={rooms}
               checklistByRoomId={checklistByRoomId}
+              floorLabel={
+                floor?.name ||
+                (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
+              }
               onRoomClick={(id) => navigate(`/project/${projectId}/floor/${floorId}/room/${id}`)}
               onPhaseChange={canMovePhase ? handlePhaseChange : undefined}
               selectionMode={selectionMode}
@@ -733,38 +735,32 @@ function FloorDetailContent() {
         ) : (
           <div className="px-4 max-w-lg mx-auto space-y-2">
             {rooms.map((room) => {
-              const statusCfg = STATUS_CONFIG[room.status] || STATUS_CONFIG.not_started;
+              const summary = checklistByRoomId[room.id];
+              const completed = summary?.completed ?? 0;
+              const total = summary?.total ?? 0;
               return (
-                <Card
+                <RoomDashboardCard
                   key={room.id}
-                  className="p-3 cursor-pointer hover:shadow-md transition-shadow active:scale-[0.99]"
+                  roomNumber={room.room_number}
+                  floorLabel={
+                    floor?.name ||
+                    (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
+                  }
+                  completed={completed}
+                  total={total}
+                  blocked={room.status === 'blocked'}
+                  blockedReason={room.blocked_reason}
+                  assignedWorker={room.assigned_worker}
+                  updatedAt={room.updated_at}
                   onClick={() =>
                     selectionMode
                       ? toggleRoomSelection(room.id)
                       : navigate(`/project/${projectId}/floor/${floorId}/room/${room.id}`)
                   }
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      {selectionMode && (
-                        <div className="mb-1">
-                          <Checkbox checked={selectedRoomIds.includes(room.id)} />
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-slate-800 dark:text-foreground">Room {room.room_number}</span>
-                        <Badge className={`${statusCfg.bg} ${statusCfg.color} text-[10px] border-0`}>
-                          {statusCfg.label}
-                        </Badge>
-                      </div>
-                      {room.assigned_worker && (
-                        <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                          <User className="h-3 w-3" />
-                          {room.assigned_worker}
-                        </div>
-                      )}
-                    </div>
-                    {canDeleteRoom && (
+                  selectionMode={selectionMode}
+                  selected={selectedRoomIds.includes(room.id)}
+                  trailing={
+                    canDeleteRoom ? (
                       <Button
                         variant="ghost"
                         size="icon"
@@ -773,9 +769,9 @@ function FloorDetailContent() {
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                    )}
-                  </div>
-                </Card>
+                    ) : undefined
+                  }
+                />
               );
             })}
           </div>

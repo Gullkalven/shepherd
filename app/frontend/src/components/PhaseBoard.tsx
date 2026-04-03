@@ -1,8 +1,5 @@
-import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { User, AlertTriangle } from 'lucide-react';
-import { STATUS_CONFIG } from '@/lib/roomStatus';
+import RoomDashboardCard from '@/components/RoomDashboardCard';
+export type { ChecklistSummaryMap } from '@/lib/roomDashboardDerived';
 
 export interface RoomPhaseCard {
   id: number;
@@ -11,13 +8,14 @@ export interface RoomPhaseCard {
   status: string;
   assigned_worker?: string;
   blocked_reason?: string;
+  updated_at?: string | null;
 }
-
-export type ChecklistSummaryMap = Record<number, { completed: number; total: number }>;
 
 interface PhaseBoardProps {
   rooms: RoomPhaseCard[];
   checklistByRoomId?: ChecklistSummaryMap;
+  /** Shown on every card (e.g. floor name) */
+  floorLabel?: string;
   onRoomClick: (roomId: number) => void;
   onPhaseChange?: (roomId: number, newPhase: string) => void;
   selectionMode?: boolean;
@@ -35,6 +33,7 @@ const PHASES = [
 export default function PhaseBoard({
   rooms,
   checklistByRoomId,
+  floorLabel,
   onRoomClick,
   onPhaseChange,
   selectionMode = false,
@@ -70,9 +69,9 @@ export default function PhaseBoard({
             <div className="rounded-t-lg px-3 py-2 bg-slate-100 dark:bg-slate-800">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold">{phase.label}</span>
-                <Badge variant="secondary" className="ml-auto text-[10px] h-5">
+                <span className="ml-auto text-[10px] font-semibold tabular-nums rounded-md bg-white/80 dark:bg-slate-700 px-1.5 py-0.5">
                   {phaseRooms.length}
-                </Badge>
+                </span>
               </div>
             </div>
             <div className="bg-gray-50 dark:bg-slate-800/50 rounded-b-lg p-2 min-h-[200px] space-y-2">
@@ -80,77 +79,25 @@ export default function PhaseBoard({
                 const summary = checklistByRoomId?.[room.id];
                 const total = summary?.total ?? 0;
                 const completed = summary?.completed ?? 0;
-                const checklistLine =
-                  total > 0 ? `${completed}/${total}` : '—';
-                const checklistOk = total > 0 && completed >= total;
-                const openChecklist = total > 0 ? Math.max(0, total - completed) : 0;
-                const statusCfg = STATUS_CONFIG[room.status] || STATUS_CONFIG.not_started;
                 const blocked = room.status === 'blocked';
-                const roomDone = room.status === 'completed' && (total === 0 || checklistOk);
 
                 return (
-                  <Card
+                  <RoomDashboardCard
                     key={room.id}
-                    className={`p-2.5 cursor-pointer hover:shadow-md transition-shadow active:scale-[0.98] border-l-4 ${
-                      roomDone
-                        ? 'border-l-emerald-500'
-                        : blocked
-                          ? 'border-l-red-500'
-                          : 'border-l-transparent'
-                    }`}
+                    roomNumber={room.room_number}
+                    floorLabel={floorLabel}
+                    completed={completed}
+                    total={total}
+                    blocked={blocked}
+                    blockedReason={room.blocked_reason}
+                    assignedWorker={room.assigned_worker}
+                    updatedAt={room.updated_at}
+                    onClick={() => (selectionMode ? onToggleSelect?.(room.id) : onRoomClick(room.id))}
+                    selectionMode={selectionMode}
+                    selected={selectedRoomIds.includes(room.id)}
                     draggable={!!onPhaseChange && !selectionMode}
                     onDragStart={onPhaseChange ? (e) => handleDragStart(e, room.id) : undefined}
-                    onClick={() => (selectionMode ? onToggleSelect?.(room.id) : onRoomClick(room.id))}
-                  >
-                    {selectionMode && (
-                      <div className="mb-1">
-                        <Checkbox checked={selectedRoomIds.includes(room.id)} />
-                      </div>
-                    )}
-                    <div className="font-bold text-base leading-tight">Room {room.room_number}</div>
-                    <div
-                      className={`mt-1 text-sm font-semibold tabular-nums ${
-                        checklistOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'
-                      }`}
-                    >
-                      {checklistLine}
-                      {total > 0 && (
-                        <span className="ml-1 text-[10px] font-normal text-muted-foreground">sjekkliste</span>
-                      )}
-                    </div>
-                    <div className="mt-1.5">
-                      <Badge className={`${statusCfg.bg} ${statusCfg.color} text-[10px] border-0 h-5`}>
-                        {statusCfg.label}
-                      </Badge>
-                    </div>
-                    {(blocked || openChecklist > 0) && (
-                      <div className="mt-1.5 flex flex-wrap gap-1 items-center">
-                        {blocked && (
-                          <span
-                            className="inline-flex items-center gap-0.5 rounded-md bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5"
-                            title={room.blocked_reason || 'Blocked'}
-                          >
-                            <AlertTriangle className="h-3 w-3 shrink-0" />
-                            1
-                          </span>
-                        )}
-                        {!blocked && openChecklist > 0 && (
-                          <span
-                            className="rounded-md bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5"
-                            title="Open checklist items"
-                          >
-                            {openChecklist}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {room.assigned_worker && (
-                      <div className="flex items-center gap-1 mt-1.5 text-xs text-muted-foreground">
-                        <User className="h-3 w-3 shrink-0" />
-                        <span className="truncate">{room.assigned_worker}</span>
-                      </div>
-                    )}
-                  </Card>
+                  />
                 );
               })}
             </div>
