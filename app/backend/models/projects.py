@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Column, DateTime, Integer, String, Text
 
 
 class Projects(Base):
@@ -11,3 +11,5 @@ class Projects(Base):
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
+    # JSON array: [{"key": "demontering", "label": "Demontering"}, ...]; null = use app default
+    phase_workflow_json = Column(Text, nullable=True)

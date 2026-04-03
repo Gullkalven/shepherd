@@ -19,14 +19,16 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
+  DEFAULT_PHASE_WORKFLOW,
   effectiveTaskPhase,
   normalizeRoomPhase,
+  phaseKeys,
+  phaseLabel,
   phaseTimelineState,
-  ROOM_PHASE_KEYS,
-  ROOM_PHASE_LABELS,
   syncIncompleteTasksPhaseForRoom,
   visitMatchesPhase,
   photoMatchesPhase,
+  type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 
 const STATUS_OPTIONS = [
@@ -160,18 +162,33 @@ function RoomDetailContent() {
   const [editTaskName, setEditTaskName] = useState('');
 
   const [phaseTab, setPhaseTab] = useState<string>('demontering');
+  const [phaseWorkflow, setPhaseWorkflow] = useState<PhaseWorkflowEntry[]>(DEFAULT_PHASE_WORKFLOW);
 
   const loadData = useCallback(async () => {
     if (!projectId || !floorId || !roomId) return;
     try {
-      const [projRes, floorRes, roomRes, tasksRes, photosRes, visitsRes] = await Promise.all([
+      const [projRes, floorRes, roomRes, tasksRes, photosRes, visitsRes, wfRes] = await Promise.all([
         client.entities.projects.get({ id: projectId }),
         client.entities.floors.get({ id: floorId }),
         client.entities.rooms.get({ id: roomId }),
         client.entities.tasks.query({ query: { room_id: Number(roomId) }, sort: 'sort_order', limit: 200 }),
         client.entities.room_photos.query({ query: { room_id: Number(roomId) }, sort: '-created_at', limit: 50 }),
         client.entities.room_visits.queryAll({ query: { room_id: Number(roomId) }, sort: '-visited_at', limit: 100 }),
+        client.apiCall.invoke({
+          url: `/api/v1/projects/${projectId}/workflow`,
+          method: 'GET',
+          data: {},
+        }),
       ]);
+      const rawPhases = wfRes?.data?.phases;
+      let wf = DEFAULT_PHASE_WORKFLOW;
+      if (Array.isArray(rawPhases) && rawPhases.length > 0) {
+        const parsed = rawPhases
+          .filter((p: { key?: string; label?: string }) => p?.key && p?.label)
+          .map((p: { key: string; label: string }) => ({ key: String(p.key), label: String(p.label) }));
+        if (parsed.length > 0) wf = parsed;
+      }
+      setPhaseWorkflow(wf);
       setProject(projRes?.data || null);
       setFloor(floorRes?.data || null);
       const roomData = roomRes?.data;
@@ -209,8 +226,8 @@ function RoomDetailContent() {
   }, [loadData]);
 
   useEffect(() => {
-    if (room) setPhaseTab(normalizeRoomPhase(room.phase));
-  }, [room?.id, room?.phase]);
+    if (room) setPhaseTab(normalizeRoomPhase(room.phase, phaseWorkflow));
+  }, [room?.id, room?.phase, phaseWorkflow]);
 
   useEffect(() => {
     setShowAddTask(false);
@@ -343,7 +360,7 @@ function RoomDetailContent() {
           template_item_id: null,
           is_template_managed: false,
           is_overridden: false,
-          phase: normalizeRoomPhase(room.phase),
+          phase: normalizeRoomPhase(room.phase, phaseWorkflow),
         },
       });
       const newTask = res?.data;
@@ -387,7 +404,7 @@ function RoomDetailContent() {
                 template_item_id: null,
                 is_template_managed: false,
                 is_overridden: false,
-                phase: normalizeRoomPhase(room.phase),
+                phase: normalizeRoomPhase(room.phase, phaseWorkflow),
               },
             })
           )
@@ -509,20 +526,21 @@ function RoomDetailContent() {
 
   const handleMoveToNextPhase = async () => {
     if (!room) return;
-    const current = normalizeRoomPhase(room.phase);
-    const idx = ROOM_PHASE_KEYS.indexOf(current);
-    if (idx < 0 || idx >= ROOM_PHASE_KEYS.length - 1) {
+    const keys = phaseKeys(phaseWorkflow);
+    const current = normalizeRoomPhase(room.phase, phaseWorkflow);
+    const idx = keys.indexOf(current);
+    if (idx < 0 || idx >= keys.length - 1) {
       toast.info('Room is already in the last phase');
       return;
     }
-    const nextPhase = ROOM_PHASE_KEYS[idx + 1];
+    const nextPhase = keys[idx + 1];
     try {
       await client.entities.rooms.update({
         id: String(room.id),
         data: { phase: nextPhase },
       });
-      await syncIncompleteTasksPhaseForRoom(room.id, current, nextPhase);
-      toast.success(`Moved to ${ROOM_PHASE_LABELS[nextPhase]}`);
+      await syncIncompleteTasksPhaseForRoom(room.id, current, nextPhase, phaseWorkflow);
+      toast.success(`Moved to ${phaseLabel(nextPhase, phaseWorkflow)}`);
       await loadData();
     } catch {
       toast.error('Failed to move to next phase');
@@ -554,7 +572,7 @@ function RoomDetailContent() {
           object_key: objectKey,
           filename: file.name,
           caption: '',
-          phase: normalizeRoomPhase(room.phase),
+          phase: normalizeRoomPhase(room.phase, phaseWorkflow),
         },
       });
       toast.success('Photo uploaded');
@@ -589,7 +607,7 @@ function RoomDetailContent() {
           worker_name: visitWorkerName.trim(),
           action: visitAction.trim() || '',
           visited_at: visitedAt,
-          phase: normalizeRoomPhase(room.phase),
+          phase: normalizeRoomPhase(room.phase, phaseWorkflow),
         },
       });
       toast.success(`${visitWorkerName.trim()} logged in room`);
@@ -649,7 +667,8 @@ function RoomDetailContent() {
   const uniqueWorkers = [...new Set(visits.map((v) => v.worker_name))];
   const savedWorkerName = localStorage.getItem(WORKER_NAME_KEY);
   const editsBlocked = Boolean(room.is_locked) && !canEdit;
-  const roomPhaseNorm = normalizeRoomPhase(room.phase);
+  const roomPhaseNorm = normalizeRoomPhase(room.phase, phaseWorkflow);
+  const workflowPhaseKeys = phaseKeys(phaseWorkflow);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-background pb-8">
@@ -777,7 +796,7 @@ function RoomDetailContent() {
             <p className="text-xs text-muted-foreground">
               Active phase:{' '}
               <span className="font-semibold text-slate-800 dark:text-foreground">
-                {ROOM_PHASE_LABELS[roomPhaseNorm]}
+                {phaseLabel(roomPhaseNorm, phaseWorkflow)}
               </span>
               . Use the tabs below to open earlier or later phases.
             </p>
@@ -813,25 +832,29 @@ function RoomDetailContent() {
               onChange={handlePhotoUpload}
             />
             <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/80 p-1">
-              {ROOM_PHASE_KEYS.map((key) => (
+              {workflowPhaseKeys.map((key) => (
                 <TabsTrigger
                   key={key}
                   value={key}
                   className="shrink-0 px-2.5 py-2 text-xs sm:text-sm data-[state=active]:bg-background"
                 >
-                  {ROOM_PHASE_LABELS[key]}
+                  {phaseLabel(key, phaseWorkflow)}
                 </TabsTrigger>
               ))}
             </TabsList>
 
-            {ROOM_PHASE_KEYS.map((phaseKey) => {
-              const tl = phaseTimelineState(roomPhaseNorm, phaseKey);
+            {workflowPhaseKeys.map((phaseKey) => {
+              const tl = phaseTimelineState(roomPhaseNorm, phaseKey, phaseWorkflow);
               const phaseReadOnly = phaseKey !== roomPhaseNorm;
               const tasksForPhase = tasks.filter(
-                (t) => effectiveTaskPhase(t.phase, roomPhaseNorm) === phaseKey
+                (t) => effectiveTaskPhase(t.phase, roomPhaseNorm, phaseWorkflow) === phaseKey
               );
-              const visitsForPhase = visits.filter((v) => visitMatchesPhase(v.phase, phaseKey));
-              const photosForPhase = photos.filter((p) => photoMatchesPhase(p.phase, phaseKey));
+              const visitsForPhase = visits.filter((v) =>
+                visitMatchesPhase(v.phase, phaseKey, phaseWorkflow)
+              );
+              const photosForPhase = photos.filter((p) =>
+                photoMatchesPhase(p.phase, phaseKey, phaseWorkflow)
+              );
               const workersForPhase = [...new Set(visitsForPhase.map((v) => v.worker_name))];
               const completedForPhase = tasksForPhase.filter((t) => t.is_completed).length;
               const totalForPhase = tasksForPhase.length;

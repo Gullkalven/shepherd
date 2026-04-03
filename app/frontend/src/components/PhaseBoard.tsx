@@ -1,6 +1,11 @@
 import RoomDashboardCard from '@/components/RoomDashboardCard';
 export type { ChecklistSummaryMap } from '@/lib/roomDashboardDerived';
-import { formatPhaseStrip, normalizeRoomPhase } from '@/lib/roomPhases';
+import {
+  DEFAULT_PHASE_WORKFLOW,
+  formatPhaseStrip,
+  normalizeRoomPhase,
+  type PhaseWorkflowEntry,
+} from '@/lib/roomPhases';
 
 export interface RoomPhaseCard {
   id: number;
@@ -18,6 +23,8 @@ interface PhaseBoardProps {
   checklistByRoomId?: ChecklistSummaryMap;
   /** Shown on every card (e.g. floor name) */
   floorLabel?: string;
+  /** Ordered phases for this project (keys must match `room.phase` values) */
+  phases?: PhaseWorkflowEntry[];
   onRoomClick: (roomId: number) => void;
   onPhaseChange?: (roomId: number, newPhase: string) => void;
   selectionMode?: boolean;
@@ -25,17 +32,11 @@ interface PhaseBoardProps {
   onToggleSelect?: (roomId: number) => void;
 }
 
-const PHASES = [
-  { key: 'demontering', label: 'Demontering' },
-  { key: 'varmekabel', label: 'Varmekabel' },
-  { key: 'remontering', label: 'Remontering' },
-  { key: 'sluttkontroll', label: 'Sluttkontroll' },
-];
-
 export default function PhaseBoard({
   rooms,
   checklistByRoomId,
   floorLabel,
+  phases = DEFAULT_PHASE_WORKFLOW,
   onRoomClick,
   onPhaseChange,
   selectionMode = false,
@@ -59,8 +60,9 @@ export default function PhaseBoard({
 
   return (
     <div className="flex flex-row flex-nowrap gap-4 overflow-x-auto overflow-y-visible pb-4 snap-x snap-mandatory [-webkit-overflow-scrolling:touch]">
-      {PHASES.map((phase) => {
-        const phaseRooms = rooms.filter((r) => (r.phase || 'demontering') === phase.key);
+      {phases.map((phase) => {
+        const defaultKey = phases[0]?.key ?? 'demontering';
+        const phaseRooms = rooms.filter((r) => (r.phase || defaultKey) === phase.key);
         return (
           <div
             key={phase.key}
@@ -83,13 +85,13 @@ export default function PhaseBoard({
                 const completed = summary?.completed ?? 0;
                 const blocked = room.status === 'blocked';
 
-                const rp = normalizeRoomPhase(room.phase);
+                const rp = normalizeRoomPhase(room.phase, phases);
                 return (
                   <RoomDashboardCard
                     key={room.id}
                     roomNumber={room.room_number}
                     floorLabel={floorLabel}
-                    phaseStrip={formatPhaseStrip(rp)}
+                    phaseStrip={formatPhaseStrip(rp, phases)}
                     completed={completed}
                     total={total}
                     blocked={blocked}

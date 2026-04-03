@@ -28,10 +28,7 @@ def upgrade() -> None:
         text(
             """
             UPDATE tasks
-            SET phase = COALESCE(
-                (SELECT r.phase FROM rooms r WHERE r.id = tasks.room_id),
-                'demontering'
-            )
+            SET phase = 'demontering'
             WHERE phase IS NULL
             """
         )

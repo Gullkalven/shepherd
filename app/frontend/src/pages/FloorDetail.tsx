@@ -6,17 +6,33 @@ import Header from '@/components/Header';
 import PhaseBoard, { type ChecklistSummaryMap } from '@/components/PhaseBoard';
 import RoomDashboardCard from '@/components/RoomDashboardCard';
 import {
+  DEFAULT_PHASE_WORKFLOW,
   formatPhaseStrip,
   normalizeRoomPhase,
-  ROOM_PHASE_LABELS,
+  phaseLabel,
   syncIncompleteTasksPhaseForRoom,
+  type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
-import { Plus, DoorOpen, LayoutGrid, Columns3, Zap, Pencil, Check, X, Ban, Trash2 } from 'lucide-react';
+import {
+  Plus,
+  DoorOpen,
+  LayoutGrid,
+  Columns3,
+  Zap,
+  Pencil,
+  Check,
+  X,
+  Ban,
+  Trash2,
+  ListOrdered,
+  ChevronUp,
+  ChevronDown,
+} from 'lucide-react';
 import { toast } from 'sonner';
 interface Room {
   id: number;
@@ -83,17 +99,35 @@ function FloorDetailContent() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRoomIds, setSelectedRoomIds] = useState<number[]>([]);
   const [checklistByRoomId, setChecklistByRoomId] = useState<ChecklistSummaryMap>({});
+  const [phaseWorkflow, setPhaseWorkflow] = useState<PhaseWorkflowEntry[]>(DEFAULT_PHASE_WORKFLOW);
+  const [showWorkflowDialog, setShowWorkflowDialog] = useState(false);
+  const [workflowDraft, setWorkflowDraft] = useState<PhaseWorkflowEntry[]>([]);
+  const [savingWorkflow, setSavingWorkflow] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!projectId || !floorId) return;
     try {
-      const [projRes, floorRes, roomsRes] = await Promise.all([
+      const [projRes, floorRes, roomsRes, wfRes] = await Promise.all([
         client.entities.projects.get({ id: projectId }),
         client.entities.floors.get({ id: floorId }),
         client.entities.rooms.query({ query: { floor_id: Number(floorId) }, sort: 'room_number', limit: 500 }),
+        client.apiCall.invoke({
+          url: `/api/v1/projects/${projectId}/workflow`,
+          method: 'GET',
+          data: {},
+        }),
       ]);
       setProject(projRes?.data || null);
       setFloor(floorRes?.data || null);
+      const rawPhases = wfRes?.data?.phases;
+      let summaryWorkflow = DEFAULT_PHASE_WORKFLOW;
+      if (Array.isArray(rawPhases) && rawPhases.length > 0) {
+        const parsed: PhaseWorkflowEntry[] = rawPhases
+          .filter((p: { key?: string; label?: string }) => p?.key && p?.label)
+          .map((p: { key: string; label: string }) => ({ key: String(p.key), label: String(p.label) }));
+        if (parsed.length > 0) summaryWorkflow = parsed;
+      }
+      setPhaseWorkflow(summaryWorkflow);
       const roomItems: Room[] = roomsRes?.data?.items || [];
       setRooms(roomItems);
 
@@ -110,10 +144,10 @@ function FloorDetailContent() {
           const rid = t.room_id as number;
           if (!roomIds.has(rid) || !summary[rid]) continue;
           const roomRow = roomItems.find((r) => r.id === rid);
-          const roomPhase = normalizeRoomPhase(roomRow?.phase);
+          const roomPhase = normalizeRoomPhase(roomRow?.phase, summaryWorkflow);
           const taskPhase =
             t.phase != null && String(t.phase) !== ''
-              ? normalizeRoomPhase(t.phase as string)
+              ? normalizeRoomPhase(t.phase as string, summaryWorkflow)
               : roomPhase;
           if (taskPhase !== roomPhase) continue;
           summary[rid].total += 1;
@@ -167,7 +201,7 @@ function FloorDetailContent() {
         project_id: Number(projectId),
         room_number: roomNum,
         status: 'not_started',
-        phase: 'demontering',
+        phase: phaseWorkflow[0]?.key ?? 'demontering',
         assigned_worker: worker,
         comment: '',
         blocked_reason: '',
@@ -203,7 +237,7 @@ function FloorDetailContent() {
               template_item_id: item.id,
               is_template_managed: true,
               is_overridden: false,
-              phase: 'demontering',
+              phase: phaseWorkflow[0]?.key ?? 'demontering',
             },
           })
         )
@@ -327,15 +361,15 @@ function FloorDetailContent() {
 
   const handlePhaseChange = async (roomId: number, newPhase: string) => {
     const room = rooms.find((r) => r.id === roomId);
-    const oldPhase = normalizeRoomPhase(room?.phase);
-    const nextPhase = normalizeRoomPhase(newPhase);
+    const oldPhase = normalizeRoomPhase(room?.phase, phaseWorkflow);
+    const nextPhase = normalizeRoomPhase(newPhase, phaseWorkflow);
     if (oldPhase === nextPhase) return;
     try {
       await client.entities.rooms.update({
         id: String(roomId),
         data: { phase: nextPhase },
       });
-      await syncIncompleteTasksPhaseForRoom(roomId, oldPhase, nextPhase);
+      await syncIncompleteTasksPhaseForRoom(roomId, oldPhase, nextPhase, phaseWorkflow);
       setRooms((prev) =>
         prev.map((r) => (r.id === roomId ? { ...r, phase: nextPhase } : r))
       );
@@ -522,6 +556,71 @@ function FloorDetailContent() {
     }
   };
 
+  const openWorkflowDialog = () => {
+    setWorkflowDraft(phaseWorkflow.map((p) => ({ ...p })));
+    setShowWorkflowDialog(true);
+  };
+
+  const moveWorkflowDraft = (index: number, dir: -1 | 1) => {
+    setWorkflowDraft((prev) => {
+      const j = index + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[j]] = [next[j], next[index]];
+      return next;
+    });
+  };
+
+  const updateWorkflowDraftLabel = (index: number, label: string) => {
+    setWorkflowDraft((prev) => prev.map((p, i) => (i === index ? { ...p, label } : p)));
+  };
+
+  const removeWorkflowDraftPhase = (index: number) => {
+    setWorkflowDraft((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const addWorkflowDraftPhase = () => {
+    setWorkflowDraft((prev) => {
+      const keys = new Set(prev.map((p) => p.key));
+      let k = `phase_${Date.now()}`;
+      while (keys.has(k)) k = `${k}_x`;
+      return [...prev, { key: k, label: 'New phase' }];
+    });
+  };
+
+  const handleSaveWorkflow = async () => {
+    if (!projectId) return;
+    const trimmed = workflowDraft.map((p) => ({
+      key: p.key.trim(),
+      label: p.label.trim(),
+    }));
+    if (trimmed.some((p) => !p.key || !p.label)) {
+      toast.error('Each phase needs an internal key and a display name');
+      return;
+    }
+    setSavingWorkflow(true);
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/projects/${projectId}/workflow`,
+        method: 'PUT',
+        data: { phases: trimmed },
+      });
+      setPhaseWorkflow(trimmed);
+      setShowWorkflowDialog(false);
+      toast.success('Workflow saved');
+      await loadData();
+    } catch (e: unknown) {
+      const err = e as { data?: { detail?: string }; response?: { data?: { detail?: string } }; message?: string };
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || 'Failed to save workflow';
+      toast.error(typeof detail === 'string' ? detail : 'Failed to save workflow');
+    } finally {
+      setSavingWorkflow(false);
+    }
+  };
+
   const getBulkPreview = () => {
     const start = parseInt(bulkStart) || 1;
     const count = Math.min(parseInt(bulkCount) || 0, 200);
@@ -648,6 +747,16 @@ function FloorDetailContent() {
               >
                 Select
               </Button>
+              {canEdit && (
+                <Button
+                  variant="outline"
+                  onClick={openWorkflowDialog}
+                  className="h-10 rounded-xl"
+                >
+                  <ListOrdered className="h-4 w-4 mr-1" />
+                  Phases
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => setShowTemplatesDialog(true)}
@@ -739,6 +848,7 @@ function FloorDetailContent() {
             <PhaseBoard
               rooms={rooms}
               checklistByRoomId={checklistByRoomId}
+              phases={phaseWorkflow}
               floorLabel={
                 floor?.name ||
                 (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
@@ -756,7 +866,7 @@ function FloorDetailContent() {
               const summary = checklistByRoomId[room.id];
               const completed = summary?.completed ?? 0;
               const total = summary?.total ?? 0;
-              const rp = normalizeRoomPhase(room.phase);
+              const rp = normalizeRoomPhase(room.phase, phaseWorkflow);
               return (
                 <RoomDashboardCard
                   key={room.id}
@@ -765,8 +875,8 @@ function FloorDetailContent() {
                     floor?.name ||
                     (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
                   }
-                  phaseLabel={ROOM_PHASE_LABELS[rp]}
-                  phaseStrip={formatPhaseStrip(rp)}
+                  phaseLabel={phaseLabel(rp, phaseWorkflow)}
+                  phaseStrip={formatPhaseStrip(rp, phaseWorkflow)}
                   completed={completed}
                   total={total}
                   blocked={room.status === 'blocked'}
@@ -1058,6 +1168,90 @@ function FloorDetailContent() {
             </Button>
           </DialogFooter>
           </DialogForm>
+        </DialogContent>
+      </Dialog>
+
+      {/* Project workflow phases — admin / BAS only */}
+      <Dialog open={showWorkflowDialog} onOpenChange={setShowWorkflowDialog}>
+        <DialogContent className="max-w-lg mx-4 max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ListOrdered className="h-5 w-5 text-slate-500" />
+              Project phases
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Change the order and names shown to the team. Internal keys stay fixed so existing data stays linked;
+            you can add phases or remove unused ones. Workers still use the simple board and room screens — only
+            admin and BAS see this screen.
+          </p>
+          <div className="space-y-2">
+            {workflowDraft.map((row, index) => (
+              <div
+                key={row.key}
+                className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center"
+              >
+                <div className="flex-1 space-y-1 min-w-0">
+                  <Input
+                    value={row.label}
+                    onChange={(e) => updateWorkflowDraftLabel(index, e.target.value)}
+                    placeholder="Phase name"
+                    className="h-9"
+                  />
+                  <p className="text-[10px] font-mono text-muted-foreground truncate" title={row.key}>
+                    key: {row.key}
+                  </p>
+                </div>
+                <div className="flex flex-row gap-1 shrink-0 sm:flex-col">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => moveWorkflowDraft(index, -1)}
+                    disabled={index === 0}
+                    aria-label="Move phase up"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => moveWorkflowDraft(index, 1)}
+                    disabled={index >= workflowDraft.length - 1}
+                    aria-label="Move phase down"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 text-red-600"
+                    onClick={() => removeWorkflowDraftPhase(index)}
+                    disabled={workflowDraft.length <= 1}
+                    aria-label="Remove phase"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <Button type="button" variant="secondary" className="w-full" onClick={addWorkflowDraftPhase}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add phase
+          </Button>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button type="button" variant="outline" onClick={() => setShowWorkflowDialog(false)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={savingWorkflow} onClick={() => void handleSaveWorkflow()}>
+              {savingWorkflow ? 'Saving…' : 'Save phases'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
