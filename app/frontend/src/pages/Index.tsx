@@ -8,14 +8,17 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
-import { Plus, FolderOpen, Trash2, LogIn, HardHat, Shield, Crown, ShieldCheck, Wrench, Pencil, Check, X } from 'lucide-react';
+import { Plus, FolderOpen, Trash2, HardHat, Shield, Crown, ShieldCheck, Wrench, Pencil, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import {
   DEV_ROLE_CHANGED_EVENT,
+  ensureDemoBearerToken,
   getLocalDevUser,
   isDevRoleSwitcherHost,
+  persistDemoSignIn,
   readDemoLocalStorageUser,
+  type DevAppRole,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import { clearLocalAuthMarks, logoutRemoteSession } from '@/lib/appLogout';
@@ -34,6 +37,13 @@ const ROLE_BADGE: Record<string, { label: string; icon: React.ReactNode; color: 
   apprentice: { label: 'Apprentice', icon: <HardHat className="h-3 w-3" />, color: 'text-violet-700 dark:text-violet-300', bg: 'bg-violet-100 dark:bg-violet-900/40' },
   worker: { label: 'Electrician', icon: <Wrench className="h-3 w-3" />, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' },
 };
+
+const DEMO_ROLE_SIGN_IN: { role: DevAppRole; label: string }[] = [
+  { role: 'admin', label: 'Admin' },
+  { role: 'manager', label: 'BAS / Prosjektleder' },
+  { role: 'electrician', label: 'Montør' },
+  { role: 'apprentice', label: 'Lærling' },
+];
 
 function IndexContent({
   onLogoutClearServer,
@@ -58,6 +68,7 @@ function IndexContent({
   const [editProjectName, setEditProjectName] = useState('');
 
   const checkAuth = useCallback(async () => {
+    ensureDemoBearerToken();
     const devHost = isDevRoleSwitcherHost();
     if (devHost) {
       const stored = getLocalDevUser();
@@ -98,15 +109,9 @@ function IndexContent({
     if (user) loadProjects();
   }, [user, loadProjects]);
 
-  const handleLogin = () => {
-    localStorage.setItem(
-      'user',
-      JSON.stringify({
-        id: 'local-admin',
-        name: 'Admin',
-        role: 'admin',
-      })
-    );
+  const signInAsDemoRole = (role: DevAppRole) => {
+    persistDemoSignIn(role);
+    ensureDemoBearerToken();
     if (isDevRoleSwitcherHost()) {
       activateSession();
       setUser(getLocalDevUser());
@@ -216,14 +221,22 @@ function IndexContent({
           <p className="text-white/70 text-lg">
             Project and task management for teams
           </p>
-          <Button
-            onClick={handleLogin}
-            size="lg"
-            className="w-full bg-amber-400 hover:bg-amber-500 text-[#1E3A5F] font-bold text-lg h-14 rounded-xl"
-          >
-            <LogIn className="mr-2 h-5 w-5" />
-            Sign In to Get Started
-          </Button>
+          <p className="text-white/55 text-sm">
+            Demo sign-in — choose a role (no password)
+          </p>
+          <div className="w-full space-y-2 pt-1">
+            {DEMO_ROLE_SIGN_IN.map(({ role, label }) => (
+              <Button
+                key={role}
+                type="button"
+                onClick={() => signInAsDemoRole(role)}
+                size="lg"
+                className="w-full bg-amber-400 hover:bg-amber-500 text-[#1E3A5F] font-semibold text-base h-12 rounded-xl"
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -396,6 +409,7 @@ export default function Index() {
 
   useEffect(() => {
     const check = async () => {
+      ensureDemoBearerToken();
       try {
         const res = await client.auth.me();
         let u = res?.data ?? null;
