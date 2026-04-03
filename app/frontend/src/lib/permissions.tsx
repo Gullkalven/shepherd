@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { client } from '@/lib/api';
-import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
+import { DEV_ROLE_CHANGED_EVENT, readDemoLocalStorageUser } from '@/lib/devRole';
 
 export type AppRole = 'admin' | 'manager' | 'electrician' | 'apprentice';
 
@@ -116,6 +116,24 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
     ) {
       setRole((localRole === 'worker' ? 'electrician' : localRole) as AppRole);
       setDisplayName(localUser?.name || null);
+      setLoading(false);
+      return;
+    }
+
+    const demoLocal = readDemoLocalStorageUser();
+    const demoRole = demoLocal?.role as string | undefined;
+    if (
+      !isDevMode &&
+      isAuthenticated &&
+      demoLocal &&
+      (demoRole === 'admin' ||
+        demoRole === 'manager' ||
+        demoRole === 'electrician' ||
+        demoRole === 'apprentice' ||
+        demoRole === 'worker')
+    ) {
+      setRole((demoRole === 'worker' ? 'electrician' : demoRole) as AppRole);
+      setDisplayName((demoLocal.name as string) || null);
       setLoading(false);
       return;
     }

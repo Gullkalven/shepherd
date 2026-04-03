@@ -21,6 +21,23 @@ export function getLocalDevUser(): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Deployed demo sign-in: same `localStorage` `user` key as localhost, identified by `id`.
+ * Used when there is no API session but the demo user was stored explicitly.
+ */
+export function readDemoLocalStorageUser(): Record<string, unknown> | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('user');
+    if (!raw) return null;
+    const u = JSON.parse(raw) as { id?: string };
+    if (u?.id !== 'local-admin') return null;
+    return u as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 export const DEV_ROLE_OPTIONS: { value: DevAppRole; label: string }[] = [
   { value: 'admin', label: 'Admin' },
   { value: 'manager', label: 'Manager (BAS / Prosjektleder)' },

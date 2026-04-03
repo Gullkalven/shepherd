@@ -11,7 +11,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogF
 import { Plus, FolderOpen, Trash2, LogIn, HardHat, Shield, Crown, ShieldCheck, Wrench, Pencil, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { APP_NAME_PARTS } from '@/lib/branding';
-import { DEV_ROLE_CHANGED_EVENT, getLocalDevUser, isDevRoleSwitcherHost } from '@/lib/devRole';
+import {
+  DEV_ROLE_CHANGED_EVENT,
+  getLocalDevUser,
+  isDevRoleSwitcherHost,
+  readDemoLocalStorageUser,
+} from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import { clearLocalAuthMarks, logoutRemoteSession } from '@/lib/appLogout';
 
@@ -30,7 +35,13 @@ const ROLE_BADGE: Record<string, { label: string; icon: React.ReactNode; color: 
   worker: { label: 'Electrician', icon: <Wrench className="h-3 w-3" />, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' },
 };
 
-function IndexContent({ onLogoutClearServer }: { onLogoutClearServer: () => void }) {
+function IndexContent({
+  onLogoutClearServer,
+  onDemoSignedIn,
+}: {
+  onLogoutClearServer: () => void;
+  onDemoSignedIn: () => void;
+}) {
   const navigate = useNavigate();
   const { activateSession, endSession, sessionActive } = useDevPresentationSession();
   const { role, loading: permLoading, canCreateProject, canDeleteProject, canManageUsers, canEdit } = usePermissions();
@@ -60,10 +71,10 @@ function IndexContent({ onLogoutClearServer }: { onLogoutClearServer: () => void
       if (res?.data) {
         setUser(res.data);
       } else {
-        setUser(null);
+        setUser(readDemoLocalStorageUser());
       }
     } catch {
-      setUser(null);
+      setUser(readDemoLocalStorageUser());
     } finally {
       setLoading(false);
     }
@@ -87,24 +98,23 @@ function IndexContent({ onLogoutClearServer }: { onLogoutClearServer: () => void
     if (user) loadProjects();
   }, [user, loadProjects]);
 
-  const handleLogin = async () => {
-    const host = window.location.hostname;
-    const isDevMode = host === 'localhost' || host === '127.0.0.1';
-    if (!isDevMode) {
-      await client.auth.toLogin();
-      return;
-    }
-
+  const handleLogin = () => {
     localStorage.setItem(
       'user',
       JSON.stringify({
         id: 'local-admin',
-        name: 'Local Admin',
+        name: 'Admin',
         role: 'admin',
       })
     );
-    activateSession();
-    setUser(getLocalDevUser());
+    if (isDevRoleSwitcherHost()) {
+      activateSession();
+      setUser(getLocalDevUser());
+    } else {
+      onDemoSignedIn();
+      void checkAuth();
+      navigate('/', { replace: true });
+    }
   };
 
   const handleLogout = async () => {
@@ -388,9 +398,15 @@ export default function Index() {
     const check = async () => {
       try {
         const res = await client.auth.me();
-        setApiUser(res?.data ?? null);
+        let u = res?.data ?? null;
+        if (!u && !isDevRoleSwitcherHost()) {
+          u = readDemoLocalStorageUser();
+        }
+        setApiUser(u);
       } catch {
-        setApiUser(null);
+        setApiUser(
+          isDevRoleSwitcherHost() ? null : readDemoLocalStorageUser()
+        );
       } finally {
         setChecking(false);
       }
@@ -413,7 +429,10 @@ export default function Index() {
 
   return (
     <PermissionProvider isAuthenticated={isAuth}>
-      <IndexContent onLogoutClearServer={() => setApiUser(null)} />
+      <IndexContent
+        onLogoutClearServer={() => setApiUser(null)}
+        onDemoSignedIn={() => setApiUser(readDemoLocalStorageUser())}
+      />
     </PermissionProvider>
   );
 }
