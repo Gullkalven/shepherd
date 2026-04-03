@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from dependencies.auth import get_current_user
 from models.checklist_template_items import Checklist_template_items
+from models.rooms import Rooms
 from models.tasks import Tasks
 from models.user_roles import User_roles
 from schemas.auth import UserResponse
@@ -176,6 +177,11 @@ async def sync_rooms_from_template(
     removed = 0
 
     for room_id in rooms_with_template:
+        room_row = await db.execute(select(Rooms).where(Rooms.id == room_id))
+        room_obj = room_row.scalar_one_or_none()
+        rp = getattr(room_obj, "phase", None) if room_obj else None
+        room_phase = (str(rp).strip() or "demontering") if rp is not None else "demontering"
+
         room_tasks = [task for task in managed_tasks if task.room_id == room_id]
         by_template_item = {
             task.template_item_id: task
@@ -206,6 +212,7 @@ async def sync_rooms_from_template(
                         template_item_id=item.id,
                         is_template_managed=True,
                         is_overridden=False,
+                        phase=room_phase,
                     )
                 )
                 added += 1

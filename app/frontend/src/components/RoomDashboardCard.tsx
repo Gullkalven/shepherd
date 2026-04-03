@@ -49,6 +49,10 @@ function formatUpdatedAt(iso?: string | null): string | null {
 interface RoomDashboardCardProps {
   roomNumber: string;
   floorLabel?: string;
+  /** Current workflow phase label (board: only this phase’s checklist counts toward progress). */
+  phaseLabel?: string;
+  /** Optional compact legend, e.g. D✓ V● R○ S○ */
+  phaseStrip?: string;
   completed: number;
   total: number;
   blocked: boolean;
@@ -70,6 +74,8 @@ interface RoomDashboardCardProps {
 export default function RoomDashboardCard({
   roomNumber,
   floorLabel,
+  phaseLabel,
+  phaseStrip,
   completed,
   total,
   blocked,
@@ -118,6 +124,16 @@ export default function RoomDashboardCard({
               {floorLabel ? (
                 <div className="mt-0.5 text-[11px] font-medium text-muted-foreground truncate">
                   {floorLabel}
+                </div>
+              ) : null}
+              {phaseLabel ? (
+                <div className="mt-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 truncate">
+                  {phaseLabel}
+                </div>
+              ) : null}
+              {phaseStrip ? (
+                <div className="mt-0.5 text-[9px] leading-tight text-muted-foreground tabular-nums tracking-tight">
+                  {phaseStrip}
                 </div>
               ) : null}
             </div>

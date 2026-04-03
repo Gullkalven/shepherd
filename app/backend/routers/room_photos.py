@@ -29,6 +29,7 @@ class Room_photosData(BaseModel):
     filename: str = None
     caption: str = None
     created_at: Optional[datetime] = None
+    phase: Optional[str] = None
 
 
 class Room_photosUpdateData(BaseModel):
@@ -38,6 +39,7 @@ class Room_photosUpdateData(BaseModel):
     filename: Optional[str] = None
     caption: Optional[str] = None
     created_at: Optional[datetime] = None
+    phase: Optional[str] = None
 
 
 class Room_photosResponse(BaseModel):
@@ -49,6 +51,7 @@ class Room_photosResponse(BaseModel):
     filename: Optional[str] = None
     caption: Optional[str] = None
     created_at: Optional[datetime] = None
+    phase: Optional[str] = None
 
     class Config:
         from_attributes = True

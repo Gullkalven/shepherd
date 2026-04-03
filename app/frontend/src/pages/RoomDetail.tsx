@@ -11,12 +11,23 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Camera, Trash2, User, MessageSquare, Ban, CheckCircle2,
   Image as ImageIcon, X, ClipboardList, Plus, Clock, ListPlus, Pencil, Check,
   Lock, Unlock,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  effectiveTaskPhase,
+  normalizeRoomPhase,
+  phaseTimelineState,
+  ROOM_PHASE_KEYS,
+  ROOM_PHASE_LABELS,
+  syncIncompleteTasksPhaseForRoom,
+  visitMatchesPhase,
+  photoMatchesPhase,
+} from '@/lib/roomPhases';
 
 const STATUS_OPTIONS = [
   { value: 'not_started', label: 'Not Started', color: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
@@ -27,7 +38,6 @@ const STATUS_OPTIONS = [
 ];
 
 const WORKER_NAME_KEY = 'trello_v2_worker_name';
-const PHASES = ['demontering', 'varmekabel', 'remontering', 'sluttkontroll'] as const;
 
 interface Task {
   id: number;
@@ -40,6 +50,7 @@ interface Task {
   template_item_id?: number;
   is_template_managed?: boolean;
   is_overridden?: boolean;
+  phase?: string | null;
 }
 
 interface Photo {
@@ -48,6 +59,7 @@ interface Photo {
   filename: string;
   caption?: string;
   downloadUrl?: string;
+  phase?: string | null;
 }
 
 interface Room {
@@ -69,6 +81,7 @@ interface Visit {
   worker_name: string;
   action?: string;
   visited_at: string;
+  phase?: string | null;
 }
 
 function formatVisitDate(dateStr: string): string {
@@ -146,6 +159,8 @@ function RoomDetailContent() {
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [editTaskName, setEditTaskName] = useState('');
 
+  const [phaseTab, setPhaseTab] = useState<string>('demontering');
+
   const loadData = useCallback(async () => {
     if (!projectId || !floorId || !roomId) return;
     try {
@@ -192,6 +207,14 @@ function RoomDetailContent() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (room) setPhaseTab(normalizeRoomPhase(room.phase));
+  }, [room?.id, room?.phase]);
+
+  useEffect(() => {
+    setShowAddTask(false);
+  }, [phaseTab]);
 
   useEffect(() => {
     const saved = localStorage.getItem(WORKER_NAME_KEY);
@@ -320,6 +343,7 @@ function RoomDetailContent() {
           template_item_id: null,
           is_template_managed: false,
           is_overridden: false,
+          phase: normalizeRoomPhase(room.phase),
         },
       });
       const newTask = res?.data;
@@ -363,6 +387,7 @@ function RoomDetailContent() {
                 template_item_id: null,
                 is_template_managed: false,
                 is_overridden: false,
+                phase: normalizeRoomPhase(room.phase),
               },
             })
           )
@@ -484,20 +509,21 @@ function RoomDetailContent() {
 
   const handleMoveToNextPhase = async () => {
     if (!room) return;
-    const current = room.phase || 'demontering';
-    const idx = PHASES.indexOf(current as (typeof PHASES)[number]);
-    if (idx < 0 || idx >= PHASES.length - 1) {
+    const current = normalizeRoomPhase(room.phase);
+    const idx = ROOM_PHASE_KEYS.indexOf(current);
+    if (idx < 0 || idx >= ROOM_PHASE_KEYS.length - 1) {
       toast.info('Room is already in the last phase');
       return;
     }
-    const nextPhase = PHASES[idx + 1];
+    const nextPhase = ROOM_PHASE_KEYS[idx + 1];
     try {
       await client.entities.rooms.update({
         id: String(room.id),
         data: { phase: nextPhase },
       });
-      setRoom({ ...room, phase: nextPhase });
-      toast.success(`Moved to ${nextPhase}`);
+      await syncIncompleteTasksPhaseForRoom(room.id, current, nextPhase);
+      toast.success(`Moved to ${ROOM_PHASE_LABELS[nextPhase]}`);
+      await loadData();
     } catch {
       toast.error('Failed to move to next phase');
     }
@@ -528,6 +554,7 @@ function RoomDetailContent() {
           object_key: objectKey,
           filename: file.name,
           caption: '',
+          phase: normalizeRoomPhase(room.phase),
         },
       });
       toast.success('Photo uploaded');
@@ -562,6 +589,7 @@ function RoomDetailContent() {
           worker_name: visitWorkerName.trim(),
           action: visitAction.trim() || '',
           visited_at: visitedAt,
+          phase: normalizeRoomPhase(room.phase),
         },
       });
       toast.success(`${visitWorkerName.trim()} logged in room`);
@@ -617,12 +645,11 @@ function RoomDetailContent() {
     );
   }
 
-  const completedTasks = tasks.filter((t) => t.is_completed).length;
-  const totalTasks = tasks.length;
   const currentStatus = STATUS_OPTIONS.find((s) => s.value === room.status) || STATUS_OPTIONS[0];
   const uniqueWorkers = [...new Set(visits.map((v) => v.worker_name))];
   const savedWorkerName = localStorage.getItem(WORKER_NAME_KEY);
   const editsBlocked = Boolean(room.is_locked) && !canEdit;
+  const roomPhaseNorm = normalizeRoomPhase(room.phase);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-background pb-8">
@@ -746,21 +773,22 @@ function RoomDetailContent() {
               </div>
             ) : null
           )}
-          <div className="mt-3">
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Phase</label>
-            <div className="flex items-center justify-between gap-2">
-              <Badge variant="secondary" className="capitalize">
-                {room.phase || 'demontering'}
-              </Badge>
-              <Button
-                variant="outline"
-                className="h-9"
-                onClick={handleMoveToNextPhase}
-                disabled={editsBlocked}
-              >
-                Move to next phase
-              </Button>
-            </div>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              Active phase:{' '}
+              <span className="font-semibold text-slate-800 dark:text-foreground">
+                {ROOM_PHASE_LABELS[roomPhaseNorm]}
+              </span>
+              . Use the tabs below to open earlier or later phases.
+            </p>
+            <Button
+              variant="outline"
+              className="h-9 shrink-0"
+              onClick={handleMoveToNextPhase}
+              disabled={editsBlocked}
+            >
+              Move to next phase
+            </Button>
           </div>
           {canDeleteRoom && (
             <Button
@@ -774,302 +802,8 @@ function RoomDetailContent() {
           )}
         </Card>
 
-        {/* Visit Log */}
-        {sectionVisibility.visit_log && (
-          <Card className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2">
-                <ClipboardList className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
-                Visit Log
-              </h3>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
-                onClick={() => setShowVisitDialog(true)}
-                disabled={editsBlocked}
-              >
-                <Plus className="h-3 w-3 mr-1" />
-                Log Visit
-              </Button>
-            </div>
-
-            {uniqueWorkers.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                {uniqueWorkers.map((name) => (
-                  <Badge key={name} variant="secondary" className="bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs">
-                    <User className="h-3 w-3 mr-1" />
-                    {name}
-                  </Badge>
-                ))}
-              </div>
-            )}
-
-            {visits.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground">
-                <ClipboardList className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                <p className="text-sm">No visits logged yet</p>
-                <p className="text-xs mt-1">Tap &quot;Log Visit&quot; to record who&apos;s been here</p>
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                {visits.map((visit) => (
-                  <div
-                    key={visit.id}
-                    className="flex items-start gap-3 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 group"
-                  >
-                    <div className="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center shrink-0 mt-0.5">
-                      <User className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm text-slate-800 dark:text-foreground">{visit.worker_name}</span>
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {formatVisitDate(visit.visited_at)}
-                        </span>
-                      </div>
-                      {visit.action && (
-                        <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{visit.action}</p>
-                      )}
-                    </div>
-                    {canDeleteVisit && !editsBlocked && (
-                      <button
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1"
-                        onClick={() => handleDeleteVisit(visit.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        )}
-
-        {/* Task Checklist */}
-        {sectionVisibility.checklist && (
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
-              Checklist
-            </h3>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {completedTasks}/{totalTasks}
-              </span>
-              {canAddChecklistItem && !editsBlocked && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950"
-                  onClick={() => setShowBulkAddTasks(true)}
-                >
-                  <ListPlus className="h-3 w-3 mr-1" />
-                  Bulk
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {savedWorkerName && (
-            <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2 mb-3">
-              <div className="flex items-center gap-2">
-                <User className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span className="text-xs text-emerald-700 dark:text-emerald-300">
-                  Checking as: <strong>{savedWorkerName}</strong>
-                </span>
-              </div>
-              <button
-                className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-200 underline"
-                onClick={handleClearSavedName}
-              >
-                Change
-              </button>
-            </div>
-          )}
-
-          <div className="space-y-1">
-            {tasks.map((task) => (
-              <div key={task.id} className="rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors group/task">
-                <div className="flex items-start gap-3 p-3">
-                  {editingTaskId === task.id ? (
-                    <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
-                      <Input
-                        value={editTaskName}
-                        onChange={(e) => setEditTaskName(e.target.value)}
-                        className="h-9 text-sm flex-1"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') saveTaskName(task.id);
-                          if (e.key === 'Escape') cancelEditTask();
-                        }}
-                        onBlur={() => saveTaskName(task.id)}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0 text-emerald-500 hover:text-emerald-700"
-                        onMouseDown={(e) => { e.preventDefault(); saveTaskName(task.id); }}
-                      >
-                        <Check className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 shrink-0 text-slate-400 hover:text-slate-600"
-                        onMouseDown={(e) => { e.preventDefault(); cancelEditTask(); }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        className={`flex items-start gap-3 flex-1 text-left min-w-0 ${!canCheckItem || editsBlocked ? 'cursor-default' : ''}`}
-                        onClick={() => handleTaskClick(task)}
-                        disabled={!canCheckItem || editsBlocked}
-                      >
-                        <Checkbox
-                          checked={task.is_completed}
-                          className="h-6 w-6 rounded-md mt-0.5 shrink-0"
-                          onCheckedChange={() => {}}
-                          disabled={!canCheckItem || editsBlocked}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 group/tname">
-                            <span
-                              className={`text-sm block ${
-                                task.is_completed ? 'line-through text-muted-foreground' : 'text-slate-700 dark:text-foreground'
-                              }`}
-                            >
-                              {task.name}
-                            </span>
-                            {canAddChecklistItem && !editsBlocked && (
-                              <button
-                                className="opacity-0 group-hover/tname:opacity-100 transition-opacity text-slate-400 hover:text-blue-500 p-0.5"
-                                onClick={(e) => startEditTask(e, task)}
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </button>
-                            )}
-                          </div>
-                          {task.checked_by && (
-                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                              <Badge
-                                variant="secondary"
-                                className={`text-[10px] h-5 px-1.5 ${
-                                  task.is_completed
-                                    ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                    : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
-                                }`}
-                              >
-                                <User className="h-2.5 w-2.5 mr-0.5" />
-                                {task.checked_by}
-                              </Badge>
-                              {task.checked_at && (
-                                <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                                  <Clock className="h-2.5 w-2.5" />
-                                  {formatVisitDate(task.checked_at)}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </button>
-                      {canDeleteChecklistItem && !editsBlocked && (
-                        <button
-                          className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1 shrink-0 mt-0.5"
-                          onClick={() => handleDeleteTask(task.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Inline add item - only for admin/manager */}
-          {canAddChecklistItem && !editsBlocked && (
-            <>
-              {showAddTask ? (
-                <div className="mt-3 flex gap-2">
-                  <Input
-                    placeholder="New checklist item..."
-                    value={newTaskName}
-                    onChange={(e) => setNewTaskName(e.target.value)}
-                    className="h-10 flex-1"
-                    autoFocus
-                    disabled={addingTask}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && newTaskName.trim()) handleAddTask();
-                      if (e.key === 'Escape') { setShowAddTask(false); setNewTaskName(''); }
-                    }}
-                  />
-                  <Button
-                    size="sm"
-                    className="h-10 bg-emerald-500 hover:bg-emerald-600 text-white"
-                    onClick={handleAddTask}
-                    disabled={!newTaskName.trim() || addingTask}
-                  >
-                    {addingTask ? '...' : 'Add'}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-10 px-2"
-                    onClick={() => { setShowAddTask(false); setNewTaskName(''); }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  className="mt-3 w-full flex items-center gap-2 text-sm text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 py-2 px-3 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors"
-                  onClick={() => setShowAddTask(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                  Add checklist item
-                </button>
-              )}
-            </>
-          )}
-
-          {totalTasks > 0 && (
-            <div className="mt-3 bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
-              <div
-                className="bg-emerald-500 h-full rounded-full transition-all duration-300"
-                style={{ width: `${(completedTasks / totalTasks) * 100}%` }}
-              />
-            </div>
-          )}
-        </Card>
-        )}
-
-        {/* Photo Documentation */}
-        {sectionVisibility.photos && (
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2">
-              <Camera className="h-4 w-4 text-blue-500 dark:text-blue-400" />
-              Photos
-            </h3>
-            {canUploadPhoto && !editsBlocked && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-              >
-                {uploading ? 'Uploading...' : 'Add Photo'}
-              </Button>
-            )}
+        {(sectionVisibility.checklist || sectionVisibility.visit_log || sectionVisibility.photos) && (
+          <Tabs value={phaseTab} onValueChange={setPhaseTab} className="w-full">
             <input
               ref={fileInputRef}
               type="file"
@@ -1078,41 +812,434 @@ function RoomDetailContent() {
               className="hidden"
               onChange={handlePhotoUpload}
             />
-          </div>
-          {photos.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              <ImageIcon className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm">No photos yet</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {photos.map((photo) => (
-                <div key={photo.id} className="relative group aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800">
-                  {photo.downloadUrl ? (
-                    <img
-                      src={photo.downloadUrl}
-                      alt={photo.filename}
-                      className="w-full h-full object-cover cursor-pointer"
-                      onClick={() => setShowPhotoPreview(photo.downloadUrl || null)}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <ImageIcon className="h-6 w-6 text-slate-300 dark:text-slate-600" />
-                    </div>
-                  )}
-                  {canDeletePhoto && !editsBlocked && (
-                    <button
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => handleDeletePhoto(photo)}
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  )}
-                </div>
+            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/80 p-1">
+              {ROOM_PHASE_KEYS.map((key) => (
+                <TabsTrigger
+                  key={key}
+                  value={key}
+                  className="shrink-0 px-2.5 py-2 text-xs sm:text-sm data-[state=active]:bg-background"
+                >
+                  {ROOM_PHASE_LABELS[key]}
+                </TabsTrigger>
               ))}
-            </div>
-          )}
-        </Card>
+            </TabsList>
+
+            {ROOM_PHASE_KEYS.map((phaseKey) => {
+              const tl = phaseTimelineState(roomPhaseNorm, phaseKey);
+              const phaseReadOnly = phaseKey !== roomPhaseNorm;
+              const tasksForPhase = tasks.filter(
+                (t) => effectiveTaskPhase(t.phase, roomPhaseNorm) === phaseKey
+              );
+              const visitsForPhase = visits.filter((v) => visitMatchesPhase(v.phase, phaseKey));
+              const photosForPhase = photos.filter((p) => photoMatchesPhase(p.phase, phaseKey));
+              const workersForPhase = [...new Set(visitsForPhase.map((v) => v.worker_name))];
+              const completedForPhase = tasksForPhase.filter((t) => t.is_completed).length;
+              const totalForPhase = tasksForPhase.length;
+              const canInteractChecklist = canCheckItem && !editsBlocked && !phaseReadOnly;
+              const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
+              const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
+
+              return (
+                <TabsContent key={phaseKey} value={phaseKey} className="mt-3 space-y-4">
+                  <div
+                    className={`rounded-lg border px-3 py-2 text-xs ${
+                      tl === 'done'
+                        ? 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-900 dark:bg-emerald-950/30'
+                        : tl === 'active'
+                          ? 'border-amber-200 bg-amber-50/80 dark:border-amber-900 dark:bg-amber-950/30'
+                          : 'border-slate-200 bg-slate-50/80 dark:border-slate-700 dark:bg-slate-900/40'
+                    }`}
+                  >
+                    {tl === 'done' && (
+                      <span className="font-medium text-emerald-800 dark:text-emerald-200">
+                        Completed phase — view only (checklist, visits, and photos for this stage).
+                      </span>
+                    )}
+                    {tl === 'active' && (
+                      <span className="font-medium text-amber-900 dark:text-amber-100">
+                        Active phase — you can update the checklist, log visits, and add photos here.
+                      </span>
+                    )}
+                    {tl === 'upcoming' && (
+                      <span className="font-medium text-slate-700 dark:text-slate-200">
+                        Not started yet — open this tab to prepare; editing unlocks when the room reaches this
+                        phase.
+                      </span>
+                    )}
+                  </div>
+
+                  {sectionVisibility.checklist && (
+                    <Card className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+                          Checklist
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            {completedForPhase}/{totalForPhase}
+                          </span>
+                          {canMutateChecklist && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-xs border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                              onClick={() => setShowBulkAddTasks(true)}
+                            >
+                              <ListPlus className="h-3 w-3 mr-1" />
+                              Bulk
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {savedWorkerName && (
+                        <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2 mb-3">
+                          <div className="flex items-center gap-2">
+                            <User className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-xs text-emerald-700 dark:text-emerald-300">
+                              Checking as: <strong>{savedWorkerName}</strong>
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-200 underline"
+                            onClick={handleClearSavedName}
+                          >
+                            Change
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="space-y-1">
+                        {tasksForPhase.map((task) => (
+                          <div
+                            key={task.id}
+                            className="rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors group/task"
+                          >
+                            <div className="flex items-start gap-3 p-3">
+                              {editingTaskId === task.id ? (
+                                <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
+                                  <Input
+                                    value={editTaskName}
+                                    onChange={(e) => setEditTaskName(e.target.value)}
+                                    className="h-9 text-sm flex-1"
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') saveTaskName(task.id);
+                                      if (e.key === 'Escape') cancelEditTask();
+                                    }}
+                                    onBlur={() => saveTaskName(task.id)}
+                                  />
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0 text-emerald-500 hover:text-emerald-700"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      saveTaskName(task.id);
+                                    }}
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0 text-slate-400 hover:text-slate-600"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      cancelEditTask();
+                                    }}
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    className={`flex items-start gap-3 flex-1 text-left min-w-0 ${!canInteractChecklist ? 'cursor-default' : ''}`}
+                                    onClick={() => handleTaskClick(task)}
+                                    disabled={!canInteractChecklist}
+                                  >
+                                    <Checkbox
+                                      checked={task.is_completed}
+                                      className="h-6 w-6 rounded-md mt-0.5 shrink-0"
+                                      onCheckedChange={() => {}}
+                                      disabled={!canInteractChecklist}
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 group/tname">
+                                        <span
+                                          className={`text-sm block ${
+                                            task.is_completed
+                                              ? 'line-through text-muted-foreground'
+                                              : 'text-slate-700 dark:text-foreground'
+                                          }`}
+                                        >
+                                          {task.name}
+                                        </span>
+                                        {canMutateChecklist && (
+                                          <button
+                                            type="button"
+                                            className="opacity-0 group-hover/tname:opacity-100 transition-opacity text-slate-400 hover:text-blue-500 p-0.5"
+                                            onClick={(e) => startEditTask(e, task)}
+                                          >
+                                            <Pencil className="h-3 w-3" />
+                                          </button>
+                                        )}
+                                      </div>
+                                      {task.checked_by && (
+                                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                          <Badge
+                                            variant="secondary"
+                                            className={`text-[10px] h-5 px-1.5 ${
+                                              task.is_completed
+                                                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                                : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
+                                            }`}
+                                          >
+                                            <User className="h-2.5 w-2.5 mr-0.5" />
+                                            {task.checked_by}
+                                          </Badge>
+                                          {task.checked_at && (
+                                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                              <Clock className="h-2.5 w-2.5" />
+                                              {formatVisitDate(task.checked_at)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </button>
+                                  {canDeleteChecklistItem && canMutateChecklist && (
+                                    <button
+                                      type="button"
+                                      className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1 shrink-0 mt-0.5"
+                                      onClick={() => handleDeleteTask(task.id)}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {canMutateChecklist && (
+                        <>
+                          {showAddTask ? (
+                            <div className="mt-3 flex gap-2">
+                              <Input
+                                placeholder="New checklist item..."
+                                value={newTaskName}
+                                onChange={(e) => setNewTaskName(e.target.value)}
+                                className="h-10 flex-1"
+                                autoFocus
+                                disabled={addingTask}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && newTaskName.trim()) handleAddTask();
+                                  if (e.key === 'Escape') {
+                                    setShowAddTask(false);
+                                    setNewTaskName('');
+                                  }
+                                }}
+                              />
+                              <Button
+                                size="sm"
+                                className="h-10 bg-emerald-500 hover:bg-emerald-600 text-white"
+                                onClick={handleAddTask}
+                                disabled={!newTaskName.trim() || addingTask}
+                              >
+                                {addingTask ? '...' : 'Add'}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-10 px-2"
+                                onClick={() => {
+                                  setShowAddTask(false);
+                                  setNewTaskName('');
+                                }}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              className="mt-3 w-full flex items-center gap-2 text-sm text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 py-2 px-3 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors"
+                              onClick={() => setShowAddTask(true)}
+                            >
+                              <Plus className="h-4 w-4" />
+                              Add checklist item
+                            </button>
+                          )}
+                        </>
+                      )}
+
+                      {totalForPhase > 0 && (
+                        <div className="mt-3 bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                          <div
+                            className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${(completedForPhase / totalForPhase) * 100}%`,
+                            }}
+                          />
+                        </div>
+                      )}
+                    </Card>
+                  )}
+
+                  {sectionVisibility.visit_log && (
+                    <Card className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2">
+                          <ClipboardList className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
+                          Visit log
+                        </h3>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-9 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
+                          onClick={() => setShowVisitDialog(true)}
+                          disabled={!canMutatePhaseMedia}
+                        >
+                          <Plus className="h-3 w-3 mr-1" />
+                          Log visit
+                        </Button>
+                      </div>
+
+                      {workersForPhase.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {workersForPhase.map((name) => (
+                            <Badge
+                              key={name}
+                              variant="secondary"
+                              className="bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs"
+                            >
+                              <User className="h-3 w-3 mr-1" />
+                              {name}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {visitsForPhase.length === 0 ? (
+                        <div className="text-center py-6 text-muted-foreground">
+                          <ClipboardList className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                          <p className="text-sm">No visits for this phase</p>
+                          <p className="text-xs mt-1">
+                            Older visits without a phase still appear in every phase tab.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                          {visitsForPhase.map((visit) => (
+                            <div
+                              key={visit.id}
+                              className="flex items-start gap-3 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 group"
+                            >
+                              <div className="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center shrink-0 mt-0.5">
+                                <User className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-sm text-slate-800 dark:text-foreground">
+                                    {visit.worker_name}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    {formatVisitDate(visit.visited_at)}
+                                  </span>
+                                </div>
+                                {visit.action && (
+                                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{visit.action}</p>
+                                )}
+                              </div>
+                              {canDeleteVisit && canMutatePhaseMedia && (
+                                <button
+                                  type="button"
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1"
+                                  onClick={() => handleDeleteVisit(visit.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  )}
+
+                  {sectionVisibility.photos && (
+                    <Card className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2">
+                          <Camera className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+                          Photos
+                        </h3>
+                        {canUploadPhoto && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploading || !canMutatePhaseMedia}
+                          >
+                            {uploading ? 'Uploading...' : 'Add photo'}
+                          </Button>
+                        )}
+                      </div>
+                      {photosForPhase.length === 0 ? (
+                        <div className="text-center py-6 text-muted-foreground">
+                          <ImageIcon className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                          <p className="text-sm">No photos for this phase</p>
+                          <p className="text-xs mt-1">
+                            Photos without a phase show in every tab until tagged on upload.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                          {photosForPhase.map((photo) => (
+                            <div
+                              key={photo.id}
+                              className="relative group aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800"
+                            >
+                              {photo.downloadUrl ? (
+                                <img
+                                  src={photo.downloadUrl}
+                                  alt={photo.filename}
+                                  className="w-full h-full object-cover cursor-pointer"
+                                  onClick={() => setShowPhotoPreview(photo.downloadUrl || null)}
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center">
+                                  <ImageIcon className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+                                </div>
+                              )}
+                              {canDeletePhoto && canMutatePhaseMedia && (
+                                <button
+                                  type="button"
+                                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => handleDeletePhoto(photo)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Card>
+                  )}
+                </TabsContent>
+              );
+            })}
+          </Tabs>
         )}
 
         {/* Comment */}

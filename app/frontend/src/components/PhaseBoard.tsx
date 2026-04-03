@@ -1,5 +1,6 @@
 import RoomDashboardCard from '@/components/RoomDashboardCard';
 export type { ChecklistSummaryMap } from '@/lib/roomDashboardDerived';
+import { formatPhaseStrip, normalizeRoomPhase } from '@/lib/roomPhases';
 
 export interface RoomPhaseCard {
   id: number;
@@ -82,11 +83,13 @@ export default function PhaseBoard({
                 const completed = summary?.completed ?? 0;
                 const blocked = room.status === 'blocked';
 
+                const rp = normalizeRoomPhase(room.phase);
                 return (
                   <RoomDashboardCard
                     key={room.id}
                     roomNumber={room.room_number}
                     floorLabel={floorLabel}
+                    phaseStrip={formatPhaseStrip(rp)}
                     completed={completed}
                     total={total}
                     blocked={blocked}

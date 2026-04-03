@@ -13,3 +13,4 @@ class Room_photos(Base):
     filename = Column(String, nullable=True)
     caption = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
+    phase = Column(String, nullable=True)

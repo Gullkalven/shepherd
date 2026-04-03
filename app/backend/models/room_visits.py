@@ -12,3 +12,4 @@ class Room_visits(Base):
     action = Column(String, nullable=True)
     visited_at = Column(DateTime(timezone=True), nullable=False)
     user_id = Column(String, nullable=False)
+    phase = Column(String, nullable=True)

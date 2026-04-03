@@ -5,6 +5,12 @@ import { PermissionProvider, usePermissions } from '@/lib/permissions';
 import Header from '@/components/Header';
 import PhaseBoard, { type ChecklistSummaryMap } from '@/components/PhaseBoard';
 import RoomDashboardCard from '@/components/RoomDashboardCard';
+import {
+  formatPhaseStrip,
+  normalizeRoomPhase,
+  ROOM_PHASE_LABELS,
+  syncIncompleteTasksPhaseForRoom,
+} from '@/lib/roomPhases';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -103,6 +109,13 @@ function FloorDetailContent() {
         for (const t of taskItems) {
           const rid = t.room_id as number;
           if (!roomIds.has(rid) || !summary[rid]) continue;
+          const roomRow = roomItems.find((r) => r.id === rid);
+          const roomPhase = normalizeRoomPhase(roomRow?.phase);
+          const taskPhase =
+            t.phase != null && String(t.phase) !== ''
+              ? normalizeRoomPhase(t.phase as string)
+              : roomPhase;
+          if (taskPhase !== roomPhase) continue;
           summary[rid].total += 1;
           if (t.is_completed) summary[rid].completed += 1;
         }
@@ -190,6 +203,7 @@ function FloorDetailContent() {
               template_item_id: item.id,
               is_template_managed: true,
               is_overridden: false,
+              phase: 'demontering',
             },
           })
         )
@@ -313,17 +327,20 @@ function FloorDetailContent() {
 
   const handlePhaseChange = async (roomId: number, newPhase: string) => {
     const room = rooms.find((r) => r.id === roomId);
-    const currentPhase = room?.phase || 'demontering';
-    if (currentPhase === newPhase) return;
+    const oldPhase = normalizeRoomPhase(room?.phase);
+    const nextPhase = normalizeRoomPhase(newPhase);
+    if (oldPhase === nextPhase) return;
     try {
       await client.entities.rooms.update({
         id: String(roomId),
-        data: { phase: newPhase },
+        data: { phase: nextPhase },
       });
+      await syncIncompleteTasksPhaseForRoom(roomId, oldPhase, nextPhase);
       setRooms((prev) =>
-        prev.map((r) => (r.id === roomId ? { ...r, phase: newPhase } : r))
+        prev.map((r) => (r.id === roomId ? { ...r, phase: nextPhase } : r))
       );
       toast.success('Phase updated');
+      await loadData();
     } catch {
       toast.error('Failed to update phase');
     }
@@ -739,6 +756,7 @@ function FloorDetailContent() {
               const summary = checklistByRoomId[room.id];
               const completed = summary?.completed ?? 0;
               const total = summary?.total ?? 0;
+              const rp = normalizeRoomPhase(room.phase);
               return (
                 <RoomDashboardCard
                   key={room.id}
@@ -747,6 +765,8 @@ function FloorDetailContent() {
                     floor?.name ||
                     (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
                   }
+                  phaseLabel={ROOM_PHASE_LABELS[rp]}
+                  phaseStrip={formatPhaseStrip(rp)}
                   completed={completed}
                   total={total}
                   blocked={room.status === 'blocked'}

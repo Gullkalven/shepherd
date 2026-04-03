@@ -5,9 +5,11 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from models.rooms import Rooms
 from services.tasks import TasksService
 from dependencies.auth import get_current_user
 from dependencies.room_lock import ensure_room_mutable
@@ -33,6 +35,7 @@ class TasksData(BaseModel):
     template_item_id: Optional[int] = None
     is_template_managed: Optional[bool] = None
     is_overridden: Optional[bool] = None
+    phase: Optional[str] = None
 
 
 class TasksUpdateData(BaseModel):
@@ -47,6 +50,7 @@ class TasksUpdateData(BaseModel):
     template_item_id: Optional[int] = None
     is_template_managed: Optional[bool] = None
     is_overridden: Optional[bool] = None
+    phase: Optional[str] = None
 
 
 class TasksResponse(BaseModel):
@@ -63,6 +67,7 @@ class TasksResponse(BaseModel):
     template_item_id: Optional[int] = None
     is_template_managed: Optional[bool] = None
     is_overridden: Optional[bool] = None
+    phase: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -212,7 +217,13 @@ async def create_tasks(
     service = TasksService(db)
     try:
         await ensure_room_mutable(db, data.room_id, str(current_user.id), app_role)
-        result = await service.create(data.model_dump(), user_id=str(current_user.id))
+        payload = data.model_dump()
+        if payload.get("phase") is None:
+            room_row = await db.execute(select(Rooms).where(Rooms.id == data.room_id))
+            room_obj = room_row.scalar_one_or_none()
+            rp = getattr(room_obj, "phase", None) if room_obj else None
+            payload["phase"] = (str(rp).strip() or "demontering") if rp is not None else "demontering"
+        result = await service.create(payload, user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create tasks")
         

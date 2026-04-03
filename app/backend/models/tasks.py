@@ -18,3 +18,4 @@ class Tasks(Base):
     template_item_id = Column(Integer, nullable=True)
     is_template_managed = Column(Boolean, nullable=True)
     is_overridden = Column(Boolean, nullable=True)
+    phase = Column(String, nullable=True)

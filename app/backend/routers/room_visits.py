@@ -28,6 +28,7 @@ class Room_visitsData(BaseModel):
     worker_name: str
     action: str = None
     visited_at: datetime
+    phase: Optional[str] = None
 
 
 class Room_visitsUpdateData(BaseModel):
@@ -36,6 +37,7 @@ class Room_visitsUpdateData(BaseModel):
     worker_name: Optional[str] = None
     action: Optional[str] = None
     visited_at: Optional[datetime] = None
+    phase: Optional[str] = None
 
 
 class Room_visitsResponse(BaseModel):
@@ -46,6 +48,7 @@ class Room_visitsResponse(BaseModel):
     action: Optional[str] = None
     visited_at: datetime
     user_id: str
+    phase: Optional[str] = None
 
     class Config:
         from_attributes = True
