@@ -21,6 +21,7 @@ interface Room {
   comment?: string;
   blocked_reason?: string;
   updated_at?: string;
+  is_locked?: boolean;
 }
 
 interface ChecklistTemplate {
@@ -749,6 +750,7 @@ function FloorDetailContent() {
                   completed={completed}
                   total={total}
                   blocked={room.status === 'blocked'}
+                  contentLocked={Boolean(room.is_locked)}
                   blockedReason={room.blocked_reason}
                   assignedWorker={room.assigned_worker}
                   updatedAt={room.updated_at}

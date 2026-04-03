@@ -11,7 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.rooms import RoomsService
 from dependencies.auth import get_current_user
-from dependencies.roles import require_admin_or_manager, require_admin_manager_or_electrician
+from dependencies.room_lock import ROOM_LOCKED_DETAIL, ensure_room_mutable
+from dependencies.roles import (
+    ROLE_ADMIN,
+    ROLE_MANAGER,
+    get_current_app_role,
+    require_admin_or_manager,
+    require_admin_manager_or_electrician,
+)
 from schemas.auth import UserResponse
 
 # Set up logging
@@ -36,6 +43,7 @@ class RoomsData(BaseModel):
     assigned_worker: str = None
     comment: str = None
     blocked_reason: str = None
+    is_locked: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -50,6 +58,7 @@ class RoomsUpdateData(BaseModel):
     assigned_worker: Optional[str] = None
     comment: Optional[str] = None
     blocked_reason: Optional[str] = None
+    is_locked: Optional[bool] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -66,6 +75,7 @@ class RoomsResponse(BaseModel):
     assigned_worker: Optional[str] = None
     comment: Optional[str] = None
     blocked_reason: Optional[str] = None
+    is_locked: bool = False
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -295,6 +305,7 @@ async def update_rooms(
     data: RoomsUpdateData,
     current_user: UserResponse = Depends(get_current_user),
     _role: str = Depends(require_admin_manager_or_electrician),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing rooms (requires ownership)"""
@@ -305,11 +316,19 @@ async def update_rooms(
         validate_blocked_reason(data.status, data.blocked_reason)
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
+        existing = await service.get_by_id(id, user_id=str(current_user.id))
+        if not existing:
+            logger.warning(f"Rooms with id {id} not found for update")
+            raise HTTPException(status_code=404, detail="Rooms not found")
+        if app_role not in (ROLE_ADMIN, ROLE_MANAGER):
+            update_dict.pop("is_locked", None)
+            if getattr(existing, "is_locked", False):
+                raise HTTPException(status_code=403, detail=ROOM_LOCKED_DETAIL)
         result = await service.update(id, update_dict, user_id=str(current_user.id))
         if not result:
             logger.warning(f"Rooms with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Rooms not found")
-        
+
         logger.info(f"Rooms {id} updated successfully")
         return result
     except HTTPException:

@@ -1,6 +1,6 @@
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { User, AlertTriangle, Clock } from 'lucide-react';
+import { User, AlertTriangle, Clock, Lock } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { deriveRoomDashboardStatus, type DashboardStatusKind } from '@/lib/roomDashboardDerived';
@@ -52,6 +52,8 @@ interface RoomDashboardCardProps {
   completed: number;
   total: number;
   blocked: boolean;
+  /** Content locked by admin/BAS — workers can view only */
+  contentLocked?: boolean;
   blockedReason?: string;
   assignedWorker?: string;
   updatedAt?: string | null;
@@ -71,6 +73,7 @@ export default function RoomDashboardCard({
   completed,
   total,
   blocked,
+  contentLocked = false,
   blockedReason,
   assignedWorker,
   updatedAt,
@@ -118,14 +121,27 @@ export default function RoomDashboardCard({
                 </div>
               ) : null}
             </div>
-            {blocked ? (
-              <span
-                className="shrink-0 inline-flex items-center justify-center rounded-md bg-red-600 text-white p-1"
-                title={blockedReason || 'Blocked'}
-                aria-label="Blocked"
-              >
-                <AlertTriangle className="h-4 w-4" />
-              </span>
+            {contentLocked || blocked ? (
+              <div className="shrink-0 flex items-center gap-1">
+                {contentLocked ? (
+                  <span
+                    className="inline-flex items-center justify-center rounded-md bg-amber-600 text-white p-1"
+                    title="Locked — view only for workers"
+                    aria-label="Locked"
+                  >
+                    <Lock className="h-4 w-4" />
+                  </span>
+                ) : null}
+                {blocked ? (
+                  <span
+                    className="inline-flex items-center justify-center rounded-md bg-red-600 text-white p-1"
+                    title={blockedReason || 'Blocked'}
+                    aria-label="Blocked"
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                  </span>
+                ) : null}
+              </div>
             ) : null}
           </div>
 

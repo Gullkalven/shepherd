@@ -38,6 +38,10 @@
             "type": "string",
             "description": "Reason if room is blocked"
         },
+        "is_locked": {
+            "type": "boolean",
+            "description": "When true, only admin and BAS (manager) can edit room data"
+        },
         "created_at": {
             "type": "string",
             "format": "date-time",

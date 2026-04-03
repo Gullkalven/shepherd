@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogF
 import {
   Camera, Trash2, User, MessageSquare, Ban, CheckCircle2,
   Image as ImageIcon, X, ClipboardList, Plus, Clock, ListPlus, Pencil, Check,
+  Lock, Unlock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -57,6 +58,7 @@ interface Room {
   assigned_worker?: string;
   comment?: string;
   blocked_reason?: string;
+  is_locked?: boolean;
   floor_id: number;
   project_id: number;
 }
@@ -96,6 +98,7 @@ function RoomDetailContent() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
+    canEdit,
     canEditRoom, canDeleteRoom, canChangeStatus, canAddChecklistItem, canDeleteChecklistItem,
     canCheckItem, canUploadPhoto, canDeletePhoto, canEditComment, canDeleteVisit,
     sectionVisibility,
@@ -195,6 +198,21 @@ function RoomDetailContent() {
     if (saved) setCheckWorkerName(saved);
   }, []);
 
+  const handleToggleRoomLock = async () => {
+    if (!room || !canEdit) return;
+    const next = !room.is_locked;
+    try {
+      await client.entities.rooms.update({
+        id: String(room.id),
+        data: { is_locked: next },
+      });
+      setRoom({ ...room, is_locked: next });
+      toast.success(next ? 'Room locked for workers' : 'Room unlocked');
+    } catch {
+      toast.error('Failed to update lock');
+    }
+  };
+
   const handleStatusChange = async (newStatus: string) => {
     if (!room) return;
     if (newStatus === 'blocked') {
@@ -235,6 +253,7 @@ function RoomDetailContent() {
 
   const handleTaskClick = (task: Task) => {
     if (!canCheckItem) return;
+    if (room?.is_locked && !canEdit) return;
     const savedName = localStorage.getItem(WORKER_NAME_KEY);
     if (savedName) {
       executeToggleTask(task, savedName);
@@ -603,6 +622,7 @@ function RoomDetailContent() {
   const currentStatus = STATUS_OPTIONS.find((s) => s.value === room.status) || STATUS_OPTIONS[0];
   const uniqueWorkers = [...new Set(visits.map((v) => v.worker_name))];
   const savedWorkerName = localStorage.getItem(WORKER_NAME_KEY);
+  const editsBlocked = Boolean(room.is_locked) && !canEdit;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-background pb-8">
@@ -617,18 +637,50 @@ function RoomDetailContent() {
       <div className="p-4 max-w-lg mx-auto space-y-4">
         {/* Room Header */}
         <Card className="p-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between gap-2 mb-3">
             <h2 className="text-xl font-bold text-slate-800 dark:text-foreground">Room {room.room_number}</h2>
-            <Badge className={`${currentStatus.color} border-0 text-xs`}>
-              {currentStatus.label}
-            </Badge>
+            <div className="flex items-center gap-2 shrink-0">
+              {canEdit ? (
+                <Button
+                  type="button"
+                  variant={room.is_locked ? 'secondary' : 'outline'}
+                  size="sm"
+                  className="h-8 gap-1 text-xs"
+                  onClick={handleToggleRoomLock}
+                >
+                  {room.is_locked ? (
+                    <>
+                      <Unlock className="h-3.5 w-3.5" />
+                      Unlock
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="h-3.5 w-3.5" />
+                      Lock
+                    </>
+                  )}
+                </Button>
+              ) : null}
+              <Badge className={`${currentStatus.color} border-0 text-xs`}>
+                {currentStatus.label}
+              </Badge>
+            </div>
           </div>
+
+          {editsBlocked ? (
+            <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 flex items-start gap-2">
+              <Lock className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-900 dark:text-amber-100">
+                This room is locked. You can view everything, but only admin or BAS can change data.
+              </p>
+            </div>
+          ) : null}
 
           {sectionVisibility.status && (
             canChangeStatus ? (
               <div className="mb-3">
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Status</label>
-                <Select value={room.status} onValueChange={handleStatusChange}>
+                <Select value={room.status} onValueChange={handleStatusChange} disabled={editsBlocked}>
                   <SelectTrigger className="h-11">
                     <SelectValue />
                   </SelectTrigger>
@@ -672,11 +724,13 @@ function RoomDetailContent() {
                     value={assignedWorker}
                     onChange={(e) => setAssignedWorker(e.target.value)}
                     className="h-10"
+                    disabled={editsBlocked}
                   />
                   <Button
                     variant="outline"
                     className="h-10 shrink-0"
                     onClick={handleSaveWorker}
+                    disabled={editsBlocked}
                   >
                     Save
                   </Button>
@@ -702,6 +756,7 @@ function RoomDetailContent() {
                 variant="outline"
                 className="h-9"
                 onClick={handleMoveToNextPhase}
+                disabled={editsBlocked}
               >
                 Move to next phase
               </Button>
@@ -732,6 +787,7 @@ function RoomDetailContent() {
                 size="sm"
                 className="h-9 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
                 onClick={() => setShowVisitDialog(true)}
+                disabled={editsBlocked}
               >
                 <Plus className="h-3 w-3 mr-1" />
                 Log Visit
@@ -777,7 +833,7 @@ function RoomDetailContent() {
                         <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{visit.action}</p>
                       )}
                     </div>
-                    {canDeleteVisit && (
+                    {canDeleteVisit && !editsBlocked && (
                       <button
                         className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1"
                         onClick={() => handleDeleteVisit(visit.id)}
@@ -804,7 +860,7 @@ function RoomDetailContent() {
               <span className="text-sm text-muted-foreground">
                 {completedTasks}/{totalTasks}
               </span>
-              {canAddChecklistItem && (
+              {canAddChecklistItem && !editsBlocked && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -872,15 +928,15 @@ function RoomDetailContent() {
                   ) : (
                     <>
                       <button
-                        className={`flex items-start gap-3 flex-1 text-left min-w-0 ${!canCheckItem ? 'cursor-default' : ''}`}
+                        className={`flex items-start gap-3 flex-1 text-left min-w-0 ${!canCheckItem || editsBlocked ? 'cursor-default' : ''}`}
                         onClick={() => handleTaskClick(task)}
-                        disabled={!canCheckItem}
+                        disabled={!canCheckItem || editsBlocked}
                       >
                         <Checkbox
                           checked={task.is_completed}
                           className="h-6 w-6 rounded-md mt-0.5 shrink-0"
                           onCheckedChange={() => {}}
-                          disabled={!canCheckItem}
+                          disabled={!canCheckItem || editsBlocked}
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5 group/tname">
@@ -891,7 +947,7 @@ function RoomDetailContent() {
                             >
                               {task.name}
                             </span>
-                            {canAddChecklistItem && (
+                            {canAddChecklistItem && !editsBlocked && (
                               <button
                                 className="opacity-0 group-hover/tname:opacity-100 transition-opacity text-slate-400 hover:text-blue-500 p-0.5"
                                 onClick={(e) => startEditTask(e, task)}
@@ -923,7 +979,7 @@ function RoomDetailContent() {
                           )}
                         </div>
                       </button>
-                      {canDeleteChecklistItem && (
+                      {canDeleteChecklistItem && !editsBlocked && (
                         <button
                           className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1 shrink-0 mt-0.5"
                           onClick={() => handleDeleteTask(task.id)}
@@ -939,7 +995,7 @@ function RoomDetailContent() {
           </div>
 
           {/* Inline add item - only for admin/manager */}
-          {canAddChecklistItem && (
+          {canAddChecklistItem && !editsBlocked && (
             <>
               {showAddTask ? (
                 <div className="mt-3 flex gap-2">
@@ -1003,7 +1059,7 @@ function RoomDetailContent() {
               <Camera className="h-4 w-4 text-blue-500 dark:text-blue-400" />
               Photos
             </h3>
-            {canUploadPhoto && (
+            {canUploadPhoto && !editsBlocked && (
               <Button
                 variant="outline"
                 size="sm"
@@ -1044,7 +1100,7 @@ function RoomDetailContent() {
                       <ImageIcon className="h-6 w-6 text-slate-300 dark:text-slate-600" />
                     </div>
                   )}
-                  {canDeletePhoto && (
+                  {canDeletePhoto && !editsBlocked && (
                     <button
                       className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => handleDeletePhoto(photo)}
@@ -1072,9 +1128,9 @@ function RoomDetailContent() {
             onChange={(e) => setComment(e.target.value)}
             rows={3}
             className="resize-none"
-            disabled={!canEditComment}
+            disabled={!canEditComment || editsBlocked}
           />
-          {canEditComment && (
+          {canEditComment && !editsBlocked && (
             <>
               <div className="mt-2 flex gap-2">
                 <Input

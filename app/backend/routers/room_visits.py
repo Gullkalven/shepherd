@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.room_visits import Room_visitsService
 from dependencies.auth import get_current_user
+from dependencies.room_lock import ensure_room_mutable
+from dependencies.roles import get_current_app_role
 from schemas.auth import UserResponse
 
 # Set up logging
@@ -184,6 +186,7 @@ async def get_room_visits(
 async def create_room_visits(
     data: Room_visitsData,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new room_visits"""
@@ -191,6 +194,7 @@ async def create_room_visits(
     
     service = Room_visitsService(db)
     try:
+        await ensure_room_mutable(db, data.room_id, str(current_user.id), app_role)
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create room_visits")
@@ -209,6 +213,7 @@ async def create_room_visits(
 async def create_room_visitss_batch(
     request: Room_visitsBatchCreateRequest,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple room_visitss in a single request"""
@@ -219,6 +224,7 @@ async def create_room_visitss_batch(
     
     try:
         for item_data in request.items:
+            await ensure_room_mutable(db, item_data.room_id, str(current_user.id), app_role)
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
                 results.append(result)
@@ -235,6 +241,7 @@ async def create_room_visitss_batch(
 async def update_room_visitss_batch(
     request: Room_visitsBatchUpdateRequest,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple room_visitss in a single request (requires ownership)"""
@@ -247,6 +254,13 @@ async def update_room_visitss_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
+            row = await service.get_by_id(item.id, user_id=str(current_user.id))
+            if not row:
+                continue
+            await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
+            new_rid = update_dict.get("room_id")
+            if new_rid is not None and new_rid != row.room_id:
+                await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
             result = await service.update(item.id, update_dict, user_id=str(current_user.id))
             if result:
                 results.append(result)
@@ -264,6 +278,7 @@ async def update_room_visits(
     id: int,
     data: Room_visitsUpdateData,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing room_visits (requires ownership)"""
@@ -273,11 +288,19 @@ async def update_room_visits(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
+        row = await service.get_by_id(id, user_id=str(current_user.id))
+        if not row:
+            logger.warning(f"Room_visits with id {id} not found for update")
+            raise HTTPException(status_code=404, detail="Room_visits not found")
+        await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
+        new_rid = update_dict.get("room_id")
+        if new_rid is not None and new_rid != row.room_id:
+            await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
         result = await service.update(id, update_dict, user_id=str(current_user.id))
         if not result:
             logger.warning(f"Room_visits with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Room_visits not found")
-        
+
         logger.info(f"Room_visits {id} updated successfully")
         return result
     except HTTPException:
@@ -294,6 +317,7 @@ async def update_room_visits(
 async def delete_room_visitss_batch(
     request: Room_visitsBatchDeleteRequest,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple room_visitss by their IDs (requires ownership)"""
@@ -304,6 +328,10 @@ async def delete_room_visitss_batch(
     
     try:
         for item_id in request.ids:
+            row = await service.get_by_id(item_id, user_id=str(current_user.id))
+            if not row:
+                continue
+            await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
             success = await service.delete(item_id, user_id=str(current_user.id))
             if success:
                 deleted_count += 1
@@ -320,6 +348,7 @@ async def delete_room_visitss_batch(
 async def delete_room_visits(
     id: int,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single room_visits by ID (requires ownership)"""
@@ -327,6 +356,11 @@ async def delete_room_visits(
     
     service = Room_visitsService(db)
     try:
+        row = await service.get_by_id(id, user_id=str(current_user.id))
+        if not row:
+            logger.warning(f"Room_visits with id {id} not found for deletion")
+            raise HTTPException(status_code=404, detail="Room_visits not found")
+        await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
         success = await service.delete(id, user_id=str(current_user.id))
         if not success:
             logger.warning(f"Room_visits with id {id} not found for deletion")

@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.tasks import TasksService
 from dependencies.auth import get_current_user
+from dependencies.room_lock import ensure_room_mutable
+from dependencies.roles import get_current_app_role
 from schemas.auth import UserResponse
 
 # Set up logging
@@ -201,6 +203,7 @@ async def get_tasks(
 async def create_tasks(
     data: TasksData,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new tasks"""
@@ -208,6 +211,7 @@ async def create_tasks(
     
     service = TasksService(db)
     try:
+        await ensure_room_mutable(db, data.room_id, str(current_user.id), app_role)
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create tasks")
@@ -226,6 +230,7 @@ async def create_tasks(
 async def create_taskss_batch(
     request: TasksBatchCreateRequest,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple taskss in a single request"""
@@ -236,6 +241,7 @@ async def create_taskss_batch(
     
     try:
         for item_data in request.items:
+            await ensure_room_mutable(db, item_data.room_id, str(current_user.id), app_role)
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
                 results.append(result)
@@ -252,6 +258,7 @@ async def create_taskss_batch(
 async def update_taskss_batch(
     request: TasksBatchUpdateRequest,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple taskss in a single request (requires ownership)"""
@@ -264,6 +271,13 @@ async def update_taskss_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
+            task = await service.get_by_id(item.id, user_id=str(current_user.id))
+            if not task:
+                continue
+            await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role)
+            new_rid = update_dict.get("room_id")
+            if new_rid is not None and new_rid != task.room_id:
+                await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
             result = await service.update(item.id, update_dict, user_id=str(current_user.id))
             if result:
                 results.append(result)
@@ -281,6 +295,7 @@ async def update_tasks(
     id: int,
     data: TasksUpdateData,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing tasks (requires ownership)"""
@@ -290,11 +305,19 @@ async def update_tasks(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
+        task = await service.get_by_id(id, user_id=str(current_user.id))
+        if not task:
+            logger.warning(f"Tasks with id {id} not found for update")
+            raise HTTPException(status_code=404, detail="Tasks not found")
+        await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role)
+        new_rid = update_dict.get("room_id")
+        if new_rid is not None and new_rid != task.room_id:
+            await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
         result = await service.update(id, update_dict, user_id=str(current_user.id))
         if not result:
             logger.warning(f"Tasks with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Tasks not found")
-        
+
         logger.info(f"Tasks {id} updated successfully")
         return result
     except HTTPException:
@@ -311,6 +334,7 @@ async def update_tasks(
 async def delete_taskss_batch(
     request: TasksBatchDeleteRequest,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple taskss by their IDs (requires ownership)"""
@@ -321,6 +345,10 @@ async def delete_taskss_batch(
     
     try:
         for item_id in request.ids:
+            task = await service.get_by_id(item_id, user_id=str(current_user.id))
+            if not task:
+                continue
+            await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role)
             success = await service.delete(item_id, user_id=str(current_user.id))
             if success:
                 deleted_count += 1
@@ -337,6 +365,7 @@ async def delete_taskss_batch(
 async def delete_tasks(
     id: int,
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single tasks by ID (requires ownership)"""
@@ -344,6 +373,11 @@ async def delete_tasks(
     
     service = TasksService(db)
     try:
+        task = await service.get_by_id(id, user_id=str(current_user.id))
+        if not task:
+            logger.warning(f"Tasks with id {id} not found for deletion")
+            raise HTTPException(status_code=404, detail="Tasks not found")
+        await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role)
         success = await service.delete(id, user_id=str(current_user.id))
         if not success:
             logger.warning(f"Tasks with id {id} not found for deletion")

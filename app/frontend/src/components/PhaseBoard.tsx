@@ -9,6 +9,7 @@ export interface RoomPhaseCard {
   assigned_worker?: string;
   blocked_reason?: string;
   updated_at?: string | null;
+  is_locked?: boolean;
 }
 
 interface PhaseBoardProps {
@@ -89,6 +90,7 @@ export default function PhaseBoard({
                     completed={completed}
                     total={total}
                     blocked={blocked}
+                    contentLocked={Boolean(room.is_locked)}
                     blockedReason={room.blocked_reason}
                     assignedWorker={room.assigned_worker}
                     updatedAt={room.updated_at}

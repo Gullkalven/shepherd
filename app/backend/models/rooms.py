@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
 
 
 class Rooms(Base):
@@ -16,5 +16,6 @@ class Rooms(Base):
     assigned_worker = Column(String, nullable=True)
     comment = Column(String, nullable=True)
     blocked_reason = Column(String, nullable=True)
+    is_locked = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)
