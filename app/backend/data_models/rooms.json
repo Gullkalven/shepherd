@@ -1,0 +1,59 @@
+{
+    "title": "rooms",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "floor_id": {
+            "type": "integer",
+            "description": "FK to floors"
+        },
+        "project_id": {
+            "type": "integer",
+            "description": "FK to projects"
+        },
+        "room_number": {
+            "type": "string",
+            "description": "Room number/label"
+        },
+        "status": {
+            "type": "string",
+            "description": "Room status: not_started, in_progress, ready_for_inspection, completed, blocked"
+        },
+        "assigned_worker": {
+            "type": "string",
+            "description": "Name of assigned worker"
+        },
+        "comment": {
+            "type": "string",
+            "description": "Comment field"
+        },
+        "blocked_reason": {
+            "type": "string",
+            "description": "Reason if room is blocked"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp"
+        },
+        "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "floor_id",
+        "project_id",
+        "room_number"
+    ]
+}

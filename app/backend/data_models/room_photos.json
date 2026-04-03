@@ -1,0 +1,41 @@
+{
+    "title": "room_photos",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "room_id": {
+            "type": "integer",
+            "description": "FK to rooms"
+        },
+        "object_key": {
+            "type": "string",
+            "description": "Object storage key for the photo"
+        },
+        "filename": {
+            "type": "string",
+            "description": "Original filename"
+        },
+        "caption": {
+            "type": "string",
+            "description": "Photo caption"
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Upload timestamp"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "room_id",
+        "object_key"
+    ]
+}

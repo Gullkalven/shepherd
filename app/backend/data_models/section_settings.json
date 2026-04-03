@@ -1,0 +1,33 @@
+{
+    "title": "section_settings",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID of admin who set this"
+        },
+        "role_name": {
+            "type": "string",
+            "description": "Role name: admin, manager, worker"
+        },
+        "section_key": {
+            "type": "string",
+            "description": "Section identifier: visit_log, checklist, photos, comments, status, assigned_worker"
+        },
+        "is_visible": {
+            "type": "boolean",
+            "description": "Whether this section is visible for this role"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "role_name",
+        "section_key",
+        "is_visible"
+    ]
+}

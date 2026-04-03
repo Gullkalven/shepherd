@@ -1,0 +1,38 @@
+{
+    "title": "room_visits",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "room_id": {
+            "type": "integer",
+            "description": "Foreign key to rooms table"
+        },
+        "worker_name": {
+            "type": "string",
+            "description": "Name of the worker who visited"
+        },
+        "action": {
+            "type": "string",
+            "description": "What the worker did, e.g. checked in, worked on cables"
+        },
+        "visited_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the visit occurred"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID of the person logging the visit"
+        }
+    },
+    "required": [
+        "id",
+        "room_id",
+        "worker_name",
+        "visited_at",
+        "user_id"
+    ]
+}

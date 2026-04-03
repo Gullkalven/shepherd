@@ -1,0 +1,110 @@
+[
+    {
+        "role_name": "admin",
+        "section_key": "visit_log",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "admin",
+        "section_key": "checklist",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "admin",
+        "section_key": "photos",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "admin",
+        "section_key": "comments",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "admin",
+        "section_key": "status",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "admin",
+        "section_key": "assigned_worker",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "manager",
+        "section_key": "visit_log",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "manager",
+        "section_key": "checklist",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "manager",
+        "section_key": "photos",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "manager",
+        "section_key": "comments",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "manager",
+        "section_key": "status",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "manager",
+        "section_key": "assigned_worker",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "worker",
+        "section_key": "visit_log",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "worker",
+        "section_key": "checklist",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "worker",
+        "section_key": "photos",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "worker",
+        "section_key": "comments",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "worker",
+        "section_key": "status",
+        "is_visible": true,
+        "user_id": "system"
+    },
+    {
+        "role_name": "worker",
+        "section_key": "assigned_worker",
+        "is_visible": true,
+        "user_id": "system"
+    }
+]
