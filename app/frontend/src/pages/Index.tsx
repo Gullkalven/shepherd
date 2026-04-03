@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { client } from '@/lib/api';
+import { client, fetchProjectsListAll } from '@/lib/api';
 import { PermissionProvider, usePermissions } from '@/lib/permissions';
 import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
@@ -98,9 +98,9 @@ function IndexContent({
     if (!canLoad) return;
     try {
       const res = useProjectsAll
-        ? await client.entities.projects.queryAll({ sort: '-created_at' })
+        ? await fetchProjectsListAll()
         : await client.entities.projects.query({ sort: '-created_at' });
-      setProjects(res?.data?.items || []);
+      setProjects((res?.data?.items || []) as Project[]);
     } catch (err: unknown) {
       const ax = err as {
         message?: string;
@@ -109,7 +109,9 @@ function IndexContent({
       };
       const fullUrl = [ax.config?.baseURL, ax.config?.url].filter(Boolean).join('') || ax.config?.url;
       console.error('[Shepherd] loadProjects failed', {
-        listEndpoint: useProjectsAll ? 'GET /api/v1/entities/projects/all' : 'GET /api/v1/entities/projects',
+        listEndpoint: useProjectsAll
+          ? 'GET {API_BASE_URL}/api/v1/entities/projects/all?sort=-created_at&skip=0&limit=100'
+          : 'GET /api/v1/entities/projects',
         message: ax.message,
         httpStatus: ax.response?.status,
         responseBody: ax.response?.data,
@@ -122,7 +124,7 @@ function IndexContent({
   }, [user]);
 
   useEffect(() => {
-    if (user) loadProjects();
+    void loadProjects();
   }, [user, loadProjects]);
 
   const signInAsDemoRole = (role: DevAppRole) => {
