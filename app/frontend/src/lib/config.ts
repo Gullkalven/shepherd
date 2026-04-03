@@ -6,10 +6,19 @@ let runtimeConfig: {
 // Configuration loading state
 let configLoading = true;
 
-// Default fallback configuration
-const defaultConfig = {
-  API_BASE_URL: 'http://127.0.0.1:8000', // Only used if runtime config fails to load
-};
+/** Local `vite` / dev server: backend not on the static site host. */
+const LOCAL_DEV_API_ORIGIN = 'http://127.0.0.1:8000';
+
+/**
+ * If a production build has no VITE_API_URL (misconfigured CI), never default to loopback —
+ * browsers on Render/static hosts cannot reach 127.0.0.1:8000.
+ */
+const PRODUCTION_API_ORIGIN_FALLBACK = 'https://shepherd-backend-aj54.onrender.com';
+
+function isLoopbackApiOrigin(url: string): boolean {
+  const u = url.toLowerCase();
+  return u.includes('127.0.0.1') || u.includes('localhost');
+}
 
 // Function to load runtime configuration
 export async function loadRuntimeConfig(): Promise<void> {
@@ -59,25 +68,42 @@ function viteResolvedApiOrigin(): string | null {
 
 // Get current configuration
 export function getConfig() {
-  // Vite env first — correct before loadRuntimeConfig() finishes (avoids hitting the frontend host on Render).
+  // Vite env first — from .env.production at build time or CI; never relies on the page’s host.
   const fromVite = viteResolvedApiOrigin();
   if (fromVite) {
     return { API_BASE_URL: fromVite };
   }
 
   if (configLoading) {
-    console.log('Config still loading, using default config');
-    return defaultConfig;
+    if (import.meta.env.DEV) {
+      console.log('Config still loading, using local dev API origin');
+      return { API_BASE_URL: LOCAL_DEV_API_ORIGIN };
+    }
+    console.warn(
+      '[Shepherd] API: no VITE_API_URL in bundle while config loading; using production fallback (set VITE_API_URL or rely on .env.production).'
+    );
+    return { API_BASE_URL: PRODUCTION_API_ORIGIN_FALLBACK };
   }
 
   if (runtimeConfig?.API_BASE_URL) {
     console.log('Using runtime config');
-    const u = String(runtimeConfig.API_BASE_URL).trim().replace(/\/$/, '');
+    let u = String(runtimeConfig.API_BASE_URL).trim().replace(/\/$/, '');
+    if (import.meta.env.PROD && isLoopbackApiOrigin(u)) {
+      console.warn(
+        '[Shepherd] Ignoring loopback API_BASE_URL from /api/config in production; using fallback.'
+      );
+      u = PRODUCTION_API_ORIGIN_FALLBACK;
+    }
     return { API_BASE_URL: u };
   }
 
-  console.log('Using default config');
-  return defaultConfig;
+  if (import.meta.env.PROD) {
+    console.warn('[Shepherd] API: no VITE_API_URL and no runtime config; using production fallback.');
+    return { API_BASE_URL: PRODUCTION_API_ORIGIN_FALLBACK };
+  }
+
+  console.log('Using local dev API default');
+  return { API_BASE_URL: LOCAL_DEV_API_ORIGIN };
 }
 
 // Dynamic API_BASE_URL getter - this will always return the current config
