@@ -18,6 +18,7 @@ import {
   isDevRoleSwitcherHost,
   persistDemoSignIn,
   readDemoLocalStorageUser,
+  shouldLoadProjectListViaAllEndpoint,
   type DevAppRole,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
@@ -98,9 +99,7 @@ function IndexContent({
   const loadProjects = useCallback(async () => {
     if (!user) return;
     try {
-      const useUnscopedList =
-        !isDevRoleSwitcherHost() && readDemoLocalStorageUser() !== null;
-      const res = useUnscopedList
+      const res = shouldLoadProjectListViaAllEndpoint()
         ? await client.entities.projects.queryAll({ sort: '-created_at' })
         : await client.entities.projects.query({ sort: '-created_at' });
       setProjects(res?.data?.items || []);
