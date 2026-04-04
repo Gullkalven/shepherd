@@ -778,7 +778,7 @@ function RoomDetailContent() {
   const chipUiSel = computePhaseChipUi(selPhase, roomPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-background pb-6">
+    <div className="min-h-screen bg-slate-50 dark:bg-background pb-8">
       <Header
         breadcrumbs={[
           { label: 'Projects', path: '/' },
@@ -787,22 +787,22 @@ function RoomDetailContent() {
           { label: `Room ${room.room_number}` },
         ]}
       />
-      <div className="px-3 py-3 sm:px-4 max-w-lg mx-auto space-y-2.5">
-        {/* Room summary — compact, same controls */}
-        <Card className="border-border/40 bg-background/60 shadow-none p-2 sm:p-2.5">
-          <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1.5">
+      <div className="px-3 py-2.5 sm:px-4 sm:py-3 max-w-lg mx-auto space-y-3">
+        {/* Room summary — lightweight strip above workflow */}
+        <Card className="border-border/40 bg-background/60 shadow-none p-1.5 sm:p-2">
+          <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
             <div className="min-w-0 space-y-0">
               <h2 className="text-[15px] font-medium text-foreground leading-none tracking-tight">
                 Room {room.room_number}
               </h2>
-              <p className="text-[10px] text-muted-foreground/90 leading-snug mt-1">
+              <p className="text-[10px] text-muted-foreground/90 leading-snug mt-0.5">
                 <span className="text-foreground/75">{floor?.name || '—'}</span>
                 <span className="mx-1 text-border/80">·</span>
                 Main <span className="text-foreground/80">{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>
               </p>
               {sectionVisibility.assigned_worker &&
                 (canEditRoom ? (
-                  <div className="flex flex-wrap items-center gap-1 pt-1">
+                  <div className="flex flex-wrap items-center gap-1 pt-0.5">
                     <span className="text-[10px] text-muted-foreground shrink-0">Assigned</span>
                     <Input
                       placeholder="Worker"
@@ -864,7 +864,7 @@ function RoomDetailContent() {
           </div>
 
           {canMovePhase ? (
-            <div className="mt-1.5 flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 border-t border-border/30 pt-1.5">
+            <div className="mt-1 flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 border-t border-border/30 pt-1">
               <label className="text-[10px] text-muted-foreground shrink-0">Main phase (board)</label>
               <Select value={roomPhaseNorm} onValueChange={handleSetMainPhase} disabled={editsBlocked}>
                 <SelectTrigger className="h-7 text-[11px]">
@@ -882,7 +882,7 @@ function RoomDetailContent() {
           ) : null}
 
           {editsBlocked ? (
-            <div className="mt-1.5 rounded-md border-l-2 border-muted-foreground/25 bg-muted/15 pl-2 pr-2 py-1 flex items-start gap-1.5">
+            <div className="mt-1 rounded-md border-l-2 border-muted-foreground/25 bg-muted/15 pl-2 pr-2 py-0.5 flex items-start gap-1.5">
               <Lock className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Room locked — view only unless you are admin or BAS.
@@ -891,7 +891,7 @@ function RoomDetailContent() {
           ) : null}
 
           {room.status === 'blocked' && room.blocked_reason ? (
-            <div className="mt-1.5 bg-red-50/80 dark:bg-red-950/35 border border-red-200/60 dark:border-red-900/40 rounded-md px-2 py-1.5">
+            <div className="mt-1 bg-red-50/80 dark:bg-red-950/35 border border-red-200/60 dark:border-red-900/40 rounded-md px-2 py-1">
               <div className="flex items-center gap-1 text-red-600 dark:text-red-400 text-[10px] font-medium">
                 <Ban className="h-3 w-3" />
                 Blocked
@@ -903,7 +903,7 @@ function RoomDetailContent() {
           {canDeleteRoom ? (
             <Button
               variant="ghost"
-              className="mt-1.5 h-7 w-full text-[10px] text-muted-foreground hover:text-destructive hover:bg-destructive/5"
+              className="mt-1 h-6 w-full text-[10px] text-muted-foreground hover:text-destructive hover:bg-destructive/5"
               onClick={() => setShowDeleteRoomDialog(true)}
             >
               <Trash2 className="h-3 w-3 mr-1" />
@@ -913,7 +913,7 @@ function RoomDetailContent() {
         </Card>
 
         {(sectionVisibility.checklist || sectionVisibility.photos) && (
-          <div className="w-full space-y-2 sm:space-y-2.5">
+          <div className="w-full space-y-3">
             <input
               ref={fileInputRef}
               type="file"
@@ -923,7 +923,7 @@ function RoomDetailContent() {
               onChange={handlePhotoUpload}
             />
 
-            <div className="-mx-1 flex gap-2 overflow-x-auto pb-1.5 px-1 snap-x snap-mandatory">
+            <div className="-mx-1 flex gap-2.5 overflow-x-auto py-2 px-1 snap-x snap-mandatory sm:py-2.5">
               {workflowPhaseKeys.map((key) => {
                 const tks = tasks.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === key);
                 const done = tks.filter((x) => x.is_completed).length;
@@ -1029,17 +1029,17 @@ function RoomDetailContent() {
               </div>
             ) : null}
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
                   {sectionVisibility.checklist && (
-                    <Card className="overflow-hidden border-border/60 bg-card shadow-sm ring-1 ring-emerald-600/[0.06] dark:ring-emerald-400/[0.08]">
-                      <div className="border-b border-border/50 bg-emerald-600/[0.04] dark:bg-emerald-400/[0.06] px-3 py-2 sm:px-3.5 sm:py-2.5">
+                    <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
+                      <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2.5 py-2 sm:px-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 pt-0.5">
-                            <h3 className="text-base font-semibold tracking-tight text-foreground flex items-center gap-1.5">
-                              <CheckCircle2 className="h-[1.125rem] w-[1.125rem] shrink-0 text-emerald-600 dark:text-emerald-400 opacity-90" />
+                            <h3 className="text-[15px] font-semibold tracking-tight text-foreground flex items-center gap-1.5">
+                              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400 opacity-85" />
                               Checklist
                             </h3>
-                            <p className="mt-1 text-[10px] leading-snug text-muted-foreground/75">
+                            <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground/75">
                               <span className="text-muted-foreground">{phaseLabel(selPhase, phaseWorkflow)}</span>
                               {chipUiSel.workerLocked ? (
                                 <span className="text-muted-foreground/80">
@@ -1055,9 +1055,9 @@ function RoomDetailContent() {
                               ) : null}
                             </p>
                           </div>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
+                          <div className="flex flex-col items-end gap-0.5 shrink-0">
                             <span
-                              className="text-lg font-semibold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-300"
+                              className="text-base font-semibold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-300"
                               title={`${completedForPhase} of ${totalForPhase} complete`}
                             >
                               {completedForPhase}/{totalForPhase}
@@ -1066,7 +1066,7 @@ function RoomDetailContent() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-7 text-[10px] border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                                className="h-6 text-[10px] border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/50"
                                 onClick={() => setShowBulkAddTasks(true)}
                               >
                                 <ListPlus className="h-3 w-3 mr-1" />
@@ -1076,10 +1076,10 @@ function RoomDetailContent() {
                           </div>
                         </div>
                       </div>
-                      <div className="p-2.5 sm:p-3 sm:pt-3">
+                      <div className="p-2 sm:p-2.5 pt-2">
 
                       {savedWorkerName && (
-                        <div className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/20 px-2 py-1.5 mb-2">
+                        <div className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/20 px-2 py-1 mb-1.5">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             <span className="text-[10px] text-muted-foreground truncate">
@@ -1098,14 +1098,14 @@ function RoomDetailContent() {
 
                       <div className="divide-y divide-border/50 rounded-md border border-border/50 bg-background dark:bg-background/80">
                         {tasksForPhase.length === 0 ? (
-                          <p className="py-7 text-center text-sm text-muted-foreground/90">No checklist items for this phase.</p>
+                          <p className="py-6 text-center text-sm text-muted-foreground/90">No checklist items for this phase.</p>
                         ) : null}
                         {tasksForPhase.map((task) => (
                           <div
                             key={task.id}
                             className="hover:bg-muted/40 dark:hover:bg-muted/25 active:bg-muted/50 transition-colors group/task"
                           >
-                            <div className="flex items-start gap-2.5 min-h-[2.75rem] py-3 px-2 sm:px-2.5">
+                            <div className="flex items-start gap-2.5 min-h-[2.5rem] py-2.5 px-2 sm:px-2.5">
                               {editingTaskId === task.id ? (
                                 <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
                                   <Input
@@ -1162,7 +1162,7 @@ function RoomDetailContent() {
                                     <div className="flex-1 min-w-0 pt-px">
                                       <div className="flex items-center gap-1.5 group/tname">
                                         <span
-                                          className={`text-[15px] leading-snug block ${
+                                          className={`text-sm leading-snug block ${
                                             task.is_completed
                                               ? 'line-through text-muted-foreground'
                                               : 'text-foreground'
@@ -1224,7 +1224,7 @@ function RoomDetailContent() {
                       {canMutateChecklist && (
                         <>
                           {showAddTask ? (
-                            <div className="mt-3 flex gap-2">
+                            <div className="mt-2 flex gap-2">
                               <Input
                                 placeholder="New checklist item..."
                                 value={newTaskName}
@@ -1263,7 +1263,7 @@ function RoomDetailContent() {
                           ) : (
                             <button
                               type="button"
-                              className="mt-3 w-full flex items-center gap-2 text-sm text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 py-2 px-3 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700 transition-colors"
+                              className="mt-2 w-full flex items-center gap-2 text-sm text-muted-foreground hover:text-emerald-600 dark:hover:text-emerald-400 py-2 px-2.5 rounded-md border border-dashed border-border/70 dark:border-border hover:border-emerald-300/80 dark:hover:border-emerald-700 transition-colors"
                               onClick={() => setShowAddTask(true)}
                             >
                               <Plus className="h-4 w-4" />
@@ -1274,7 +1274,7 @@ function RoomDetailContent() {
                       )}
 
                       {totalForPhase > 0 && (
-                        <div className="mt-2.5 bg-muted rounded-full h-1.5 overflow-hidden">
+                        <div className="mt-2 bg-muted rounded-full h-1.5 overflow-hidden">
                           <div
                             className="bg-emerald-500/90 dark:bg-emerald-500/85 h-full rounded-full transition-all duration-300"
                             style={{
@@ -1289,7 +1289,7 @@ function RoomDetailContent() {
 
                   {sectionVisibility.photos && (
                     <Collapsible defaultOpen={false} className="rounded-md border border-border/40 bg-muted/[0.07] shadow-none">
-                        <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/25 rounded-md">
+                        <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/25 rounded-md">
                           <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                             <Camera className="h-3.5 w-3.5 opacity-70" />
                             Photos
@@ -1353,7 +1353,7 @@ function RoomDetailContent() {
                   )}
 
                   <Collapsible defaultOpen={false} className="rounded-md border border-border/40 bg-muted/[0.07] shadow-none">
-                      <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/25 rounded-md">
+                      <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/25 rounded-md">
                         <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                           <History className="h-3.5 w-3.5 opacity-70" />
                           Activity
@@ -1385,7 +1385,7 @@ function RoomDetailContent() {
                   </Collapsible>
 
                   <Collapsible defaultOpen={false} className="rounded-md border border-border/40 bg-muted/[0.07] shadow-none">
-                    <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/25 rounded-md">
+                    <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/25 rounded-md">
                       <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                         <AlertTriangle className="h-3.5 w-3.5 opacity-70 text-amber-600 dark:text-amber-500" />
                         Deviations / notes
