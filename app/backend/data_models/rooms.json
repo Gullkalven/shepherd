@@ -50,6 +50,10 @@
             "type": "object",
             "description": "Per-phase worker locks: phase key -> true (locked for Montør/Lærling) or false (force open). Omitted keys use defaults: phases after room.phase locked; at or before room.phase open unless locked."
         },
+        "workflow_deviations": {
+            "type": "array",
+            "description": "Structured deviations/notes for the room workflow (JSON array of { id, phase_key, text, status, created_at, resolved_at? })."
+        },
         "created_at": {
             "type": "string",
             "format": "date-time",

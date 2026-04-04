@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { client } from '@/lib/api';
 import { PermissionProvider, usePermissions } from '@/lib/permissions';
@@ -11,11 +11,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
-  Camera, Trash2, User, MessageSquare, Ban, CheckCircle2,
-  Image as ImageIcon, X, ClipboardList, Plus, Clock, ListPlus, Pencil, Check,
-  Lock, Unlock,
+  Camera, Trash2, User, Ban, CheckCircle2,
+  Image as ImageIcon, X, Plus, Clock, ListPlus, Pencil, Check,
+  Lock, Unlock, ChevronDown, AlertTriangle, History,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -23,11 +23,11 @@ import {
   normalizeRoomPhase,
   phaseKeys,
   phaseLabel,
-  phaseTimelineState,
   phaseTabReadOnlyForWorker,
   storedChecklistPhase,
   visitMatchesPhase,
   photoMatchesPhase,
+  computePhaseChipUi,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import { cn } from '@/lib/utils';
@@ -63,6 +63,7 @@ interface Photo {
   caption?: string;
   downloadUrl?: string;
   phase?: string | null;
+  created_at?: string | null;
 }
 
 interface Room {
@@ -76,9 +77,19 @@ interface Room {
   is_locked?: boolean;
   /** Admin/BAS: per-phase worker lock overrides (true = locked for workers) */
   phase_lock_overrides?: Record<string, boolean> | null;
+  workflow_deviations?: unknown;
   floor_id: number;
   project_id: number;
 }
+
+type WorkflowDeviation = {
+  id: string;
+  phase_key: string;
+  text: string;
+  status: 'open' | 'resolved';
+  created_at: string;
+  resolved_at?: string;
+};
 
 interface Visit {
   id: number;
@@ -96,6 +107,41 @@ function coercePhaseLockOverrides(raw: unknown): Record<string, boolean> {
     if (typeof v === 'boolean') out[k] = v;
   }
   return out;
+}
+
+function coerceWorkflowDeviations(raw: unknown): WorkflowDeviation[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WorkflowDeviation[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const o = item as Record<string, unknown>;
+    const id = typeof o.id === 'string' ? o.id : '';
+    const phase_key = typeof o.phase_key === 'string' ? o.phase_key : '';
+    const text = typeof o.text === 'string' ? o.text.trim() : '';
+    const status = o.status === 'resolved' ? 'resolved' : 'open';
+    const created_at = typeof o.created_at === 'string' ? o.created_at : '';
+    const resolved_at = typeof o.resolved_at === 'string' ? o.resolved_at : undefined;
+    if (!id || !phase_key || !text || !created_at) continue;
+    out.push({ id, phase_key, text, status, created_at, resolved_at });
+  }
+  return out;
+}
+
+function parseActivityTime(s: string | null | undefined): number {
+  if (!s) return 0;
+  const t = Date.parse(String(s).replace(' ', 'T'));
+  return Number.isNaN(t) ? 0 : t;
+}
+
+function formatActivityWhen(ts: number): string {
+  if (!ts) return '—';
+  try {
+    const iso = new Date(ts).toISOString();
+    const localLike = iso.replace('T', ' ').substring(0, 19);
+    return formatVisitDate(localLike);
+  } catch {
+    return '—';
+  }
 }
 
 function formatVisitDate(dateStr: string): string {
@@ -127,7 +173,7 @@ function RoomDetailContent() {
   const {
     canEdit,
     canEditRoom, canDeleteRoom, canChangeStatus, canAddChecklistItem, canDeleteChecklistItem,
-    canCheckItem, canUploadPhoto, canDeletePhoto, canEditComment, canDeleteVisit,
+    canCheckItem, canUploadPhoto, canDeletePhoto, canMovePhase,
     sectionVisibility,
   } = usePermissions();
 
@@ -138,8 +184,6 @@ function RoomDetailContent() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [comment, setComment] = useState('');
-  const [newCommentNote, setNewCommentNote] = useState('');
   const [assignedWorker, setAssignedWorker] = useState('');
   const [showBlockDialog, setShowBlockDialog] = useState(false);
   const [blockedReason, setBlockedReason] = useState('');
@@ -148,11 +192,9 @@ function RoomDetailContent() {
   const [showDeleteRoomDialog, setShowDeleteRoomDialog] = useState(false);
   const [deletingRoom, setDeletingRoom] = useState(false);
 
-  // Visit log state
-  const [showVisitDialog, setShowVisitDialog] = useState(false);
-  const [visitWorkerName, setVisitWorkerName] = useState('');
-  const [visitAction, setVisitAction] = useState('');
-  const [loggingVisit, setLoggingVisit] = useState(false);
+  const [deviations, setDeviations] = useState<WorkflowDeviation[]>([]);
+  const [newDeviationText, setNewDeviationText] = useState('');
+  const [savingDeviations, setSavingDeviations] = useState(false);
 
   // Checklist identity state
   const [showCheckNameDialog, setShowCheckNameDialog] = useState(false);
@@ -212,7 +254,6 @@ function RoomDetailContent() {
       } else {
         setRoom(null);
       }
-      setComment(roomData?.comment || '');
       setAssignedWorker(roomData?.assigned_worker || '');
       setBlockedReason(roomData?.blocked_reason || '');
       setTasks(tasksRes?.data?.items || []);
@@ -247,6 +288,10 @@ function RoomDetailContent() {
   useEffect(() => {
     if (room) setPhaseTab(normalizeRoomPhase(room.phase, phaseWorkflow));
   }, [room?.id, room?.phase, phaseWorkflow]);
+
+  useEffect(() => {
+    if (room) setDeviations(coerceWorkflowDeviations(room.workflow_deviations));
+  }, [room?.id, room?.workflow_deviations]);
 
   useEffect(() => {
     setShowAddTask(false);
@@ -494,39 +539,52 @@ function RoomDetailContent() {
     setEditTaskName('');
   };
 
-  const handleSaveComment = async () => {
+  const persistWorkflowDeviations = async (next: WorkflowDeviation[], successMessage?: string) => {
     if (!room) return;
+    setSavingDeviations(true);
     try {
       await client.entities.rooms.update({
         id: String(room.id),
-        data: { comment },
+        data: { workflow_deviations: next },
       });
-      toast.success('Comment saved');
+      setDeviations(next);
+      setRoom({ ...room, workflow_deviations: next });
+      if (successMessage) toast.success(successMessage);
     } catch {
-      toast.error('Failed to save comment');
+      toast.error('Failed to save deviations');
+    } finally {
+      setSavingDeviations(false);
     }
   };
 
-  const handleAddCommentNote = async () => {
+  const handleAddDeviation = async () => {
     if (!room) return;
-    const note = newCommentNote.trim();
-    if (!note) return;
+    const text = newDeviationText.trim();
+    if (!text) return;
+    const phaseKey = normalizeRoomPhase(phaseTab, phaseWorkflow);
+    const stamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const item: WorkflowDeviation = {
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `d-${Date.now()}`,
+      phase_key: phaseKey,
+      text,
+      status: 'open',
+      created_at: stamp,
+    };
+    await persistWorkflowDeviations([...deviations, item], 'Deviation added');
+    setNewDeviationText('');
+  };
 
-    const stamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
-    const entry = `[${stamp}] ${note}`;
-    const nextComment = comment.trim() ? `${comment.trim()}\n${entry}` : entry;
-
-    try {
-      await client.entities.rooms.update({
-        id: String(room.id),
-        data: { comment: nextComment },
-      });
-      setComment(nextComment);
-      setNewCommentNote('');
-      toast.success('Note added');
-    } catch {
-      toast.error('Failed to add note');
-    }
+  const handleToggleDeviationResolved = async (id: string) => {
+    if (!canEdit || !room) return;
+    const stamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const next = deviations.map((d) => {
+      if (d.id !== id) return d;
+      if (d.status === 'resolved') {
+        return { ...d, status: 'open' as const, resolved_at: undefined };
+      }
+      return { ...d, status: 'resolved' as const, resolved_at: stamp };
+    });
+    await persistWorkflowDeviations(next, 'Deviation updated');
   };
 
   const handleSaveWorker = async () => {
@@ -543,25 +601,19 @@ function RoomDetailContent() {
     }
   };
 
-  const handleMoveToNextPhase = async () => {
-    if (!room) return;
-    const keys = phaseKeys(phaseWorkflow);
-    const current = normalizeRoomPhase(room.phase, phaseWorkflow);
-    const idx = keys.indexOf(current);
-    if (idx < 0 || idx >= keys.length - 1) {
-      toast.info('Room is already in the last phase');
-      return;
-    }
-    const nextPhase = keys[idx + 1];
+  const handleSetMainPhase = async (nextPhase: string) => {
+    if (!room || !canMovePhase) return;
+    const norm = normalizeRoomPhase(nextPhase, phaseWorkflow);
     try {
       await client.entities.rooms.update({
         id: String(room.id),
-        data: { phase: nextPhase },
+        data: { phase: norm },
       });
-      toast.success(`Moved to ${phaseLabel(nextPhase, phaseWorkflow)}`);
-      await loadData();
+      setRoom({ ...room, phase: norm });
+      setPhaseTab(norm);
+      toast.success(`Main phase: ${phaseLabel(norm, phaseWorkflow)}`);
     } catch {
-      toast.error('Failed to move to next phase');
+      toast.error('Failed to set main phase');
     }
   };
 
@@ -639,43 +691,6 @@ function RoomDetailContent() {
     }
   };
 
-  const handleLogVisit = async () => {
-    if (!visitWorkerName.trim() || !room) return;
-    setLoggingVisit(true);
-    try {
-      const now = new Date();
-      const visitedAt = now.toISOString().replace('T', ' ').substring(0, 19);
-      await client.entities.room_visits.create({
-        data: {
-          room_id: room.id,
-          worker_name: visitWorkerName.trim(),
-          action: visitAction.trim() || '',
-          visited_at: visitedAt,
-          phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
-        },
-      });
-      toast.success(`${visitWorkerName.trim()} logged in room`);
-      setShowVisitDialog(false);
-      setVisitWorkerName('');
-      setVisitAction('');
-      loadData();
-    } catch {
-      toast.error('Failed to log visit');
-    } finally {
-      setLoggingVisit(false);
-    }
-  };
-
-  const handleDeleteVisit = async (visitId: number) => {
-    try {
-      await client.entities.room_visits.delete({ id: String(visitId) });
-      setVisits((prev) => prev.filter((v) => v.id !== visitId));
-      toast.success('Visit removed');
-    } catch {
-      toast.error('Failed to remove visit');
-    }
-  };
-
   const handleDeleteRoom = async () => {
     if (!room) return;
     setDeletingRoom(true);
@@ -690,6 +705,42 @@ function RoomDetailContent() {
       setShowDeleteRoomDialog(false);
     }
   };
+
+  const activityEntries = useMemo(() => {
+    if (!room) return [];
+    const sel = normalizeRoomPhase(phaseTab, phaseWorkflow);
+    const rows: { t: number; msg: string }[] = [];
+    for (const v of visits) {
+      if (!visitMatchesPhase(v.phase, sel, phaseWorkflow)) continue;
+      const t = parseActivityTime(v.visited_at);
+      const tail = v.action?.trim() ? `: ${v.action.trim()}` : ' visited the room';
+      rows.push({ t, msg: `${v.worker_name}${tail}` });
+    }
+    for (const p of photos) {
+      if (!photoMatchesPhase(p.phase, sel, phaseWorkflow)) continue;
+      const t = parseActivityTime(p.created_at ?? null);
+      rows.push({
+        t,
+        msg: `Photo uploaded${p.filename ? `: ${p.filename}` : ''}`,
+      });
+    }
+    for (const task of tasks) {
+      if (storedChecklistPhase(task.phase, phaseWorkflow) !== sel) continue;
+      if (task.is_completed && task.checked_at && task.checked_by) {
+        rows.push({
+          t: parseActivityTime(task.checked_at),
+          msg: `${task.checked_by} checked off “${task.name}”`,
+        });
+      }
+    }
+    rows.sort((a, b) => b.t - a.t);
+    return rows.filter((r) => r.t > 0).slice(0, 100);
+  }, [room, visits, photos, tasks, phaseTab, phaseWorkflow]);
+
+  const deviationsForPhase = useMemo(() => {
+    const sel = normalizeRoomPhase(phaseTab, phaseWorkflow);
+    return deviations.filter((d) => normalizeRoomPhase(d.phase_key, phaseWorkflow) === sel);
+  }, [deviations, phaseTab, phaseWorkflow]);
 
   if (loading) {
     return (
@@ -713,6 +764,18 @@ function RoomDetailContent() {
   const editsBlocked = Boolean(room.is_locked) && !canEdit;
   const roomPhaseNorm = normalizeRoomPhase(room.phase, phaseWorkflow);
   const workflowPhaseKeys = phaseKeys(phaseWorkflow);
+  const lockOv = coercePhaseLockOverrides(room.phase_lock_overrides);
+  const selPhase = normalizeRoomPhase(phaseTab, phaseWorkflow);
+  const phaseWorkerLocked = phaseTabReadOnlyForWorker(roomPhaseNorm, selPhase, phaseWorkflow, lockOv);
+  const phaseReadOnly = !canEdit && phaseWorkerLocked;
+  const tasksForPhase = tasks.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === selPhase);
+  const photosForPhase = photos.filter((p) => photoMatchesPhase(p.phase, selPhase, phaseWorkflow));
+  const completedForPhase = tasksForPhase.filter((t) => t.is_completed).length;
+  const totalForPhase = tasksForPhase.length;
+  const canInteractChecklist = canCheckItem && !editsBlocked && !phaseReadOnly;
+  const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
+  const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
+  const chipUiSel = computePhaseChipUi(selPhase, roomPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-background pb-8">
@@ -725,11 +788,45 @@ function RoomDetailContent() {
         ]}
       />
       <div className="p-4 max-w-lg mx-auto space-y-4">
-        {/* Room Header */}
-        <Card className="p-4">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <h2 className="text-xl font-bold text-slate-800 dark:text-foreground">Room {room.room_number}</h2>
-            <div className="flex items-center gap-2 shrink-0">
+        {/* Compact room summary */}
+        <Card className="p-3 sm:p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2 gap-y-3">
+            <div className="min-w-0 space-y-1">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-foreground leading-tight">
+                Room {room.room_number}
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Floor: <span className="font-medium text-slate-700 dark:text-slate-200">{floor?.name || '—'}</span>
+              </p>
+              {sectionVisibility.assigned_worker &&
+                (canEditRoom ? (
+                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                    <span className="text-xs text-muted-foreground shrink-0">Assigned</span>
+                    <Input
+                      placeholder="Worker"
+                      value={assignedWorker}
+                      onChange={(e) => setAssignedWorker(e.target.value)}
+                      className="h-8 max-w-[10rem] text-sm"
+                      disabled={editsBlocked}
+                    />
+                    <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={handleSaveWorker} disabled={editsBlocked}>
+                      Save
+                    </Button>
+                  </div>
+                ) : room.assigned_worker ? (
+                  <p className="text-xs text-muted-foreground">
+                    Assigned:{' '}
+                    <span className="font-medium text-slate-700 dark:text-slate-200">{room.assigned_worker}</span>
+                  </p>
+                ) : null)}
+              <p className="text-xs text-muted-foreground pt-0.5">
+                Main phase:{' '}
+                <span className="font-semibold text-slate-800 dark:text-foreground">
+                  {phaseLabel(roomPhaseNorm, phaseWorkflow)}
+                </span>
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-2 shrink-0">
               {canEdit ? (
                 <Button
                   type="button"
@@ -741,132 +838,87 @@ function RoomDetailContent() {
                   {room.is_locked ? (
                     <>
                       <Unlock className="h-3.5 w-3.5" />
-                      Unlock
+                      Unlock room
                     </>
                   ) : (
                     <>
                       <Lock className="h-3.5 w-3.5" />
-                      Lock
+                      Lock room
                     </>
                   )}
                 </Button>
               ) : null}
-              <Badge className={`${currentStatus.color} border-0 text-xs`}>
-                {currentStatus.label}
-              </Badge>
+              {sectionVisibility.status &&
+                (canChangeStatus ? (
+                  <Select value={room.status} onValueChange={handleStatusChange} disabled={editsBlocked}>
+                    <SelectTrigger className="h-8 w-[10.5rem] text-xs">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Badge className={`${currentStatus.color} border-0 text-[10px]`}>{currentStatus.label}</Badge>
+                ))}
             </div>
           </div>
 
+          {canMovePhase ? (
+            <div className="mt-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3 border-t border-border/60 pt-3">
+              <label className="text-xs font-medium text-muted-foreground shrink-0">Set main phase (floor board)</label>
+              <Select value={roomPhaseNorm} onValueChange={handleSetMainPhase} disabled={editsBlocked}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {workflowPhaseKeys.map((k) => (
+                    <SelectItem key={k} value={k}>
+                      {phaseLabel(k, phaseWorkflow)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+
           {editsBlocked ? (
-            <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 flex items-start gap-2">
+            <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 flex items-start gap-2">
               <Lock className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
               <p className="text-sm text-amber-900 dark:text-amber-100">
-                This room is locked. You can view everything, but only admin or BAS can change data.
+                Room is locked. You can view everything; only admin or BAS can change data.
               </p>
             </div>
           ) : null}
 
-          {sectionVisibility.status && (
-            canChangeStatus ? (
-              <div className="mb-3">
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Status</label>
-                <Select value={room.status} onValueChange={handleStatusChange} disabled={editsBlocked}>
-                  <SelectTrigger className="h-11">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : (
-              <div className="mb-3">
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Status</label>
-                <p className="text-sm text-slate-700 dark:text-slate-300">{currentStatus.label}</p>
-              </div>
-            )
-          )}
-
-          {room.status === 'blocked' && room.blocked_reason && (
-            <div className="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-lg p-3 mb-3">
-              <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-sm font-medium">
-                <Ban className="h-4 w-4" />
+          {room.status === 'blocked' && room.blocked_reason ? (
+            <div className="mt-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-lg p-2.5">
+              <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-xs font-medium">
+                <Ban className="h-3.5 w-3.5" />
                 Blocked
               </div>
               <p className="text-sm text-red-700 dark:text-red-300 mt-1">{room.blocked_reason}</p>
             </div>
-          )}
+          ) : null}
 
-          {sectionVisibility.assigned_worker && (
-            canEditRoom ? (
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  <User className="h-3 w-3 inline mr-1" />
-                  Assigned Worker
-                </label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Worker name"
-                    value={assignedWorker}
-                    onChange={(e) => setAssignedWorker(e.target.value)}
-                    className="h-10"
-                    disabled={editsBlocked}
-                  />
-                  <Button
-                    variant="outline"
-                    className="h-10 shrink-0"
-                    onClick={handleSaveWorker}
-                    disabled={editsBlocked}
-                  >
-                    Save
-                  </Button>
-                </div>
-              </div>
-            ) : room.assigned_worker ? (
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">
-                  <User className="h-3 w-3 inline mr-1" />
-                  Assigned Worker
-                </label>
-                <p className="text-sm text-slate-700 dark:text-slate-300">{room.assigned_worker}</p>
-              </div>
-            ) : null
-          )}
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-xs text-muted-foreground">
-              <span className="font-medium text-slate-700 dark:text-slate-200">Floor board phase:</span>{' '}
-              <span className="font-semibold text-slate-800 dark:text-foreground">
-                {phaseLabel(roomPhaseNorm, phaseWorkflow)}
-              </span>
-              <span className="text-muted-foreground"> — tabs are for this room&apos;s history and other stages.</span>
-            </p>
+          {canDeleteRoom ? (
             <Button
               variant="outline"
-              className="h-9 shrink-0"
-              onClick={handleMoveToNextPhase}
-              disabled={editsBlocked}
-            >
-              Move to next phase
-            </Button>
-          </div>
-          {canDeleteRoom && (
-            <Button
-              variant="outline"
-              className="mt-3 w-full border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-400 dark:hover:bg-red-950/40"
+              className="mt-3 w-full border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-400 dark:hover:bg-red-950/40 h-9 text-sm"
               onClick={() => setShowDeleteRoomDialog(true)}
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Delete room
             </Button>
-          )}
+          ) : null}
         </Card>
 
-        {(sectionVisibility.checklist || sectionVisibility.visit_log || sectionVisibility.photos) && (
-          <Tabs value={phaseTab} onValueChange={setPhaseTab} className="w-full">
+        {(sectionVisibility.checklist || sectionVisibility.photos) && (
+          <div className="w-full space-y-3">
             <input
               ref={fileInputRef}
               type="file"
@@ -875,12 +927,61 @@ function RoomDetailContent() {
               className="hidden"
               onChange={handlePhotoUpload}
             />
-            {phaseTab !== roomPhaseNorm && (
-              <div className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/35 sm:flex-row sm:items-center sm:justify-between">
+
+            <div className="-mx-1 flex gap-2 overflow-x-auto pb-1.5 px-1 snap-x snap-mandatory">
+              {workflowPhaseKeys.map((key) => {
+                const tks = tasks.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === key);
+                const done = tks.filter((x) => x.is_completed).length;
+                const tot = tks.length;
+                const ui = computePhaseChipUi(key, roomPhaseNorm, phaseWorkflow, lockOv, tot, done);
+                const isSel = key === selPhase;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPhaseTab(key)}
+                    className={cn(
+                      'snap-start flex min-w-[7.75rem] max-w-[10rem] flex-col rounded-lg border px-2 py-2 text-left text-xs transition-shadow sm:min-w-[8.75rem]',
+                      isSel &&
+                        'ring-2 ring-[#1E3A5F] ring-offset-2 ring-offset-slate-50 shadow-sm dark:ring-blue-400 dark:ring-offset-background',
+                      ui.isMain &&
+                        'border-amber-400/80 bg-amber-50/95 dark:border-amber-600 dark:bg-amber-950/50',
+                      !ui.isMain && ui.status === 'Completed' &&
+                        'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30',
+                      !ui.isMain && ui.status === 'Locked' &&
+                        'border-slate-300 bg-slate-100/80 dark:border-slate-600 dark:bg-slate-900/50',
+                      !ui.isMain && ui.status === 'Not started' &&
+                        'border-dashed border-slate-200 bg-muted/30 dark:border-slate-700',
+                      !ui.isMain && ui.status === 'Open' &&
+                        'border-slate-200 bg-background dark:border-slate-700'
+                    )}
+                  >
+                    <span className="font-semibold leading-tight text-slate-800 dark:text-foreground line-clamp-2">
+                      {phaseLabel(key, phaseWorkflow)}
+                    </span>
+                    <span className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-muted-foreground">
+                      <span
+                        className={cn(
+                          'font-medium',
+                          ui.status === 'Active' && 'text-amber-900 dark:text-amber-200',
+                          ui.status === 'Completed' && 'text-emerald-800 dark:text-emerald-300',
+                          ui.status === 'Locked' && 'text-slate-600 dark:text-slate-400'
+                        )}
+                      >
+                        {ui.status}
+                      </span>
+                      {ui.workerLocked ? <Lock className="h-3 w-3 shrink-0 text-slate-500" aria-hidden /> : null}
+                      {ui.progress ? <span className="text-slate-600 dark:text-slate-400">· {ui.progress}</span> : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {selPhase !== roomPhaseNorm ? (
+              <div className="flex flex-col gap-2 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/35 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-amber-950 dark:text-amber-100">
-                  You&apos;re viewing{' '}
-                  <span className="font-semibold">{phaseLabel(phaseTab, phaseWorkflow)}</span>. The floor board still has
-                  this room in{' '}
+                  Viewing <span className="font-semibold">{phaseLabel(selPhase, phaseWorkflow)}</span>. Main phase is{' '}
                   <span className="font-semibold">{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>.
                 </p>
                 <Button
@@ -890,129 +991,74 @@ function RoomDetailContent() {
                   className="h-9 shrink-0 border-amber-300/80 bg-white hover:bg-amber-100/80 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
                   onClick={() => setPhaseTab(roomPhaseNorm)}
                 >
-                  Show current phase
+                  Jump to main phase
                 </Button>
               </div>
-            )}
-            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/80 p-1">
-              {workflowPhaseKeys.map((key) => {
-                const tabTl = phaseTimelineState(roomPhaseNorm, key, phaseWorkflow);
-                const isBoardPhase = key === roomPhaseNorm;
-                return (
-                  <TabsTrigger
-                    key={key}
-                    value={key}
-                    className={cn(
-                      'shrink-0 gap-1 px-2.5 py-2 text-xs sm:text-sm data-[state=active]:bg-background',
-                      isBoardPhase &&
-                        'font-semibold ring-2 ring-amber-400/70 ring-offset-1 ring-offset-muted/80 dark:ring-amber-500/50 dark:ring-offset-background',
-                      tabTl === 'done' && !isBoardPhase && 'opacity-80',
-                      tabTl === 'upcoming' && !isBoardPhase && 'opacity-75'
-                    )}
-                  >
-                    {phaseLabel(key, phaseWorkflow)}
-                    {isBoardPhase ? (
-                      <span className="hidden rounded bg-amber-500/20 px-1 py-0 text-[10px] font-medium uppercase tracking-wide text-amber-900 dark:text-amber-200 sm:inline">
-                        Now
-                      </span>
-                    ) : null}
-                  </TabsTrigger>
-                );
-              })}
-            </TabsList>
+            ) : null}
 
-            {workflowPhaseKeys.map((phaseKey) => {
-              const tl = phaseTimelineState(roomPhaseNorm, phaseKey, phaseWorkflow);
-              const phaseWorkerLocked = phaseTabReadOnlyForWorker(
-                roomPhaseNorm,
-                phaseKey,
-                phaseWorkflow,
-                coercePhaseLockOverrides(room.phase_lock_overrides)
-              );
-              const phaseReadOnly = !canEdit && phaseWorkerLocked;
-              const tasksForPhase = tasks.filter(
-                (t) => storedChecklistPhase(t.phase, phaseWorkflow) === phaseKey
-              );
-              const visitsForPhase = visits.filter((v) =>
-                visitMatchesPhase(v.phase, phaseKey, phaseWorkflow)
-              );
-              const photosForPhase = photos.filter((p) =>
-                photoMatchesPhase(p.phase, phaseKey, phaseWorkflow)
-              );
-              const workersForPhase = [...new Set(visitsForPhase.map((v) => v.worker_name))];
-              const completedForPhase = tasksForPhase.filter((t) => t.is_completed).length;
-              const totalForPhase = tasksForPhase.length;
-              const canInteractChecklist = canCheckItem && !editsBlocked && !phaseReadOnly;
-              const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
-              const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
+            {selPhase !== roomPhaseNorm && !phaseReadOnly ? (
+              <p className="text-xs text-sky-900 dark:text-sky-100 rounded-md border border-sky-200/80 bg-sky-50/90 px-3 py-2 dark:border-sky-900 dark:bg-sky-950/40">
+                This is not the main phase, but it is still open and can be edited.
+              </p>
+            ) : null}
 
-              return (
-                <TabsContent key={phaseKey} value={phaseKey} className="mt-3 space-y-4">
-                  <div
-                    className={`rounded-lg border px-3 py-2 text-xs space-y-2 ${
-                      tl === 'done'
-                        ? 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-900 dark:bg-emerald-950/30'
-                        : tl === 'active'
-                          ? 'border-amber-200 bg-amber-50/80 dark:border-amber-900 dark:bg-amber-950/30'
-                          : 'border-slate-200 bg-slate-50/80 dark:border-slate-700 dark:bg-slate-900/40'
-                    }`}
-                  >
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
-                        {tl === 'done' && (
-                          <span className="text-emerald-800 dark:text-emerald-200">
-                            Past stage — you can still update checklist, visits, and photos unless this phase is locked.
-                          </span>
-                        )}
-                        {tl === 'active' && (
-                          <span className="text-amber-900 dark:text-amber-100">
-                            This is the room&apos;s current stage on the floor board — your main checklist is below.
-                          </span>
-                        )}
-                        {tl === 'upcoming' && (
-                          <span className="text-slate-700 dark:text-slate-200">
-                            Future stage — workers are usually locked out until the room moves here, unless BAS/admin
-                            opens it early.
-                          </span>
-                        )}
-                      </div>
-                      {canEdit ? (
-                        <Button
-                          type="button"
-                          variant={phaseWorkerLocked ? 'secondary' : 'outline'}
-                          size="sm"
-                          className="h-8 shrink-0 gap-1 text-xs"
-                          onClick={() => handleTogglePhaseWorkerLock(phaseKey)}
-                        >
-                          {phaseWorkerLocked ? (
-                            <>
-                              <Unlock className="h-3.5 w-3.5" />
-                              Open for workers
-                            </>
-                          ) : (
-                            <>
-                              <Lock className="h-3.5 w-3.5" />
-                              Lock for workers
-                            </>
-                          )}
-                        </Button>
-                      ) : null}
-                    </div>
-                    {!canEdit && phaseReadOnly ? (
-                      <p className="text-sm font-medium text-amber-900 dark:text-amber-200 border-t border-amber-200/60 dark:border-amber-800/50 pt-2">
-                        {tl === 'upcoming'
-                          ? 'View only until the room reaches this phase, or until BAS/admin unlocks it.'
-                          : 'This phase is locked for workers — only BAS/admin can change data here.'}
-                      </p>
-                    ) : null}
-                    {!canEdit && !phaseReadOnly && tl === 'upcoming' ? (
-                      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200 border-t border-emerald-200/60 dark:border-emerald-800/50 pt-2">
-                        BAS/admin opened this stage early — you can edit here while the board is still on an earlier
-                        phase.
-                      </p>
-                    ) : null}
-                  </div>
+            {phaseReadOnly ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 dark:border-amber-800 dark:bg-amber-950/30">
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                  This phase is read-only for your role — only BAS/admin can change data here.
+                </p>
+              </div>
+            ) : null}
 
+            {canEdit ? (
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant={phaseWorkerLocked ? 'secondary' : 'outline'}
+                  size="sm"
+                  className="h-8 gap-1 text-xs"
+                  onClick={() => handleTogglePhaseWorkerLock(selPhase)}
+                >
+                  {phaseWorkerLocked ? (
+                    <>
+                      <Unlock className="h-3.5 w-3.5" />
+                      Open phase for workers
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="h-3.5 w-3.5" />
+                      Lock phase for workers
+                    </>
+                  )}
+                </Button>
+              </div>
+            ) : null}
+
+            <div className="space-y-1 border-b border-border/70 pb-3">
+              <h3 className="text-base font-semibold text-slate-800 dark:text-foreground">
+                {phaseLabel(selPhase, phaseWorkflow)}
+              </h3>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                <Badge variant="secondary" className="text-xs font-normal">
+                  {chipUiSel.status}
+                </Badge>
+                {chipUiSel.workerLocked ? (
+                  <span className="inline-flex items-center gap-1 text-xs">
+                    <Lock className="h-3 w-3" />
+                    Workers locked
+                  </span>
+                ) : null}
+                {totalForPhase > 0 ? (
+                  <span>
+                    Progress: {completedForPhase}/{totalForPhase}
+                  </span>
+                ) : (
+                  <span>No checklist items in this phase yet</span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-4">
                   {sectionVisibility.checklist && (
                     <Card className="p-4">
                       <div className="flex items-center justify-between mb-3">
@@ -1238,202 +1284,189 @@ function RoomDetailContent() {
                     </Card>
                   )}
 
-                  {sectionVisibility.visit_log && (
-                    <Card className="p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2">
-                          <ClipboardList className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
-                          Visit log
+                  {sectionVisibility.photos && (
+                    <Collapsible defaultOpen={false} className="rounded-lg border border-slate-200 dark:border-slate-700">
+                      <Card className="border-0 shadow-none">
+                        <CollapsibleTrigger className="group flex w-full items-center justify-between p-4 text-left hover:bg-muted/40 rounded-t-lg">
+                          <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2 text-sm">
+                            <Camera className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+                            Photos
+                            <span className="text-muted-foreground font-normal">({photosForPhase.length})</span>
+                          </h3>
+                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div className="px-4 pb-4 pt-0 space-y-3">
+                            {canUploadPhoto ? (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-9 w-full sm:w-auto"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={uploading || !canMutatePhaseMedia}
+                              >
+                                {uploading ? 'Uploading...' : 'Add photo'}
+                              </Button>
+                            ) : null}
+                            {photosForPhase.length === 0 ? (
+                              <div className="text-center py-4 text-muted-foreground text-sm">
+                                <ImageIcon className="h-7 w-7 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                                <p>No photos for this phase</p>
+                                <p className="text-xs mt-1">Untagged photos count for every phase until set on upload.</p>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-3 gap-2">
+                                {photosForPhase.map((photo) => (
+                                  <div
+                                    key={photo.id}
+                                    className="relative group aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800"
+                                  >
+                                    {photo.downloadUrl ? (
+                                      <img
+                                        src={photo.downloadUrl}
+                                        alt={photo.filename}
+                                        className="w-full h-full object-cover cursor-pointer"
+                                        onClick={() => setShowPhotoPreview(photo.downloadUrl || null)}
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center">
+                                        <ImageIcon className="h-6 w-6 text-slate-300 dark:text-slate-600" />
+                                      </div>
+                                    )}
+                                    {canDeletePhoto && canMutatePhaseMedia && (
+                                      <button
+                                        type="button"
+                                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        onClick={() => handleDeletePhoto(photo)}
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </CollapsibleContent>
+                      </Card>
+                    </Collapsible>
+                  )}
+
+                  <Collapsible defaultOpen={false} className="rounded-lg border border-slate-200 dark:border-slate-700">
+                    <Card className="border-0 shadow-none">
+                      <CollapsibleTrigger className="group flex w-full items-center justify-between p-4 text-left hover:bg-muted/40 rounded-t-lg">
+                        <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2 text-sm">
+                          <History className="h-4 w-4 text-slate-500" />
+                          Activity
+                          <span className="text-muted-foreground font-normal">({activityEntries.length})</span>
                         </h3>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="px-4 pb-4 pt-0 max-h-64 overflow-y-auto space-y-2 text-sm">
+                          {activityEntries.length === 0 ? (
+                            <p className="text-muted-foreground text-xs py-2">
+                              No recorded activity for this phase yet (visits, photo uploads, completed checks).
+                            </p>
+                          ) : (
+                            activityEntries.map((row, i) => (
+                              <div
+                                key={`${row.t}-${i}`}
+                                className="flex gap-2 border-b border-border/40 pb-2 last:border-0 last:pb-0"
+                              >
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0 w-16">
+                                  {formatActivityWhen(row.t)}
+                                </span>
+                                <span className="text-slate-700 dark:text-slate-200 min-w-0">{row.msg}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </CollapsibleContent>
+                    </Card>
+                  </Collapsible>
+
+                  <Card className="p-4">
+                    <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2 mb-3 text-sm">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      Deviations / notes
+                    </h3>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      Real issues or missing work — not a chat. Visible for this phase only.
+                    </p>
+                    <div className="space-y-2 mb-3">
+                      {deviationsForPhase.length === 0 ? (
+                        <p className="text-sm text-muted-foreground py-1">No deviations for this phase.</p>
+                      ) : (
+                        deviationsForPhase.map((d) => (
+                          <div
+                            key={d.id}
+                            className={cn(
+                              'rounded-lg border px-3 py-2 text-sm',
+                              d.status === 'resolved'
+                                ? 'border-slate-200 bg-slate-50/80 dark:border-slate-700 dark:bg-slate-900/40'
+                                : 'border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/25'
+                            )}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <Badge
+                                  variant="secondary"
+                                  className={cn(
+                                    'text-[10px] mb-1',
+                                    d.status === 'resolved'
+                                      ? 'bg-slate-200 dark:bg-slate-700'
+                                      : 'bg-amber-200/80 text-amber-950 dark:bg-amber-900 dark:text-amber-100'
+                                  )}
+                                >
+                                  {d.status === 'resolved' ? 'Resolved' : 'Open'}
+                                </Badge>
+                                <p className="text-slate-800 dark:text-foreground">{d.text}</p>
+                              </div>
+                              {canEdit && !editsBlocked ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 text-xs shrink-0"
+                                  disabled={savingDeviations}
+                                  onClick={() => handleToggleDeviationResolved(d.id)}
+                                >
+                                  {d.status === 'resolved' ? 'Reopen' : 'Resolve'}
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    {canInteractChecklist && !editsBlocked ? (
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Input
+                          placeholder="Describe a deviation or missing item…"
+                          value={newDeviationText}
+                          onChange={(e) => setNewDeviationText(e.target.value)}
+                          className="h-10 text-sm"
+                          disabled={savingDeviations}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void handleAddDeviation();
+                          }}
+                        />
                         <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-9 border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950"
-                          onClick={() => setShowVisitDialog(true)}
-                          disabled={!canMutatePhaseMedia}
+                          type="button"
+                          className="h-10 sm:w-28"
+                          disabled={!newDeviationText.trim() || savingDeviations}
+                          onClick={() => void handleAddDeviation()}
                         >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Log visit
+                          Add
                         </Button>
                       </div>
-
-                      {workersForPhase.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-3">
-                          {workersForPhase.map((name) => (
-                            <Badge
-                              key={name}
-                              variant="secondary"
-                              className="bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs"
-                            >
-                              <User className="h-3 w-3 mr-1" />
-                              {name}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-
-                      {visitsForPhase.length === 0 ? (
-                        <div className="text-center py-6 text-muted-foreground">
-                          <ClipboardList className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                          <p className="text-sm">No visits for this phase</p>
-                          <p className="text-xs mt-1">
-                            Older visits without a phase still appear in every phase tab.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="space-y-2 max-h-64 overflow-y-auto">
-                          {visitsForPhase.map((visit) => (
-                            <div
-                              key={visit.id}
-                              className="flex items-start gap-3 p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 group"
-                            >
-                              <div className="h-8 w-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center shrink-0 mt-0.5">
-                                <User className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium text-sm text-slate-800 dark:text-foreground">
-                                    {visit.worker_name}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                    <Clock className="h-3 w-3" />
-                                    {formatVisitDate(visit.visited_at)}
-                                  </span>
-                                </div>
-                                {visit.action && (
-                                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">{visit.action}</p>
-                                )}
-                              </div>
-                              {canDeleteVisit && canMutatePhaseMedia && (
-                                <button
-                                  type="button"
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1"
-                                  onClick={() => handleDeleteVisit(visit.id)}
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </Card>
-                  )}
-
-                  {sectionVisibility.photos && (
-                    <Card className="p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2">
-                          <Camera className="h-4 w-4 text-blue-500 dark:text-blue-400" />
-                          Photos
-                        </h3>
-                        {canUploadPhoto && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-9"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={uploading || !canMutatePhaseMedia}
-                          >
-                            {uploading ? 'Uploading...' : 'Add photo'}
-                          </Button>
-                        )}
-                      </div>
-                      {photosForPhase.length === 0 ? (
-                        <div className="text-center py-6 text-muted-foreground">
-                          <ImageIcon className="h-8 w-8 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
-                          <p className="text-sm">No photos for this phase</p>
-                          <p className="text-xs mt-1">
-                            Photos without a phase show in every tab until tagged on upload.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="grid grid-cols-3 gap-2">
-                          {photosForPhase.map((photo) => (
-                            <div
-                              key={photo.id}
-                              className="relative group aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800"
-                            >
-                              {photo.downloadUrl ? (
-                                <img
-                                  src={photo.downloadUrl}
-                                  alt={photo.filename}
-                                  className="w-full h-full object-cover cursor-pointer"
-                                  onClick={() => setShowPhotoPreview(photo.downloadUrl || null)}
-                                />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center">
-                                  <ImageIcon className="h-6 w-6 text-slate-300 dark:text-slate-600" />
-                                </div>
-                              )}
-                              {canDeletePhoto && canMutatePhaseMedia && (
-                                <button
-                                  type="button"
-                                  className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => handleDeletePhoto(photo)}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </Card>
-                  )}
-                </TabsContent>
-              );
-            })}
-          </Tabs>
+                    ) : null}
+                  </Card>
+            </div>
+          </div>
         )}
 
-        {/* Comment */}
-        {sectionVisibility.comments && (
-        <Card className="p-4">
-          <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2 mb-3">
-            <MessageSquare className="h-4 w-4 text-purple-500 dark:text-purple-400" />
-            Comment
-          </h3>
-          <Textarea
-            placeholder="Add a comment about this room..."
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            rows={3}
-            className="resize-none"
-            disabled={!canEditComment || editsBlocked}
-          />
-          {canEditComment && !editsBlocked && (
-            <>
-              <div className="mt-2 flex gap-2">
-                <Input
-                  placeholder="Add note to comment history..."
-                  value={newCommentNote}
-                  onChange={(e) => setNewCommentNote(e.target.value)}
-                  className="h-10"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAddCommentNote();
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  className="h-10 shrink-0"
-                  onClick={handleAddCommentNote}
-                  disabled={!newCommentNote.trim()}
-                >
-                  Add Note
-                </Button>
-              </div>
-              <Button
-                variant="outline"
-                className="mt-2 w-full h-10"
-                onClick={handleSaveComment}
-              >
-                Save Full Comment
-              </Button>
-            </>
-          )}
-        </Card>
-        )}
       </div>
 
       {/* Block Dialog */}
@@ -1473,7 +1506,7 @@ function RoomDetailContent() {
             <DialogTitle>Delete room?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This will permanently delete this room and its checklist items, photos, and visit logs.
+            This will permanently delete this room and its checklist items, photos, visits, and deviations.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteRoomDialog(false)} disabled={deletingRoom}>
@@ -1485,68 +1518,6 @@ function RoomDetailContent() {
               className="bg-red-500 hover:bg-red-600 text-white"
             >
               {deletingRoom ? 'Deleting...' : 'Delete room'}
-            </Button>
-          </DialogFooter>
-          </DialogForm>
-        </DialogContent>
-      </Dialog>
-
-      {/* Log Visit Dialog */}
-      <Dialog open={showVisitDialog} onOpenChange={(open) => { if (!loggingVisit) setShowVisitDialog(open); }}>
-        <DialogContent className="max-w-sm mx-4">
-          <DialogForm onSubmit={(e) => { e.preventDefault(); handleLogVisit(); }}>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ClipboardList className="h-5 w-5 text-indigo-500" />
-              Log Visit
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">Worker Name *</label>
-              <Input
-                placeholder="e.g., John Smith"
-                value={visitWorkerName}
-                onChange={(e) => setVisitWorkerName(e.target.value)}
-                className="h-12"
-                disabled={loggingVisit}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">What did they do? (optional)</label>
-              <Input
-                placeholder="e.g., Installed wall boxes, cable routing"
-                value={visitAction}
-                onChange={(e) => setVisitAction(e.target.value)}
-                className="h-12"
-                disabled={loggingVisit}
-              />
-            </div>
-
-            {uniqueWorkers.length > 0 && !visitWorkerName && (
-              <div>
-                <p className="text-xs text-muted-foreground mb-1.5">Recent workers:</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {uniqueWorkers.slice(0, 8).map((name) => (
-                    <button
-                      key={name}
-                      className="text-xs px-2.5 py-1.5 rounded-full bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors"
-                      onClick={() => setVisitWorkerName(name)}
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button
-              type="submit"
-              disabled={!visitWorkerName.trim() || loggingVisit}
-              className="w-full bg-indigo-500 hover:bg-indigo-600 text-white h-12"
-            >
-              {loggingVisit ? 'Logging...' : 'Log Visit'}
             </Button>
           </DialogFooter>
           </DialogForm>

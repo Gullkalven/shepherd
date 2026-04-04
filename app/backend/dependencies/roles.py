@@ -70,3 +70,10 @@ async def require_admin_manager_or_electrician(app_role: str = Depends(get_curre
     if app_role in {ROLE_ADMIN, ROLE_MANAGER, ROLE_ELECTRICIAN}:
         return app_role
     raise HTTPException(status_code=403, detail="Electrician, manager, or admin access required")
+
+
+async def require_room_collaborator(app_role: str = Depends(get_current_app_role)) -> str:
+    """Montør, Lærling, BAS, and admin may update room fields that are not admin-only."""
+    if app_role in {ROLE_ADMIN, ROLE_MANAGER, ROLE_ELECTRICIAN, ROLE_APPRENTICE}:
+        return app_role
+    raise HTTPException(status_code=403, detail="Sign in with a valid role to update this room")

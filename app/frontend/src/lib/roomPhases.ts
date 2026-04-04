@@ -171,3 +171,55 @@ export function photoMatchesPhase(
   if (photoPhase == null || photoPhase === '') return true;
   return normalizeRoomPhase(photoPhase, workflow) === tabPhase;
 }
+
+export type PhaseChipUi = {
+  status: 'Active' | 'Open' | 'Locked' | 'Completed' | 'Not started';
+  /** Short progress text for the chip, e.g. "3/7" or "2 missing" */
+  progress: string;
+  isMain: boolean;
+  workerLocked: boolean;
+};
+
+/**
+ * Labels and progress text for a phase chip in the room workflow bar.
+ * "Active" is always the floor-board main phase; lock is indicated separately on the chip.
+ */
+export function computePhaseChipUi(
+  phaseKey: string,
+  roomPhase: string,
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW,
+  overrides: Record<string, boolean> | null | undefined,
+  totalTasks: number,
+  completedTasks: number
+): PhaseChipUi {
+  const rp = normalizeRoomPhase(roomPhase, workflow);
+  const pk = normalizeRoomPhase(phaseKey, workflow);
+  const workerLocked = phaseTabReadOnlyForWorker(rp, pk, workflow, overrides);
+  const isMain = pk === rp;
+
+  let progress = '';
+  if (totalTasks > 0) {
+    if (completedTasks === totalTasks) {
+      progress = `${completedTasks}/${totalTasks}`;
+    } else if (isMain) {
+      progress = `${completedTasks}/${totalTasks}`;
+    } else {
+      progress = `${totalTasks - completedTasks} missing`;
+    }
+  }
+
+  let status: PhaseChipUi['status'];
+  if (isMain) {
+    status = 'Active';
+  } else if (workerLocked) {
+    status = 'Locked';
+  } else if (totalTasks === 0) {
+    status = 'Not started';
+  } else if (completedTasks === totalTasks) {
+    status = 'Completed';
+  } else {
+    status = 'Open';
+  }
+
+  return { status, progress, isMain, workerLocked };
+}

@@ -19,5 +19,7 @@ class Rooms(Base):
     is_locked = Column(Boolean, nullable=False, default=False)
     # Per-phase worker lock overrides: { "phase_key": true|false }; see dependencies/phase_edit.py
     phase_lock_overrides = Column(JSON, nullable=True)
+    # Structured deviations/notes per room (list of dicts); see frontend Room workflow
+    workflow_deviations = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

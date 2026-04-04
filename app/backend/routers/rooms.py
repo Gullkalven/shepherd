@@ -17,7 +17,7 @@ from dependencies.roles import (
     ROLE_MANAGER,
     get_current_app_role,
     require_admin_or_manager,
-    require_admin_manager_or_electrician,
+    require_room_collaborator,
 )
 from schemas.auth import UserResponse
 
@@ -45,6 +45,7 @@ class RoomsData(BaseModel):
     blocked_reason: str = None
     is_locked: bool = False
     phase_lock_overrides: Optional[Dict[str, bool]] = None
+    workflow_deviations: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -61,6 +62,7 @@ class RoomsUpdateData(BaseModel):
     blocked_reason: Optional[str] = None
     is_locked: Optional[bool] = None
     phase_lock_overrides: Optional[Dict[str, bool]] = None
+    workflow_deviations: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -79,6 +81,7 @@ class RoomsResponse(BaseModel):
     blocked_reason: Optional[str] = None
     is_locked: bool = False
     phase_lock_overrides: Optional[Dict[str, Any]] = None
+    workflow_deviations: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -307,7 +310,7 @@ async def update_rooms(
     id: int,
     data: RoomsUpdateData,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_manager_or_electrician),
+    _role: str = Depends(require_room_collaborator),
     app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
@@ -326,6 +329,7 @@ async def update_rooms(
         if app_role not in (ROLE_ADMIN, ROLE_MANAGER):
             update_dict.pop("is_locked", None)
             update_dict.pop("phase_lock_overrides", None)
+            update_dict.pop("phase", None)
             if getattr(existing, "is_locked", False):
                 raise HTTPException(status_code=403, detail=ROOM_LOCKED_DETAIL)
         result = await service.update(id, update_dict, user_id=str(current_user.id))
