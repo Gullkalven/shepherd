@@ -51,6 +51,32 @@ export function phaseTimelineState(
   return 'upcoming';
 }
 
+/**
+ * Whether Montør/Lærling should be read-only in this phase tab.
+ * Default: phases after the room's current (board) phase are locked; earlier or equal are open.
+ * Admin/BAS overrides: { phaseKey: true } forces locked; { phaseKey: false } forces unlocked
+ * (e.g. allow finishing an older phase after the room moved forward, or allow work ahead).
+ */
+export function phaseTabReadOnlyForWorker(
+  roomPhase: string,
+  tabPhase: string,
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW,
+  overrides?: Record<string, boolean> | null
+): boolean {
+  const keys = phaseKeys(workflow);
+  const rn = normalizeRoomPhase(roomPhase, workflow);
+  const tn = normalizeRoomPhase(tabPhase, workflow);
+  const ri = keys.indexOf(rn);
+  const ti = keys.indexOf(tn);
+  const r = ri >= 0 ? ri : 0;
+  const t = ti >= 0 ? ti : 0;
+  const defaultLocked = t > r;
+  const o = overrides?.[tn];
+  if (o === true) return true;
+  if (o === false) return false;
+  return defaultLocked;
+}
+
 /** Compact legend for the room card, e.g. D✓ V● R○ S○ */
 export function formatPhaseStrip(
   roomPhase: string,

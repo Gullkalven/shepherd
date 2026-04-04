@@ -1,5 +1,5 @@
 from core.database import Base
-from sqlalchemy import Boolean, Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Integer, JSON, String
 
 
 class Rooms(Base):
@@ -17,5 +17,7 @@ class Rooms(Base):
     comment = Column(String, nullable=True)
     blocked_reason = Column(String, nullable=True)
     is_locked = Column(Boolean, nullable=False, default=False)
+    # Per-phase worker lock overrides: { "phase_key": true|false }; see dependencies/phase_edit.py
+    phase_lock_overrides = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

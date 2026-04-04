@@ -25,6 +25,7 @@ import {
   phaseKeys,
   phaseLabel,
   phaseTimelineState,
+  phaseTabReadOnlyForWorker,
   syncIncompleteTasksPhaseForRoom,
   visitMatchesPhase,
   photoMatchesPhase,
@@ -73,6 +74,8 @@ interface Room {
   comment?: string;
   blocked_reason?: string;
   is_locked?: boolean;
+  /** Admin/BAS: per-phase worker lock overrides (true = locked for workers) */
+  phase_lock_overrides?: Record<string, boolean> | null;
   floor_id: number;
   project_id: number;
 }
@@ -84,6 +87,15 @@ interface Visit {
   action?: string;
   visited_at: string;
   phase?: string | null;
+}
+
+function coercePhaseLockOverrides(raw: unknown): Record<string, boolean> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'boolean') out[k] = v;
+  }
+  return out;
 }
 
 function formatVisitDate(dateStr: string): string {
@@ -192,7 +204,14 @@ function RoomDetailContent() {
       setProject(projRes?.data || null);
       setFloor(floorRes?.data || null);
       const roomData = roomRes?.data;
-      setRoom(roomData || null);
+      if (roomData) {
+        setRoom({
+          ...roomData,
+          phase_lock_overrides: coercePhaseLockOverrides(roomData.phase_lock_overrides),
+        });
+      } else {
+        setRoom(null);
+      }
       setComment(roomData?.comment || '');
       setAssignedWorker(roomData?.assigned_worker || '');
       setBlockedReason(roomData?.blocked_reason || '');
@@ -360,7 +379,7 @@ function RoomDetailContent() {
           template_item_id: null,
           is_template_managed: false,
           is_overridden: false,
-          phase: normalizeRoomPhase(room.phase, phaseWorkflow),
+          phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
         },
       });
       const newTask = res?.data;
@@ -404,7 +423,7 @@ function RoomDetailContent() {
                 template_item_id: null,
                 is_template_managed: false,
                 is_overridden: false,
-                phase: normalizeRoomPhase(room.phase, phaseWorkflow),
+                phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
               },
             })
           )
@@ -547,6 +566,32 @@ function RoomDetailContent() {
     }
   };
 
+  const handleTogglePhaseWorkerLock = async (phaseKey: string) => {
+    if (!room || !canEdit) return;
+    const rp = normalizeRoomPhase(room.phase, phaseWorkflow);
+    const overrides = coercePhaseLockOverrides(room.phase_lock_overrides);
+    const workerLocked = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, overrides);
+    const next: Record<string, boolean> = { ...overrides };
+    if (workerLocked) {
+      const defaultLocked = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, {});
+      if (defaultLocked) next[phaseKey] = false;
+      else delete next[phaseKey];
+    } else {
+      next[phaseKey] = true;
+    }
+    try {
+      await client.entities.rooms.update({
+        id: String(room.id),
+        data: { phase_lock_overrides: next },
+      });
+      setRoom({ ...room, phase_lock_overrides: next });
+      const after = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, next);
+      toast.success(after ? 'Phase locked for workers' : 'Phase open for workers');
+    } catch {
+      toast.error('Failed to update phase lock');
+    }
+  };
+
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !room) return;
@@ -572,7 +617,7 @@ function RoomDetailContent() {
           object_key: objectKey,
           filename: file.name,
           caption: '',
-          phase: normalizeRoomPhase(room.phase, phaseWorkflow),
+          phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
         },
       });
       toast.success('Photo uploaded');
@@ -607,7 +652,7 @@ function RoomDetailContent() {
           worker_name: visitWorkerName.trim(),
           action: visitAction.trim() || '',
           visited_at: visitedAt,
-          phase: normalizeRoomPhase(room.phase, phaseWorkflow),
+          phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
         },
       });
       toast.success(`${visitWorkerName.trim()} logged in room`);
@@ -845,7 +890,13 @@ function RoomDetailContent() {
 
             {workflowPhaseKeys.map((phaseKey) => {
               const tl = phaseTimelineState(roomPhaseNorm, phaseKey, phaseWorkflow);
-              const phaseReadOnly = phaseKey !== roomPhaseNorm;
+              const phaseWorkerLocked = phaseTabReadOnlyForWorker(
+                roomPhaseNorm,
+                phaseKey,
+                phaseWorkflow,
+                coercePhaseLockOverrides(room.phase_lock_overrides)
+              );
+              const phaseReadOnly = !canEdit && phaseWorkerLocked;
               const tasksForPhase = tasks.filter(
                 (t) => effectiveTaskPhase(t.phase, roomPhaseNorm, phaseWorkflow) === phaseKey
               );
@@ -865,7 +916,7 @@ function RoomDetailContent() {
               return (
                 <TabsContent key={phaseKey} value={phaseKey} className="mt-3 space-y-4">
                   <div
-                    className={`rounded-lg border px-3 py-2 text-xs ${
+                    className={`rounded-lg border px-3 py-2 text-xs space-y-2 ${
                       tl === 'done'
                         ? 'border-emerald-200 bg-emerald-50/80 dark:border-emerald-900 dark:bg-emerald-950/30'
                         : tl === 'active'
@@ -873,22 +924,61 @@ function RoomDetailContent() {
                           : 'border-slate-200 bg-slate-50/80 dark:border-slate-700 dark:bg-slate-900/40'
                     }`}
                   >
-                    {tl === 'done' && (
-                      <span className="font-medium text-emerald-800 dark:text-emerald-200">
-                        Completed phase — view only (checklist, visits, and photos for this stage).
-                      </span>
-                    )}
-                    {tl === 'active' && (
-                      <span className="font-medium text-amber-900 dark:text-amber-100">
-                        Active phase — you can update the checklist, log visits, and add photos here.
-                      </span>
-                    )}
-                    {tl === 'upcoming' && (
-                      <span className="font-medium text-slate-700 dark:text-slate-200">
-                        Not started yet — open this tab to prepare; editing unlocks when the room reaches this
-                        phase.
-                      </span>
-                    )}
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="font-medium text-slate-800 dark:text-slate-100">
+                        {tl === 'done' && (
+                          <span className="text-emerald-800 dark:text-emerald-200">
+                            Earlier or same stage as the board — workers can keep working here unless this phase is
+                            locked.
+                          </span>
+                        )}
+                        {tl === 'active' && (
+                          <span className="text-amber-900 dark:text-amber-100">
+                            Current stage on the floor board — usual place for new checklist work.
+                          </span>
+                        )}
+                        {tl === 'upcoming' && (
+                          <span className="text-slate-700 dark:text-slate-200">
+                            After the room&apos;s current board stage — closed for workers until the room reaches it,
+                            unless BAS/admin opens it early.
+                          </span>
+                        )}
+                      </div>
+                      {canEdit ? (
+                        <Button
+                          type="button"
+                          variant={phaseWorkerLocked ? 'secondary' : 'outline'}
+                          size="sm"
+                          className="h-8 shrink-0 gap-1 text-xs"
+                          onClick={() => handleTogglePhaseWorkerLock(phaseKey)}
+                        >
+                          {phaseWorkerLocked ? (
+                            <>
+                              <Unlock className="h-3.5 w-3.5" />
+                              Open for workers
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="h-3.5 w-3.5" />
+                              Lock for workers
+                            </>
+                          )}
+                        </Button>
+                      ) : null}
+                    </div>
+                    {!canEdit && phaseReadOnly ? (
+                      <p className="font-medium text-amber-900 dark:text-amber-200 border-t border-amber-200/60 dark:border-amber-800/50 pt-2">
+                        {tl === 'upcoming'
+                          ? 'You can view this tab, but only BAS/admin can change data here until the room reaches this phase or unlocks it.'
+                          : 'This phase is locked for workers. Only BAS/admin can change checklist, visits, or photos here.'}
+                      </p>
+                    ) : null}
+                    {!canEdit && !phaseReadOnly && tl === 'upcoming' ? (
+                      <p className="font-medium text-emerald-800 dark:text-emerald-200 border-t border-emerald-200/60 dark:border-emerald-800/50 pt-2">
+                        BAS/admin has opened this future stage — you can edit here even though the board is still on an
+                        earlier phase.
+                      </p>
+                    ) : null}
                   </div>
 
                   {sectionVisibility.checklist && (

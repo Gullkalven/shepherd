@@ -26,6 +26,10 @@
             "type": "string",
             "description": "Room status: not_started, in_progress, ready_for_inspection, completed, blocked"
         },
+        "phase": {
+            "type": "string",
+            "description": "Current workflow phase for floor board placement"
+        },
         "assigned_worker": {
             "type": "string",
             "description": "Name of assigned worker"
@@ -41,6 +45,10 @@
         "is_locked": {
             "type": "boolean",
             "description": "When true, only admin and BAS (manager) can edit room data"
+        },
+        "phase_lock_overrides": {
+            "type": "object",
+            "description": "Per-phase worker locks: phase key -> true (locked for Montør/Lærling) or false (force open). Omitted keys use defaults: phases after room.phase locked; at or before room.phase open unless locked."
         },
         "created_at": {
             "type": "string",

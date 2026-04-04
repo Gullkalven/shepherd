@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from datetime import datetime, date
 
@@ -44,6 +44,7 @@ class RoomsData(BaseModel):
     comment: str = None
     blocked_reason: str = None
     is_locked: bool = False
+    phase_lock_overrides: Optional[Dict[str, bool]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -59,6 +60,7 @@ class RoomsUpdateData(BaseModel):
     comment: Optional[str] = None
     blocked_reason: Optional[str] = None
     is_locked: Optional[bool] = None
+    phase_lock_overrides: Optional[Dict[str, bool]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -76,6 +78,7 @@ class RoomsResponse(BaseModel):
     comment: Optional[str] = None
     blocked_reason: Optional[str] = None
     is_locked: bool = False
+    phase_lock_overrides: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -322,6 +325,7 @@ async def update_rooms(
             raise HTTPException(status_code=404, detail="Rooms not found")
         if app_role not in (ROLE_ADMIN, ROLE_MANAGER):
             update_dict.pop("is_locked", None)
+            update_dict.pop("phase_lock_overrides", None)
             if getattr(existing, "is_locked", False):
                 raise HTTPException(status_code=403, detail=ROOM_LOCKED_DETAIL)
         result = await service.update(id, update_dict, user_id=str(current_user.id))

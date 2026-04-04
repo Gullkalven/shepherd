@@ -6,11 +6,18 @@ from datetime import datetime, date
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from models.rooms import Rooms
 from services.room_visits import Room_visitsService
 from dependencies.auth import get_current_user
+from dependencies.phase_edit import (
+    effective_media_phase,
+    ensure_room_phase_editable_for_worker,
+    workflow_keys_for_room,
+)
 from dependencies.room_lock import ensure_room_mutable
 from dependencies.roles import get_current_app_role
 from schemas.auth import UserResponse
@@ -198,12 +205,22 @@ async def create_room_visits(
     service = Room_visitsService(db)
     try:
         await ensure_room_mutable(db, data.room_id, str(current_user.id), app_role)
+        room_row = await db.execute(select(Rooms).where(Rooms.id == data.room_id))
+        room_obj = room_row.scalar_one_or_none()
+        if room_obj:
+            keys = await workflow_keys_for_room(db, room_obj)
+            eff = effective_media_phase(data.phase, getattr(room_obj, "phase", None), keys)
+            await ensure_room_phase_editable_for_worker(
+                db, data.room_id, str(current_user.id), app_role, eff
+            )
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create room_visits")
         
         logger.info(f"Room_visits created successfully with id: {result.id}")
         return result
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"Validation error creating room_visits: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -228,12 +245,23 @@ async def create_room_visitss_batch(
     try:
         for item_data in request.items:
             await ensure_room_mutable(db, item_data.room_id, str(current_user.id), app_role)
+            room_row = await db.execute(select(Rooms).where(Rooms.id == item_data.room_id))
+            room_obj = room_row.scalar_one_or_none()
+            if room_obj:
+                keys = await workflow_keys_for_room(db, room_obj)
+                eff = effective_media_phase(item_data.phase, getattr(room_obj, "phase", None), keys)
+                await ensure_room_phase_editable_for_worker(
+                    db, item_data.room_id, str(current_user.id), app_role, eff
+                )
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} room_visitss successfully")
         return results
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch create: {str(e)}", exc_info=True)
@@ -264,12 +292,24 @@ async def update_room_visitss_batch(
             new_rid = update_dict.get("room_id")
             if new_rid is not None and new_rid != row.room_id:
                 await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
+            room_row = await db.execute(select(Rooms).where(Rooms.id == row.room_id))
+            room_obj = room_row.scalar_one_or_none()
+            if room_obj:
+                keys = await workflow_keys_for_room(db, room_obj)
+                merged_ph = update_dict.get("phase", getattr(row, "phase", None))
+                eff = effective_media_phase(merged_ph, getattr(room_obj, "phase", None), keys)
+                await ensure_room_phase_editable_for_worker(
+                    db, row.room_id, str(current_user.id), app_role, eff
+                )
             result = await service.update(item.id, update_dict, user_id=str(current_user.id))
             if result:
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} room_visitss successfully")
         return results
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch update: {str(e)}", exc_info=True)
@@ -299,6 +339,15 @@ async def update_room_visits(
         new_rid = update_dict.get("room_id")
         if new_rid is not None and new_rid != row.room_id:
             await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
+        room_row = await db.execute(select(Rooms).where(Rooms.id == row.room_id))
+        room_obj = room_row.scalar_one_or_none()
+        if room_obj:
+            keys = await workflow_keys_for_room(db, room_obj)
+            merged_ph = update_dict.get("phase", getattr(row, "phase", None))
+            eff = effective_media_phase(merged_ph, getattr(room_obj, "phase", None), keys)
+            await ensure_room_phase_editable_for_worker(
+                db, row.room_id, str(current_user.id), app_role, eff
+            )
         result = await service.update(id, update_dict, user_id=str(current_user.id))
         if not result:
             logger.warning(f"Room_visits with id {id} not found for update")
@@ -335,12 +384,25 @@ async def delete_room_visitss_batch(
             if not row:
                 continue
             await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
+            room_row = await db.execute(select(Rooms).where(Rooms.id == row.room_id))
+            room_obj = room_row.scalar_one_or_none()
+            if room_obj:
+                keys = await workflow_keys_for_room(db, room_obj)
+                eff = effective_media_phase(
+                    getattr(row, "phase", None), getattr(room_obj, "phase", None), keys
+                )
+                await ensure_room_phase_editable_for_worker(
+                    db, row.room_id, str(current_user.id), app_role, eff
+                )
             success = await service.delete(item_id, user_id=str(current_user.id))
             if success:
                 deleted_count += 1
         
         logger.info(f"Batch deleted {deleted_count} room_visitss successfully")
         return {"message": f"Successfully deleted {deleted_count} room_visitss", "deleted_count": deleted_count}
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         logger.error(f"Error in batch delete: {str(e)}", exc_info=True)
@@ -364,6 +426,16 @@ async def delete_room_visits(
             logger.warning(f"Room_visits with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Room_visits not found")
         await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
+        room_row = await db.execute(select(Rooms).where(Rooms.id == row.room_id))
+        room_obj = room_row.scalar_one_or_none()
+        if room_obj:
+            keys = await workflow_keys_for_room(db, room_obj)
+            eff = effective_media_phase(
+                getattr(row, "phase", None), getattr(room_obj, "phase", None), keys
+            )
+            await ensure_room_phase_editable_for_worker(
+                db, row.room_id, str(current_user.id), app_role, eff
+            )
         success = await service.delete(id, user_id=str(current_user.id))
         if not success:
             logger.warning(f"Room_visits with id {id} not found for deletion")
