@@ -778,7 +778,7 @@ function RoomDetailContent() {
   const chipUiSel = computePhaseChipUi(selPhase, roomPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-background pb-8">
+    <div className="min-h-screen bg-slate-50 dark:bg-background pb-6">
       <Header
         breadcrumbs={[
           { label: 'Projects', path: '/' },
@@ -787,45 +787,47 @@ function RoomDetailContent() {
           { label: `Room ${room.room_number}` },
         ]}
       />
-      <div className="p-4 max-w-lg mx-auto space-y-3">
-        {/* Room summary — low visual weight, same controls */}
-        <Card className="border-border/50 bg-muted/25 shadow-none p-2.5 sm:p-3">
-          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-            <div className="min-w-0 space-y-0.5">
-              <h2 className="text-base font-semibold text-foreground leading-tight">Room {room.room_number}</h2>
-              <p className="text-[11px] text-muted-foreground leading-snug">
-                <span className="text-foreground/80">{floor?.name || '—'}</span>
-                <span className="mx-1 text-border">·</span>
-                Main: <span className="font-medium text-foreground/90">{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>
+      <div className="px-3 py-3 sm:px-4 max-w-lg mx-auto space-y-2.5">
+        {/* Room summary — compact, same controls */}
+        <Card className="border-border/40 bg-background/60 shadow-none p-2 sm:p-2.5">
+          <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1.5">
+            <div className="min-w-0 space-y-0">
+              <h2 className="text-[15px] font-medium text-foreground leading-none tracking-tight">
+                Room {room.room_number}
+              </h2>
+              <p className="text-[10px] text-muted-foreground/90 leading-snug mt-1">
+                <span className="text-foreground/75">{floor?.name || '—'}</span>
+                <span className="mx-1 text-border/80">·</span>
+                Main <span className="text-foreground/80">{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>
               </p>
               {sectionVisibility.assigned_worker &&
                 (canEditRoom ? (
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <span className="text-[11px] text-muted-foreground shrink-0">Assigned</span>
+                  <div className="flex flex-wrap items-center gap-1 pt-1">
+                    <span className="text-[10px] text-muted-foreground shrink-0">Assigned</span>
                     <Input
                       placeholder="Worker"
                       value={assignedWorker}
                       onChange={(e) => setAssignedWorker(e.target.value)}
-                      className="h-7 max-w-[9.5rem] text-xs"
+                      className="h-6 max-w-[9rem] text-[11px]"
                       disabled={editsBlocked}
                     />
-                    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleSaveWorker} disabled={editsBlocked}>
+                    <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={handleSaveWorker} disabled={editsBlocked}>
                       Save
                     </Button>
                   </div>
                 ) : room.assigned_worker ? (
-                  <p className="text-[11px] text-muted-foreground pt-0.5">
-                    Assigned <span className="font-medium text-foreground/85">{room.assigned_worker}</span>
+                  <p className="text-[10px] text-muted-foreground pt-0.5">
+                    Assigned <span className="text-foreground/80">{room.assigned_worker}</span>
                   </p>
                 ) : null)}
             </div>
-            <div className="flex flex-col items-end gap-1.5 shrink-0">
+            <div className="flex flex-col items-end gap-1 shrink-0">
               {canEdit ? (
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                  className="h-6 gap-0.5 text-[10px] text-muted-foreground hover:text-foreground px-1.5"
                   onClick={handleToggleRoomLock}
                 >
                   {room.is_locked ? (
@@ -844,7 +846,7 @@ function RoomDetailContent() {
               {sectionVisibility.status &&
                 (canChangeStatus ? (
                   <Select value={room.status} onValueChange={handleStatusChange} disabled={editsBlocked}>
-                    <SelectTrigger className="h-7 w-[9.5rem] text-[11px]">
+                    <SelectTrigger className="h-6 w-[9rem] text-[10px]">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -862,10 +864,10 @@ function RoomDetailContent() {
           </div>
 
           {canMovePhase ? (
-            <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2 border-t border-border/40 pt-2">
-              <label className="text-[11px] text-muted-foreground shrink-0">Main phase (board)</label>
+            <div className="mt-1.5 flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2 border-t border-border/30 pt-1.5">
+              <label className="text-[10px] text-muted-foreground shrink-0">Main phase (board)</label>
               <Select value={roomPhaseNorm} onValueChange={handleSetMainPhase} disabled={editsBlocked}>
-                <SelectTrigger className="h-8 text-xs">
+                <SelectTrigger className="h-7 text-[11px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -880,38 +882,38 @@ function RoomDetailContent() {
           ) : null}
 
           {editsBlocked ? (
-            <div className="mt-2 rounded-md border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 px-2.5 py-1.5 flex items-start gap-2">
-              <Lock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-950 dark:text-amber-100 leading-snug">
+            <div className="mt-1.5 rounded-md border-l-2 border-muted-foreground/25 bg-muted/15 pl-2 pr-2 py-1 flex items-start gap-1.5">
+              <Lock className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
+              <p className="text-[10px] text-muted-foreground leading-snug">
                 Room locked — view only unless you are admin or BAS.
               </p>
             </div>
           ) : null}
 
           {room.status === 'blocked' && room.blocked_reason ? (
-            <div className="mt-2 bg-red-50/90 dark:bg-red-950/40 border border-red-200/80 dark:border-red-900/50 rounded-md p-2">
-              <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[11px] font-medium">
+            <div className="mt-1.5 bg-red-50/80 dark:bg-red-950/35 border border-red-200/60 dark:border-red-900/40 rounded-md px-2 py-1.5">
+              <div className="flex items-center gap-1 text-red-600 dark:text-red-400 text-[10px] font-medium">
                 <Ban className="h-3 w-3" />
                 Blocked
               </div>
-              <p className="text-xs text-red-700 dark:text-red-300 mt-1 leading-snug">{room.blocked_reason}</p>
+              <p className="text-[11px] text-red-700 dark:text-red-300 mt-0.5 leading-snug">{room.blocked_reason}</p>
             </div>
           ) : null}
 
           {canDeleteRoom ? (
             <Button
               variant="ghost"
-              className="mt-2 h-8 w-full text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="mt-1.5 h-7 w-full text-[10px] text-muted-foreground hover:text-destructive hover:bg-destructive/5"
               onClick={() => setShowDeleteRoomDialog(true)}
             >
-              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              <Trash2 className="h-3 w-3 mr-1" />
               Delete room
             </Button>
           ) : null}
         </Card>
 
         {(sectionVisibility.checklist || sectionVisibility.photos) && (
-          <div className="w-full space-y-2">
+          <div className="w-full space-y-2 sm:space-y-2.5">
             <input
               ref={fileInputRef}
               type="file"
@@ -996,8 +998,8 @@ function RoomDetailContent() {
             ) : null}
 
             {phaseReadOnly ? (
-              <div className="rounded-md border border-border/70 bg-muted/40 px-2.5 py-1.5 dark:bg-muted/25">
-                <p className="text-xs text-muted-foreground leading-snug">
+              <div className="rounded-md border-l-2 border-muted-foreground/20 bg-muted/10 pl-2.5 pr-2 py-1.5 dark:bg-muted/15">
+                <p className="text-[10px] text-muted-foreground leading-relaxed">
                   Read-only for your role — only BAS/admin can change this phase.
                 </p>
               </div>
@@ -1027,48 +1029,44 @@ function RoomDetailContent() {
               </div>
             ) : null}
 
-            <div className="space-y-3">
+            <div className="space-y-2.5">
                   {sectionVisibility.checklist && (
-                    <Card className="overflow-hidden border-emerald-200/70 dark:border-emerald-800/50 bg-card shadow-sm ring-1 ring-emerald-500/10 dark:ring-emerald-500/15">
-                      <div className="border-b border-emerald-200/40 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-950/25 px-3 py-2.5 sm:px-4 sm:py-3">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <h3 className="text-lg font-semibold tracking-tight text-foreground flex items-center gap-2">
-                              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <Card className="overflow-hidden border-border/60 bg-card shadow-sm ring-1 ring-emerald-600/[0.06] dark:ring-emerald-400/[0.08]">
+                      <div className="border-b border-border/50 bg-emerald-600/[0.04] dark:bg-emerald-400/[0.06] px-3 py-2 sm:px-3.5 sm:py-2.5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 pt-0.5">
+                            <h3 className="text-base font-semibold tracking-tight text-foreground flex items-center gap-1.5">
+                              <CheckCircle2 className="h-[1.125rem] w-[1.125rem] shrink-0 text-emerald-600 dark:text-emerald-400 opacity-90" />
                               Checklist
                             </h3>
-                            <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
-                              <span className="font-medium text-foreground/85">{phaseLabel(selPhase, phaseWorkflow)}</span>
-                              <span className="mx-1">·</span>
-                              <span>{chipUiSel.status}</span>
+                            <p className="mt-1 text-[10px] leading-snug text-muted-foreground/75">
+                              <span className="text-muted-foreground">{phaseLabel(selPhase, phaseWorkflow)}</span>
                               {chipUiSel.workerLocked ? (
-                                <>
-                                  <span className="mx-1">·</span>
-                                  <span className="inline-flex items-center gap-0.5">
-                                    <Lock className="h-3 w-3" />
-                                    workers locked
-                                  </span>
-                                </>
-                              ) : null}
-                              <span className="mx-1">·</span>
-                              {totalForPhase > 0 ? (
-                                <span>
-                                  {completedForPhase}/{totalForPhase} done
+                                <span className="text-muted-foreground/80">
+                                  {' '}
+                                  · locked for workers
                                 </span>
-                              ) : (
-                                <span>no items yet</span>
-                              )}
+                              ) : null}
+                              {totalForPhase === 0 ? (
+                                <span className="text-muted-foreground/70"> · empty</span>
+                              ) : null}
+                              {totalForPhase > 0 && completedForPhase === totalForPhase ? (
+                                <span className="text-muted-foreground/80"> · all done</span>
+                              ) : null}
                             </p>
                           </div>
                           <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className="text-sm font-semibold tabular-nums text-emerald-800 dark:text-emerald-200">
+                            <span
+                              className="text-lg font-semibold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-300"
+                              title={`${completedForPhase} of ${totalForPhase} complete`}
+                            >
                               {completedForPhase}/{totalForPhase}
                             </span>
                             {canMutateChecklist && (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-7 text-[11px] border-emerald-200/80 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                                className="h-7 text-[10px] border-border/80 text-muted-foreground hover:text-foreground hover:bg-muted/50"
                                 onClick={() => setShowBulkAddTasks(true)}
                               >
                                 <ListPlus className="h-3 w-3 mr-1" />
@@ -1078,19 +1076,19 @@ function RoomDetailContent() {
                           </div>
                         </div>
                       </div>
-                      <div className="p-3 sm:p-4 pt-3">
+                      <div className="p-2.5 sm:p-3 sm:pt-3">
 
                       {savedWorkerName && (
-                        <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-200/60 dark:border-emerald-800/50 bg-emerald-50/40 dark:bg-emerald-950/20 px-2.5 py-1.5 mb-3">
+                        <div className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/20 px-2 py-1.5 mb-2">
                           <div className="flex items-center gap-1.5 min-w-0">
-                            <User className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                            <span className="text-[11px] text-emerald-800 dark:text-emerald-200 truncate">
-                              As <strong>{savedWorkerName}</strong>
+                            <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="text-[10px] text-muted-foreground truncate">
+                              As <strong className="text-foreground/90">{savedWorkerName}</strong>
                             </span>
                           </div>
                           <button
                             type="button"
-                            className="text-[11px] text-emerald-700 dark:text-emerald-300 hover:underline shrink-0"
+                            className="text-[10px] text-muted-foreground hover:text-foreground hover:underline shrink-0"
                             onClick={handleClearSavedName}
                           >
                             Change
@@ -1098,16 +1096,16 @@ function RoomDetailContent() {
                         </div>
                       )}
 
-                      <div className="divide-y divide-border/60 rounded-lg border border-border/40 bg-muted/5 dark:bg-muted/10">
+                      <div className="divide-y divide-border/50 rounded-md border border-border/50 bg-background dark:bg-background/80">
                         {tasksForPhase.length === 0 ? (
-                          <p className="py-8 text-center text-sm text-muted-foreground">No checklist items for this phase.</p>
+                          <p className="py-7 text-center text-sm text-muted-foreground/90">No checklist items for this phase.</p>
                         ) : null}
                         {tasksForPhase.map((task) => (
                           <div
                             key={task.id}
-                            className="hover:bg-muted/30 dark:hover:bg-muted/20 transition-colors group/task"
+                            className="hover:bg-muted/40 dark:hover:bg-muted/25 active:bg-muted/50 transition-colors group/task"
                           >
-                            <div className="flex items-start gap-3 py-2.5 px-1 sm:px-2">
+                            <div className="flex items-start gap-2.5 min-h-[2.75rem] py-3 px-2 sm:px-2.5">
                               {editingTaskId === task.id ? (
                                 <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
                                   <Input
@@ -1148,23 +1146,26 @@ function RoomDetailContent() {
                                 <>
                                   <button
                                     type="button"
-                                    className={`flex items-start gap-3 flex-1 text-left min-w-0 ${!canInteractChecklist ? 'cursor-default' : ''}`}
+                                    className={cn(
+                                      'flex items-start gap-3 flex-1 text-left min-w-0 rounded-md -m-1 p-1 sm:-m-0.5 sm:p-0.5',
+                                      !canInteractChecklist ? 'cursor-default' : ''
+                                    )}
                                     onClick={() => handleTaskClick(task)}
                                     disabled={!canInteractChecklist}
                                   >
                                     <Checkbox
                                       checked={task.is_completed}
-                                      className="h-6 w-6 rounded-md mt-0.5 shrink-0"
+                                      className="h-6 w-6 rounded-md mt-0.5 shrink-0 pointer-events-none"
                                       onCheckedChange={() => {}}
                                       disabled={!canInteractChecklist}
                                     />
-                                    <div className="flex-1 min-w-0">
+                                    <div className="flex-1 min-w-0 pt-px">
                                       <div className="flex items-center gap-1.5 group/tname">
                                         <span
-                                          className={`text-sm block ${
+                                          className={`text-[15px] leading-snug block ${
                                             task.is_completed
                                               ? 'line-through text-muted-foreground'
-                                              : 'text-slate-700 dark:text-foreground'
+                                              : 'text-foreground'
                                           }`}
                                         >
                                           {task.name}
@@ -1172,10 +1173,11 @@ function RoomDetailContent() {
                                         {canMutateChecklist && (
                                           <button
                                             type="button"
-                                            className="opacity-0 group-hover/tname:opacity-100 transition-opacity text-slate-400 hover:text-blue-500 p-0.5"
+                                            className="opacity-0 group-hover/tname:opacity-100 transition-opacity text-muted-foreground hover:text-foreground p-1.5 -m-1 rounded-md min-h-9 min-w-9 inline-flex items-center justify-center hover:bg-muted/70"
                                             onClick={(e) => startEditTask(e, task)}
+                                            aria-label="Edit item name"
                                           >
-                                            <Pencil className="h-3 w-3" />
+                                            <Pencil className="h-3.5 w-3.5" />
                                           </button>
                                         )}
                                       </div>
@@ -1205,10 +1207,11 @@ function RoomDetailContent() {
                                   {canDeleteChecklistItem && canMutateChecklist && (
                                     <button
                                       type="button"
-                                      className="opacity-0 group-hover/task:opacity-100 transition-opacity text-slate-400 hover:text-red-500 p-1 shrink-0 mt-0.5"
+                                      className="opacity-0 group-hover/task:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-2 -m-1 shrink-0 mt-0.5 min-h-10 min-w-10 flex items-center justify-center rounded-md hover:bg-muted/80"
                                       onClick={() => handleDeleteTask(task.id)}
+                                      aria-label="Remove item"
                                     >
-                                      <Trash2 className="h-3.5 w-3.5" />
+                                      <Trash2 className="h-4 w-4" />
                                     </button>
                                   )}
                                 </>
@@ -1271,9 +1274,9 @@ function RoomDetailContent() {
                       )}
 
                       {totalForPhase > 0 && (
-                        <div className="mt-3 bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden">
+                        <div className="mt-2.5 bg-muted rounded-full h-1.5 overflow-hidden">
                           <div
-                            className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                            className="bg-emerald-500/90 dark:bg-emerald-500/85 h-full rounded-full transition-all duration-300"
                             style={{
                               width: `${(completedForPhase / totalForPhase) * 100}%`,
                             }}
@@ -1285,9 +1288,9 @@ function RoomDetailContent() {
                   )}
 
                   {sectionVisibility.photos && (
-                    <Collapsible defaultOpen={false} className="rounded-md border border-border/50 bg-muted/10 shadow-none">
-                        <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/30 rounded-md">
-                          <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <Collapsible defaultOpen={false} className="rounded-md border border-border/40 bg-muted/[0.07] shadow-none">
+                        <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/25 rounded-md">
+                          <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                             <Camera className="h-3.5 w-3.5 opacity-70" />
                             Photos
                             <span className="font-normal opacity-80">({photosForPhase.length})</span>
@@ -1349,9 +1352,9 @@ function RoomDetailContent() {
                     </Collapsible>
                   )}
 
-                  <Collapsible defaultOpen={false} className="rounded-md border border-border/50 bg-muted/10 shadow-none">
-                      <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/30 rounded-md">
-                        <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <Collapsible defaultOpen={false} className="rounded-md border border-border/40 bg-muted/[0.07] shadow-none">
+                      <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/25 rounded-md">
+                        <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                           <History className="h-3.5 w-3.5 opacity-70" />
                           Activity
                           <span className="font-normal opacity-80">({activityEntries.length})</span>
@@ -1381,9 +1384,9 @@ function RoomDetailContent() {
                       </CollapsibleContent>
                   </Collapsible>
 
-                  <Collapsible defaultOpen={false} className="rounded-md border border-border/50 bg-muted/10 shadow-none">
-                    <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/30 rounded-md">
-                      <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <Collapsible defaultOpen={false} className="rounded-md border border-border/40 bg-muted/[0.07] shadow-none">
+                    <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2 text-left hover:bg-muted/25 rounded-md">
+                      <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                         <AlertTriangle className="h-3.5 w-3.5 opacity-70 text-amber-600 dark:text-amber-500" />
                         Deviations / notes
                         <span className="font-normal opacity-80">({deviationsForPhase.length})</span>
