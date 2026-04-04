@@ -91,8 +91,11 @@ function FloorDetailContent() {
   const [pendingBlockedRoomId, setPendingBlockedRoomId] = useState<number | null>(null);
   const [blockedReason, setBlockedReason] = useState('');
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
-  const [singleTemplateId, setSingleTemplateId] = useState<string>('');
-  const [bulkTemplateId, setBulkTemplateId] = useState<string>('');
+  /** Per-phase checklist template id (string for <select>); only phases with a selection get tasks. */
+  const [phaseTemplateSelections, setPhaseTemplateSelections] = useState<Record<string, string>>({});
+  const [bulkPhaseTemplateSelections, setBulkPhaseTemplateSelections] = useState<Record<string, string>>({});
+  const [quickFillAllPhases, setQuickFillAllPhases] = useState('');
+  const [bulkQuickFillAllPhases, setBulkQuickFillAllPhases] = useState('');
   const [showTemplatesDialog, setShowTemplatesDialog] = useState(false);
   const [editingTemplateId, setEditingTemplateId] = useState<string>('');
   const [templateName, setTemplateName] = useState('');
@@ -182,6 +185,23 @@ function FloorDetailContent() {
     loadTemplates();
   }, [loadData, loadTemplates]);
 
+  useEffect(() => {
+    setPhaseTemplateSelections((prev) => {
+      const next: Record<string, string> = {};
+      for (const p of phaseWorkflow) {
+        next[p.key] = prev[p.key] ?? '';
+      }
+      return next;
+    });
+    setBulkPhaseTemplateSelections((prev) => {
+      const next: Record<string, string> = {};
+      for (const p of phaseWorkflow) {
+        next[p.key] = prev[p.key] ?? '';
+      }
+      return next;
+    });
+  }, [phaseWorkflow]);
+
   const getTemplateItems = async (templateId?: number): Promise<ChecklistTemplateItem[]> => {
     if (!templateId) return [];
     const itemsRes = await client.apiCall.invoke({
@@ -196,7 +216,11 @@ function FloorDetailContent() {
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   };
 
-  const createRoomWithTasks = async (roomNum: string, worker: string, templateId?: number) => {
+  const createRoomWithTasks = async (
+    roomNum: string,
+    worker: string,
+    templatesByPhase: Record<string, number | undefined>
+  ) => {
     const roomRes = await client.entities.rooms.create({
       data: {
         floor_id: Number(floorId),
@@ -226,10 +250,13 @@ function FloorDetailContent() {
         );
       }
 
-      const templateItems = await getTemplateItems(templateId);
       const creates: Promise<unknown>[] = [];
       for (const phaseEntry of phaseWorkflow) {
         const phaseKey = phaseEntry.key;
+        const templateId = templatesByPhase[phaseKey];
+        if (!templateId) continue;
+
+        const templateItems = await getTemplateItems(templateId);
         for (let i = 0; i < templateItems.length; i++) {
           const item = templateItems[i];
           creates.push(
@@ -239,7 +266,7 @@ function FloorDetailContent() {
                 name: item.name,
                 is_completed: false,
                 sort_order: i,
-                template_id: templateId ?? null,
+                template_id: templateId,
                 template_item_id: item.id,
                 is_template_managed: true,
                 is_overridden: false,
@@ -254,6 +281,15 @@ function FloorDetailContent() {
     return newRoom;
   };
 
+  const templatesByPhaseFromSelections = (selections: Record<string, string>) => {
+    const out: Record<string, number | undefined> = {};
+    for (const p of phaseWorkflow) {
+      const raw = selections[p.key]?.trim();
+      out[p.key] = raw ? Number(raw) : undefined;
+    }
+    return out;
+  };
+
   const handleCreateRoom = async () => {
     if (!roomNumber.trim()) return;
     setCreating(true);
@@ -261,13 +297,18 @@ function FloorDetailContent() {
       await createRoomWithTasks(
         roomNumber.trim(),
         assignedWorker.trim(),
-        singleTemplateId ? Number(singleTemplateId) : undefined
+        templatesByPhaseFromSelections(phaseTemplateSelections)
       );
-      toast.success('Room created with checklist');
+      toast.success('Room created');
       setShowCreate(false);
       setRoomNumber('');
       setAssignedWorker('');
-      setSingleTemplateId('');
+      setPhaseTemplateSelections((prev) => {
+        const cleared: Record<string, string> = {};
+        for (const p of phaseWorkflow) cleared[p.key] = '';
+        return cleared;
+      });
+      setQuickFillAllPhases('');
       loadData();
     } catch {
       toast.error('Failed to create room');
@@ -295,7 +336,11 @@ function FloorDetailContent() {
         const num = start + j;
         const roomNum = bulkPrefix ? `${bulkPrefix}${String(num).padStart(2, '0')}` : String(num);
         batch.push(
-          createRoomWithTasks(roomNum, bulkWorker.trim(), bulkTemplateId ? Number(bulkTemplateId) : undefined)
+          createRoomWithTasks(
+            roomNum,
+            bulkWorker.trim(),
+            templatesByPhaseFromSelections(bulkPhaseTemplateSelections)
+          )
             .then(() => { created++; })
             .catch(() => { failed++; })
         );
@@ -310,7 +355,12 @@ function FloorDetailContent() {
     setBulkStart('1');
     setBulkCount('10');
     setBulkWorker('');
-    setBulkTemplateId('');
+    setBulkPhaseTemplateSelections((prev) => {
+      const cleared: Record<string, string> = {};
+      for (const p of phaseWorkflow) cleared[p.key] = '';
+      return cleared;
+    });
+    setBulkQuickFillAllPhases('');
     setBulkProgress(0);
     setBulkTotal(0);
 
@@ -952,7 +1002,7 @@ function FloorDetailContent() {
 
       {/* Single Room Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="max-w-sm mx-4">
+        <DialogContent className="max-w-md max-h-[min(90vh,640px)] overflow-y-auto mx-4">
           <DialogForm onSubmit={(e) => { e.preventDefault(); handleCreateRoom(); }}>
           <DialogHeader>
             <DialogTitle>Add Room</DialogTitle>
@@ -970,18 +1020,59 @@ function FloorDetailContent() {
               onChange={(e) => setAssignedWorker(e.target.value)}
               className="h-12"
             />
-            <select
-              value={singleTemplateId}
-              onChange={(e) => setSingleTemplateId(e.target.value)}
-              className="h-12 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">No template (no checklist items)</option>
-              {templates.map((t) => (
-                <option key={t.id} value={String(t.id)}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-1.5 rounded-md border border-input bg-muted/30 p-3">
+              <p className="text-xs font-medium text-muted-foreground">Checklist by phase</p>
+              <p className="text-xs text-muted-foreground">
+                Pick a template per phase. Phases left empty get no checklist yet.
+              </p>
+              <select
+                value={quickFillAllPhases}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setPhaseTemplateSelections((prev) => {
+                    const next = { ...prev };
+                    for (const p of phaseWorkflow) next[p.key] = v;
+                    return next;
+                  });
+                  setQuickFillAllPhases('');
+                }}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Apply one template to all phases…</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <div className="space-y-2 pt-1">
+                {phaseWorkflow.map((p) => (
+                  <div key={p.key} className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      {phaseLabel(p.key, phaseWorkflow)}
+                    </label>
+                    <select
+                      value={phaseTemplateSelections[p.key] ?? ''}
+                      onChange={(e) =>
+                        setPhaseTemplateSelections((prev) => ({
+                          ...prev,
+                          [p.key]: e.target.value,
+                        }))
+                      }
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">No checklist for this phase</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={String(t.id)}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button
@@ -1065,23 +1156,62 @@ function FloorDetailContent() {
                 disabled={bulkCreating}
               />
             </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
-                Checklist Template
+            <div className="space-y-1.5 rounded-md border border-input bg-muted/30 p-3">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 block">
+                Checklist by phase
               </label>
+              <p className="text-xs text-muted-foreground">
+                Same choices apply to every generated room. Use “all phases” to fill every dropdown at once.
+              </p>
               <select
-                value={bulkTemplateId}
-                onChange={(e) => setBulkTemplateId(e.target.value)}
-                className="h-12 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={bulkQuickFillAllPhases}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) return;
+                  setBulkPhaseTemplateSelections((prev) => {
+                    const next = { ...prev };
+                    for (const p of phaseWorkflow) next[p.key] = v;
+                    return next;
+                  });
+                  setBulkQuickFillAllPhases('');
+                }}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 disabled={bulkCreating}
               >
-                <option value="">No template (no checklist items)</option>
+                <option value="">Apply one template to all phases…</option>
                 {templates.map((t) => (
                   <option key={t.id} value={String(t.id)}>
                     {t.name}
                   </option>
                 ))}
               </select>
+              <div className="space-y-2 pt-1 max-h-48 overflow-y-auto">
+                {phaseWorkflow.map((p) => (
+                  <div key={p.key} className="space-y-1">
+                    <label className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      {phaseLabel(p.key, phaseWorkflow)}
+                    </label>
+                    <select
+                      value={bulkPhaseTemplateSelections[p.key] ?? ''}
+                      onChange={(e) =>
+                        setBulkPhaseTemplateSelections((prev) => ({
+                          ...prev,
+                          [p.key]: e.target.value,
+                        }))
+                      }
+                      className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                      disabled={bulkCreating}
+                    >
+                      <option value="">No checklist for this phase</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={String(t.id)}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Preview */}
@@ -1090,7 +1220,7 @@ function FloorDetailContent() {
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Preview</p>
                 <p className="text-sm font-mono text-slate-700 dark:text-slate-300">{getBulkPreview()}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Checklist items are created only from the selected template.
+                  Each phase gets its own checklist lines from the template you chose for that phase.
                 </p>
               </div>
             )}
