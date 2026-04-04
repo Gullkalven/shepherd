@@ -11,7 +11,7 @@ import {
   formatPhaseStrip,
   normalizeRoomPhase,
   phaseLabel,
-  syncIncompleteTasksPhaseForRoom,
+  storedChecklistPhase,
   type FloorPhaseProgressEntry,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
@@ -148,10 +148,7 @@ function FloorDetailContent() {
           if (!roomIds.has(rid) || !summary[rid]) continue;
           const roomRow = roomItems.find((r) => r.id === rid);
           const roomPhase = normalizeRoomPhase(roomRow?.phase, summaryWorkflow);
-          const taskPhase =
-            t.phase != null && String(t.phase) !== ''
-              ? normalizeRoomPhase(t.phase as string, summaryWorkflow)
-              : roomPhase;
+          const taskPhase = storedChecklistPhase(t.phase as string | null | undefined, summaryWorkflow);
           if (taskPhase !== roomPhase) continue;
           summary[rid].total += 1;
           if (t.is_completed) summary[rid].completed += 1;
@@ -230,23 +227,29 @@ function FloorDetailContent() {
       }
 
       const templateItems = await getTemplateItems(templateId);
-      await Promise.all(
-        templateItems.map((item, i) =>
-          client.entities.tasks.create({
-            data: {
-              room_id: newRoom.id,
-              name: item.name,
-              is_completed: false,
-              sort_order: i,
-              template_id: templateId ?? null,
-              template_item_id: item.id,
-              is_template_managed: true,
-              is_overridden: false,
-              phase: phaseWorkflow[0]?.key ?? 'demontering',
-            },
-          })
-        )
-      );
+      const creates: Promise<unknown>[] = [];
+      for (const phaseEntry of phaseWorkflow) {
+        const phaseKey = phaseEntry.key;
+        for (let i = 0; i < templateItems.length; i++) {
+          const item = templateItems[i];
+          creates.push(
+            client.entities.tasks.create({
+              data: {
+                room_id: newRoom.id,
+                name: item.name,
+                is_completed: false,
+                sort_order: i,
+                template_id: templateId ?? null,
+                template_item_id: item.id,
+                is_template_managed: true,
+                is_overridden: false,
+                phase: phaseKey,
+              },
+            })
+          );
+        }
+      }
+      await Promise.all(creates);
     }
     return newRoom;
   };
@@ -374,7 +377,6 @@ function FloorDetailContent() {
         id: String(roomId),
         data: { phase: nextPhase },
       });
-      await syncIncompleteTasksPhaseForRoom(roomId, oldPhase, nextPhase, phaseWorkflow);
       setRooms((prev) =>
         prev.map((r) => (r.id === roomId ? { ...r, phase: nextPhase } : r))
       );

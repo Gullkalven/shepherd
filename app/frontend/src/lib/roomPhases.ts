@@ -1,5 +1,3 @@
-import { client } from '@/lib/api';
-
 export type PhaseWorkflowEntry = { key: string; label: string };
 
 export const DEFAULT_PHASE_WORKFLOW: PhaseWorkflowEntry[] = [
@@ -94,13 +92,19 @@ export function formatPhaseStrip(
     .join(' ');
 }
 
-export function effectiveTaskPhase(
+/**
+ * Which phase bucket a checklist task belongs to.
+ * Explicit `task.phase` wins; empty/null means legacy data → first workflow phase (historically all items started there).
+ */
+export function storedChecklistPhase(
   taskPhase: string | null | undefined,
-  roomPhaseWhenUnknown: string,
   workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
 ): string {
-  if (taskPhase != null && String(taskPhase) !== '') return normalizeRoomPhase(taskPhase, workflow);
-  return normalizeRoomPhase(roomPhaseWhenUnknown, workflow);
+  const first = workflow[0]?.key ?? 'demontering';
+  if (taskPhase != null && String(taskPhase).trim() !== '') {
+    return normalizeRoomPhase(String(taskPhase), workflow);
+  }
+  return first;
 }
 
 export type FloorPhaseProgressEntry = {
@@ -141,44 +145,13 @@ export function computeFloorPhaseProgress(
   return keys.map((phaseKey) => {
     let completedRooms = 0;
     for (const room of rooms) {
-      const roomPhase = normalizeRoomPhase(room.phase, workflow);
       const roomTasks = byRoom.get(room.id) ?? [];
-      const inPhase = roomTasks.filter(
-        (t) => effectiveTaskPhase(t.phase, roomPhase, workflow) === phaseKey
-      );
+      const inPhase = roomTasks.filter((t) => storedChecklistPhase(t.phase, workflow) === phaseKey);
       if (inPhase.length === 0) continue;
       if (inPhase.every((t) => Boolean(t.is_completed))) completedRooms += 1;
     }
     return { key: phaseKey, completedRooms, totalRooms };
   });
-}
-
-/** After the room’s phase changes: move incomplete checklist items from the old bucket into the new one. */
-export async function syncIncompleteTasksPhaseForRoom(
-  roomId: number,
-  oldPhase: string,
-  newPhase: string,
-  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
-): Promise<void> {
-  const tasksRes = await client.entities.tasks.query({
-    query: { room_id: roomId },
-    limit: 500,
-    sort: 'sort_order',
-  });
-  const items = (tasksRes?.data?.items || []) as {
-    id: number;
-    is_completed?: boolean;
-    phase?: string | null;
-  }[];
-  await Promise.all(
-    items
-      .filter((t) => {
-        if (t.is_completed) return false;
-        const eff = effectiveTaskPhase(t.phase, oldPhase, workflow);
-        return eff === oldPhase;
-      })
-      .map((t) => client.entities.tasks.update({ id: String(t.id), data: { phase: newPhase } }))
-  );
 }
 
 export function visitMatchesPhase(

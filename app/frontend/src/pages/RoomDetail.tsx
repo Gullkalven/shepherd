@@ -20,13 +20,12 @@ import {
 import { toast } from 'sonner';
 import {
   DEFAULT_PHASE_WORKFLOW,
-  effectiveTaskPhase,
   normalizeRoomPhase,
   phaseKeys,
   phaseLabel,
   phaseTimelineState,
   phaseTabReadOnlyForWorker,
-  syncIncompleteTasksPhaseForRoom,
+  storedChecklistPhase,
   visitMatchesPhase,
   photoMatchesPhase,
   type PhaseWorkflowEntry,
@@ -558,7 +557,6 @@ function RoomDetailContent() {
         id: String(room.id),
         data: { phase: nextPhase },
       });
-      await syncIncompleteTasksPhaseForRoom(room.id, current, nextPhase, phaseWorkflow);
       toast.success(`Moved to ${phaseLabel(nextPhase, phaseWorkflow)}`);
       await loadData();
     } catch {
@@ -898,7 +896,7 @@ function RoomDetailContent() {
               );
               const phaseReadOnly = !canEdit && phaseWorkerLocked;
               const tasksForPhase = tasks.filter(
-                (t) => effectiveTaskPhase(t.phase, roomPhaseNorm, phaseWorkflow) === phaseKey
+                (t) => storedChecklistPhase(t.phase, phaseWorkflow) === phaseKey
               );
               const visitsForPhase = visits.filter((v) =>
                 visitMatchesPhase(v.phase, phaseKey, phaseWorkflow)
