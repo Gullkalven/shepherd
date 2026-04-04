@@ -787,63 +787,56 @@ function RoomDetailContent() {
           { label: `Room ${room.room_number}` },
         ]}
       />
-      <div className="p-4 max-w-lg mx-auto space-y-4">
-        {/* Compact room summary */}
-        <Card className="p-3 sm:p-4">
-          <div className="flex flex-wrap items-start justify-between gap-2 gap-y-3">
-            <div className="min-w-0 space-y-1">
-              <h2 className="text-lg font-bold text-slate-800 dark:text-foreground leading-tight">
-                Room {room.room_number}
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Floor: <span className="font-medium text-slate-700 dark:text-slate-200">{floor?.name || '—'}</span>
+      <div className="p-4 max-w-lg mx-auto space-y-3">
+        {/* Room summary — low visual weight, same controls */}
+        <Card className="border-border/50 bg-muted/25 shadow-none p-2.5 sm:p-3">
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+            <div className="min-w-0 space-y-0.5">
+              <h2 className="text-base font-semibold text-foreground leading-tight">Room {room.room_number}</h2>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                <span className="text-foreground/80">{floor?.name || '—'}</span>
+                <span className="mx-1 text-border">·</span>
+                Main: <span className="font-medium text-foreground/90">{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>
               </p>
               {sectionVisibility.assigned_worker &&
                 (canEditRoom ? (
-                  <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                    <span className="text-xs text-muted-foreground shrink-0">Assigned</span>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] text-muted-foreground shrink-0">Assigned</span>
                     <Input
                       placeholder="Worker"
                       value={assignedWorker}
                       onChange={(e) => setAssignedWorker(e.target.value)}
-                      className="h-8 max-w-[10rem] text-sm"
+                      className="h-7 max-w-[9.5rem] text-xs"
                       disabled={editsBlocked}
                     />
-                    <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={handleSaveWorker} disabled={editsBlocked}>
+                    <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={handleSaveWorker} disabled={editsBlocked}>
                       Save
                     </Button>
                   </div>
                 ) : room.assigned_worker ? (
-                  <p className="text-xs text-muted-foreground">
-                    Assigned:{' '}
-                    <span className="font-medium text-slate-700 dark:text-slate-200">{room.assigned_worker}</span>
+                  <p className="text-[11px] text-muted-foreground pt-0.5">
+                    Assigned <span className="font-medium text-foreground/85">{room.assigned_worker}</span>
                   </p>
                 ) : null)}
-              <p className="text-xs text-muted-foreground pt-0.5">
-                Main phase:{' '}
-                <span className="font-semibold text-slate-800 dark:text-foreground">
-                  {phaseLabel(roomPhaseNorm, phaseWorkflow)}
-                </span>
-              </p>
             </div>
-            <div className="flex flex-col items-end gap-2 shrink-0">
+            <div className="flex flex-col items-end gap-1.5 shrink-0">
               {canEdit ? (
                 <Button
                   type="button"
-                  variant={room.is_locked ? 'secondary' : 'outline'}
+                  variant="ghost"
                   size="sm"
-                  className="h-8 gap-1 text-xs"
+                  className="h-7 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
                   onClick={handleToggleRoomLock}
                 >
                   {room.is_locked ? (
                     <>
-                      <Unlock className="h-3.5 w-3.5" />
-                      Unlock room
+                      <Unlock className="h-3 w-3" />
+                      Unlock
                     </>
                   ) : (
                     <>
-                      <Lock className="h-3.5 w-3.5" />
-                      Lock room
+                      <Lock className="h-3 w-3" />
+                      Lock
                     </>
                   )}
                 </Button>
@@ -851,7 +844,7 @@ function RoomDetailContent() {
               {sectionVisibility.status &&
                 (canChangeStatus ? (
                   <Select value={room.status} onValueChange={handleStatusChange} disabled={editsBlocked}>
-                    <SelectTrigger className="h-8 w-[10.5rem] text-xs">
+                    <SelectTrigger className="h-7 w-[9.5rem] text-[11px]">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -863,16 +856,16 @@ function RoomDetailContent() {
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Badge className={`${currentStatus.color} border-0 text-[10px]`}>{currentStatus.label}</Badge>
+                  <Badge className={`${currentStatus.color} border-0 text-[10px] font-normal`}>{currentStatus.label}</Badge>
                 ))}
             </div>
           </div>
 
           {canMovePhase ? (
-            <div className="mt-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3 border-t border-border/60 pt-3">
-              <label className="text-xs font-medium text-muted-foreground shrink-0">Set main phase (floor board)</label>
+            <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2 border-t border-border/40 pt-2">
+              <label className="text-[11px] text-muted-foreground shrink-0">Main phase (board)</label>
               <Select value={roomPhaseNorm} onValueChange={handleSetMainPhase} disabled={editsBlocked}>
-                <SelectTrigger className="h-9 text-sm">
+                <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -887,38 +880,38 @@ function RoomDetailContent() {
           ) : null}
 
           {editsBlocked ? (
-            <div className="mt-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-3 py-2 flex items-start gap-2">
-              <Lock className="h-4 w-4 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
-              <p className="text-sm text-amber-900 dark:text-amber-100">
-                Room is locked. You can view everything; only admin or BAS can change data.
+            <div className="mt-2 rounded-md border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 px-2.5 py-1.5 flex items-start gap-2">
+              <Lock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-950 dark:text-amber-100 leading-snug">
+                Room locked — view only unless you are admin or BAS.
               </p>
             </div>
           ) : null}
 
           {room.status === 'blocked' && room.blocked_reason ? (
-            <div className="mt-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-lg p-2.5">
-              <div className="flex items-center gap-2 text-red-600 dark:text-red-400 text-xs font-medium">
-                <Ban className="h-3.5 w-3.5" />
+            <div className="mt-2 bg-red-50/90 dark:bg-red-950/40 border border-red-200/80 dark:border-red-900/50 rounded-md p-2">
+              <div className="flex items-center gap-1.5 text-red-600 dark:text-red-400 text-[11px] font-medium">
+                <Ban className="h-3 w-3" />
                 Blocked
               </div>
-              <p className="text-sm text-red-700 dark:text-red-300 mt-1">{room.blocked_reason}</p>
+              <p className="text-xs text-red-700 dark:text-red-300 mt-1 leading-snug">{room.blocked_reason}</p>
             </div>
           ) : null}
 
           {canDeleteRoom ? (
             <Button
-              variant="outline"
-              className="mt-3 w-full border-red-200 text-red-600 hover:bg-red-50 dark:border-red-900/40 dark:text-red-400 dark:hover:bg-red-950/40 h-9 text-sm"
+              variant="ghost"
+              className="mt-2 h-8 w-full text-xs text-destructive hover:text-destructive hover:bg-destructive/10"
               onClick={() => setShowDeleteRoomDialog(true)}
             >
-              <Trash2 className="h-4 w-4 mr-2" />
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
               Delete room
             </Button>
           ) : null}
         </Card>
 
         {(sectionVisibility.checklist || sectionVisibility.photos) && (
-          <div className="w-full space-y-3">
+          <div className="w-full space-y-2">
             <input
               ref={fileInputRef}
               type="file"
@@ -979,33 +972,33 @@ function RoomDetailContent() {
             </div>
 
             {selPhase !== roomPhaseNorm ? (
-              <div className="flex flex-col gap-2 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/35 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-amber-950 dark:text-amber-100">
-                  Viewing <span className="font-semibold">{phaseLabel(selPhase, phaseWorkflow)}</span>. Main phase is{' '}
-                  <span className="font-semibold">{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>.
+              <div className="flex flex-col gap-1.5 rounded-md border border-amber-200/70 bg-amber-50/70 px-2.5 py-2 dark:border-amber-900/45 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-amber-950 dark:text-amber-100 leading-snug">
+                  Viewing <span className="font-medium">{phaseLabel(selPhase, phaseWorkflow)}</span> — main is{' '}
+                  <span className="font-medium">{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>.
                 </p>
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
-                  className="h-9 shrink-0 border-amber-300/80 bg-white hover:bg-amber-100/80 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
+                  className="h-8 shrink-0 text-xs border-amber-200/80 bg-white/90 hover:bg-amber-100/80 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
                   onClick={() => setPhaseTab(roomPhaseNorm)}
                 >
-                  Jump to main phase
+                  Main phase
                 </Button>
               </div>
             ) : null}
 
             {selPhase !== roomPhaseNorm && !phaseReadOnly ? (
-              <p className="text-xs text-sky-900 dark:text-sky-100 rounded-md border border-sky-200/80 bg-sky-50/90 px-3 py-2 dark:border-sky-900 dark:bg-sky-950/40">
-                This is not the main phase, but it is still open and can be edited.
+              <p className="text-[11px] text-muted-foreground rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5 leading-snug">
+                Not the main phase, but still open for editing.
               </p>
             ) : null}
 
             {phaseReadOnly ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 dark:border-amber-800 dark:bg-amber-950/30">
-                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
-                  This phase is read-only for your role — only BAS/admin can change data here.
+              <div className="rounded-md border border-border/70 bg-muted/40 px-2.5 py-1.5 dark:bg-muted/25">
+                <p className="text-xs text-muted-foreground leading-snug">
+                  Read-only for your role — only BAS/admin can change this phase.
                 </p>
               </div>
             ) : null}
@@ -1014,19 +1007,19 @@ function RoomDetailContent() {
               <div className="flex justify-end">
                 <Button
                   type="button"
-                  variant={phaseWorkerLocked ? 'secondary' : 'outline'}
+                  variant="ghost"
                   size="sm"
-                  className="h-8 gap-1 text-xs"
+                  className="h-7 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
                   onClick={() => handleTogglePhaseWorkerLock(selPhase)}
                 >
                   {phaseWorkerLocked ? (
                     <>
-                      <Unlock className="h-3.5 w-3.5" />
+                      <Unlock className="h-3 w-3" />
                       Open phase for workers
                     </>
                   ) : (
                     <>
-                      <Lock className="h-3.5 w-3.5" />
+                      <Lock className="h-3 w-3" />
                       Lock phase for workers
                     </>
                   )}
@@ -1034,67 +1027,70 @@ function RoomDetailContent() {
               </div>
             ) : null}
 
-            <div className="space-y-1 border-b border-border/70 pb-3">
-              <h3 className="text-base font-semibold text-slate-800 dark:text-foreground">
-                {phaseLabel(selPhase, phaseWorkflow)}
-              </h3>
-              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <Badge variant="secondary" className="text-xs font-normal">
-                  {chipUiSel.status}
-                </Badge>
-                {chipUiSel.workerLocked ? (
-                  <span className="inline-flex items-center gap-1 text-xs">
-                    <Lock className="h-3 w-3" />
-                    Workers locked
-                  </span>
-                ) : null}
-                {totalForPhase > 0 ? (
-                  <span>
-                    Progress: {completedForPhase}/{totalForPhase}
-                  </span>
-                ) : (
-                  <span>No checklist items in this phase yet</span>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-4">
+            <div className="space-y-3">
                   {sectionVisibility.checklist && (
-                    <Card className="p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
-                          Checklist
-                        </h3>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">
-                            {completedForPhase}/{totalForPhase}
-                          </span>
-                          {canMutateChecklist && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 text-xs border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950"
-                              onClick={() => setShowBulkAddTasks(true)}
-                            >
-                              <ListPlus className="h-3 w-3 mr-1" />
-                              Bulk
-                            </Button>
-                          )}
+                    <Card className="overflow-hidden border-emerald-200/70 dark:border-emerald-800/50 bg-card shadow-sm ring-1 ring-emerald-500/10 dark:ring-emerald-500/15">
+                      <div className="border-b border-emerald-200/40 dark:border-emerald-900/40 bg-emerald-50/50 dark:bg-emerald-950/25 px-3 py-2.5 sm:px-4 sm:py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h3 className="text-lg font-semibold tracking-tight text-foreground flex items-center gap-2">
+                              <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                              Checklist
+                            </h3>
+                            <p className="mt-0.5 text-[11px] text-muted-foreground leading-snug">
+                              <span className="font-medium text-foreground/85">{phaseLabel(selPhase, phaseWorkflow)}</span>
+                              <span className="mx-1">·</span>
+                              <span>{chipUiSel.status}</span>
+                              {chipUiSel.workerLocked ? (
+                                <>
+                                  <span className="mx-1">·</span>
+                                  <span className="inline-flex items-center gap-0.5">
+                                    <Lock className="h-3 w-3" />
+                                    workers locked
+                                  </span>
+                                </>
+                              ) : null}
+                              <span className="mx-1">·</span>
+                              {totalForPhase > 0 ? (
+                                <span>
+                                  {completedForPhase}/{totalForPhase} done
+                                </span>
+                              ) : (
+                                <span>no items yet</span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span className="text-sm font-semibold tabular-nums text-emerald-800 dark:text-emerald-200">
+                              {completedForPhase}/{totalForPhase}
+                            </span>
+                            {canMutateChecklist && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[11px] border-emerald-200/80 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                                onClick={() => setShowBulkAddTasks(true)}
+                              >
+                                <ListPlus className="h-3 w-3 mr-1" />
+                                Bulk
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <div className="p-3 sm:p-4 pt-3">
 
                       {savedWorkerName && (
-                        <div className="flex items-center justify-between bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2 mb-3">
-                          <div className="flex items-center gap-2">
-                            <User className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                            <span className="text-xs text-emerald-700 dark:text-emerald-300">
-                              Checking as: <strong>{savedWorkerName}</strong>
+                        <div className="flex items-center justify-between gap-2 rounded-md border border-emerald-200/60 dark:border-emerald-800/50 bg-emerald-50/40 dark:bg-emerald-950/20 px-2.5 py-1.5 mb-3">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <User className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                            <span className="text-[11px] text-emerald-800 dark:text-emerald-200 truncate">
+                              As <strong>{savedWorkerName}</strong>
                             </span>
                           </div>
                           <button
                             type="button"
-                            className="text-xs text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-emerald-200 underline"
+                            className="text-[11px] text-emerald-700 dark:text-emerald-300 hover:underline shrink-0"
                             onClick={handleClearSavedName}
                           >
                             Change
@@ -1102,13 +1098,16 @@ function RoomDetailContent() {
                         </div>
                       )}
 
-                      <div className="space-y-1">
+                      <div className="divide-y divide-border/60 rounded-lg border border-border/40 bg-muted/5 dark:bg-muted/10">
+                        {tasksForPhase.length === 0 ? (
+                          <p className="py-8 text-center text-sm text-muted-foreground">No checklist items for this phase.</p>
+                        ) : null}
                         {tasksForPhase.map((task) => (
                           <div
                             key={task.id}
-                            className="rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/50 active:bg-slate-100 dark:active:bg-slate-800 transition-colors group/task"
+                            className="hover:bg-muted/30 dark:hover:bg-muted/20 transition-colors group/task"
                           >
-                            <div className="flex items-start gap-3 p-3">
+                            <div className="flex items-start gap-3 py-2.5 px-1 sm:px-2">
                               {editingTaskId === task.id ? (
                                 <div className="flex items-center gap-2 flex-1" onClick={(e) => e.stopPropagation()}>
                                   <Input
@@ -1281,27 +1280,27 @@ function RoomDetailContent() {
                           />
                         </div>
                       )}
+                      </div>
                     </Card>
                   )}
 
                   {sectionVisibility.photos && (
-                    <Collapsible defaultOpen={false} className="rounded-lg border border-slate-200 dark:border-slate-700">
-                      <Card className="border-0 shadow-none">
-                        <CollapsibleTrigger className="group flex w-full items-center justify-between p-4 text-left hover:bg-muted/40 rounded-t-lg">
-                          <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2 text-sm">
-                            <Camera className="h-4 w-4 text-blue-500 dark:text-blue-400" />
+                    <Collapsible defaultOpen={false} className="rounded-md border border-border/50 bg-muted/10 shadow-none">
+                        <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/30 rounded-md">
+                          <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                            <Camera className="h-3.5 w-3.5 opacity-70" />
                             Photos
-                            <span className="text-muted-foreground font-normal">({photosForPhase.length})</span>
-                          </h3>
-                          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                            <span className="font-normal opacity-80">({photosForPhase.length})</span>
+                          </span>
+                          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180" />
                         </CollapsibleTrigger>
                         <CollapsibleContent>
-                          <div className="px-4 pb-4 pt-0 space-y-3">
+                          <div className="px-3 pb-3 pt-0 space-y-2 border-t border-border/40">
                             {canUploadPhoto ? (
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="h-9 w-full sm:w-auto"
+                                className="h-8 w-full sm:w-auto text-xs"
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={uploading || !canMutatePhaseMedia}
                               >
@@ -1309,10 +1308,9 @@ function RoomDetailContent() {
                               </Button>
                             ) : null}
                             {photosForPhase.length === 0 ? (
-                              <div className="text-center py-4 text-muted-foreground text-sm">
-                                <ImageIcon className="h-7 w-7 mx-auto mb-2 text-slate-300 dark:text-slate-600" />
+                              <div className="text-center py-3 text-muted-foreground text-xs">
+                                <ImageIcon className="h-6 w-6 mx-auto mb-1.5 opacity-40" />
                                 <p>No photos for this phase</p>
-                                <p className="text-xs mt-1">Untagged photos count for every phase until set on upload.</p>
                               </div>
                             ) : (
                               <div className="grid grid-cols-3 gap-2">
@@ -1348,121 +1346,127 @@ function RoomDetailContent() {
                             )}
                           </div>
                         </CollapsibleContent>
-                      </Card>
                     </Collapsible>
                   )}
 
-                  <Collapsible defaultOpen={false} className="rounded-lg border border-slate-200 dark:border-slate-700">
-                    <Card className="border-0 shadow-none">
-                      <CollapsibleTrigger className="group flex w-full items-center justify-between p-4 text-left hover:bg-muted/40 rounded-t-lg">
-                        <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2 text-sm">
-                          <History className="h-4 w-4 text-slate-500" />
+                  <Collapsible defaultOpen={false} className="rounded-md border border-border/50 bg-muted/10 shadow-none">
+                      <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/30 rounded-md">
+                        <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <History className="h-3.5 w-3.5 opacity-70" />
                           Activity
-                          <span className="text-muted-foreground font-normal">({activityEntries.length})</span>
-                        </h3>
-                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+                          <span className="font-normal opacity-80">({activityEntries.length})</span>
+                        </span>
+                        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180" />
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="px-4 pb-4 pt-0 max-h-64 overflow-y-auto space-y-2 text-sm">
+                        <div className="px-3 pb-3 pt-0 max-h-56 overflow-y-auto space-y-1.5 text-xs border-t border-border/40">
                           {activityEntries.length === 0 ? (
-                            <p className="text-muted-foreground text-xs py-2">
-                              No recorded activity for this phase yet (visits, photo uploads, completed checks).
+                            <p className="text-muted-foreground py-2 leading-snug">
+                              No activity for this phase yet.
                             </p>
                           ) : (
                             activityEntries.map((row, i) => (
                               <div
                                 key={`${row.t}-${i}`}
-                                className="flex gap-2 border-b border-border/40 pb-2 last:border-0 last:pb-0"
+                                className="flex gap-2 border-b border-border/30 pb-1.5 last:border-0 last:pb-0"
                               >
-                                <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0 w-16">
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0 w-14">
                                   {formatActivityWhen(row.t)}
                                 </span>
-                                <span className="text-slate-700 dark:text-slate-200 min-w-0">{row.msg}</span>
+                                <span className="text-foreground/85 min-w-0 leading-snug">{row.msg}</span>
                               </div>
                             ))
                           )}
                         </div>
                       </CollapsibleContent>
-                    </Card>
                   </Collapsible>
 
-                  <Card className="p-4">
-                    <h3 className="font-semibold text-slate-800 dark:text-foreground flex items-center gap-2 mb-3 text-sm">
-                      <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                      Deviations / notes
-                    </h3>
-                    <p className="text-xs text-muted-foreground mb-3">
-                      Real issues or missing work — not a chat. Visible for this phase only.
-                    </p>
-                    <div className="space-y-2 mb-3">
-                      {deviationsForPhase.length === 0 ? (
-                        <p className="text-sm text-muted-foreground py-1">No deviations for this phase.</p>
-                      ) : (
-                        deviationsForPhase.map((d) => (
-                          <div
-                            key={d.id}
-                            className={cn(
-                              'rounded-lg border px-3 py-2 text-sm',
-                              d.status === 'resolved'
-                                ? 'border-slate-200 bg-slate-50/80 dark:border-slate-700 dark:bg-slate-900/40'
-                                : 'border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/25'
-                            )}
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1">
-                                <Badge
-                                  variant="secondary"
-                                  className={cn(
-                                    'text-[10px] mb-1',
-                                    d.status === 'resolved'
-                                      ? 'bg-slate-200 dark:bg-slate-700'
-                                      : 'bg-amber-200/80 text-amber-950 dark:bg-amber-900 dark:text-amber-100'
-                                  )}
-                                >
-                                  {d.status === 'resolved' ? 'Resolved' : 'Open'}
-                                </Badge>
-                                <p className="text-slate-800 dark:text-foreground">{d.text}</p>
+                  <Collapsible defaultOpen={false} className="rounded-md border border-border/50 bg-muted/10 shadow-none">
+                    <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/30 rounded-md">
+                      <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <AlertTriangle className="h-3.5 w-3.5 opacity-70 text-amber-600 dark:text-amber-500" />
+                        Deviations / notes
+                        <span className="font-normal opacity-80">({deviationsForPhase.length})</span>
+                      </span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <div className="px-3 pb-3 pt-0 space-y-3 border-t border-border/40">
+                        <p className="text-[11px] text-muted-foreground leading-snug pt-2">
+                          Issues or missing work — not a chat. This phase only.
+                        </p>
+                        <div className="space-y-2">
+                          {deviationsForPhase.length === 0 ? (
+                            <p className="text-xs text-muted-foreground py-0.5">None for this phase.</p>
+                          ) : (
+                            deviationsForPhase.map((d) => (
+                              <div
+                                key={d.id}
+                                className={cn(
+                                  'rounded-md border px-2.5 py-2 text-xs',
+                                  d.status === 'resolved'
+                                    ? 'border-border/60 bg-muted/20'
+                                    : 'border-amber-200/70 bg-amber-50/40 dark:border-amber-900/50 dark:bg-amber-950/20'
+                                )}
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <Badge
+                                      variant="secondary"
+                                      className={cn(
+                                        'text-[10px] mb-1 h-5',
+                                        d.status === 'resolved'
+                                          ? 'bg-muted'
+                                          : 'bg-amber-100/90 text-amber-950 dark:bg-amber-900/50 dark:text-amber-100'
+                                      )}
+                                    >
+                                      {d.status === 'resolved' ? 'Resolved' : 'Open'}
+                                    </Badge>
+                                    <p className="text-foreground leading-snug">{d.text}</p>
+                                  </div>
+                                  {canEdit && !editsBlocked ? (
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-[11px] shrink-0"
+                                      disabled={savingDeviations}
+                                      onClick={() => handleToggleDeviationResolved(d.id)}
+                                    >
+                                      {d.status === 'resolved' ? 'Reopen' : 'Resolve'}
+                                    </Button>
+                                  ) : null}
+                                </div>
                               </div>
-                              {canEdit && !editsBlocked ? (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-8 text-xs shrink-0"
-                                  disabled={savingDeviations}
-                                  onClick={() => handleToggleDeviationResolved(d.id)}
-                                >
-                                  {d.status === 'resolved' ? 'Reopen' : 'Resolve'}
-                                </Button>
-                              ) : null}
-                            </div>
+                            ))
+                          )}
+                        </div>
+                        {canInteractChecklist && !editsBlocked ? (
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Input
+                              placeholder="Add a deviation…"
+                              value={newDeviationText}
+                              onChange={(e) => setNewDeviationText(e.target.value)}
+                              className="h-9 text-xs"
+                              disabled={savingDeviations}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') void handleAddDeviation();
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-9 sm:w-24 text-xs"
+                              disabled={!newDeviationText.trim() || savingDeviations}
+                              onClick={() => void handleAddDeviation()}
+                            >
+                              Add
+                            </Button>
                           </div>
-                        ))
-                      )}
-                    </div>
-                    {canInteractChecklist && !editsBlocked ? (
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Input
-                          placeholder="Describe a deviation or missing item…"
-                          value={newDeviationText}
-                          onChange={(e) => setNewDeviationText(e.target.value)}
-                          className="h-10 text-sm"
-                          disabled={savingDeviations}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') void handleAddDeviation();
-                          }}
-                        />
-                        <Button
-                          type="button"
-                          className="h-10 sm:w-28"
-                          disabled={!newDeviationText.trim() || savingDeviations}
-                          onClick={() => void handleAddDeviation()}
-                        >
-                          Add
-                        </Button>
+                        ) : null}
                       </div>
-                    ) : null}
-                  </Card>
+                    </CollapsibleContent>
+                  </Collapsible>
             </div>
           </div>
         )}
