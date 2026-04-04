@@ -66,7 +66,7 @@ export default function PhaseBoard({
         return (
           <div
             key={phase.key}
-            className="flex min-h-0 min-w-0 flex-shrink-0 flex-col snap-start w-[min(20rem,calc(100vw-2rem))] sm:w-[21rem]"
+            className="flex min-h-0 min-w-0 flex-shrink-0 flex-col snap-start w-[min(20rem,calc(100vw-2rem))] sm:w-[21rem] lg:w-[clamp(18rem,22vw,26rem)]"
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, phase.key)}
           >

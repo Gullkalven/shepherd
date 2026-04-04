@@ -245,7 +245,7 @@ function ProjectDetailContent() {
           { label: project?.name || 'Project' },
         ]}
       />
-      <div className="p-4 max-w-lg mx-auto space-y-4">
+      <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
         {/* Dashboard Toggle */}
         <Button
           variant="outline"

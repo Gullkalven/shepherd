@@ -265,7 +265,7 @@ function IndexContent({
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-background">
       <Header onLogout={handleLogout} />
-      <div className="p-4 max-w-lg mx-auto space-y-4">
+      <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
         {/* Role indicator + Admin link */}
         <div className="flex items-center justify-between">
           <Badge className={`${roleBadge.bg} ${roleBadge.color} border-0 gap-1`}>

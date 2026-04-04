@@ -32,7 +32,7 @@ export default function Header({ breadcrumbs = [], onLogout }: HeaderProps) {
 
   return (
     <header className="sticky top-0 z-50 bg-[#1E3A5F] dark:bg-slate-900 text-white shadow-lg">
-      <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3.5">
+      <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3.5 lg:max-w-none lg:px-6 xl:px-8">
         <div className="flex min-w-0 flex-1 items-center gap-2.5">
           {breadcrumbs.length > 0 && (
             <Button

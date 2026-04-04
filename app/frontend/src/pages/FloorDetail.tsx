@@ -665,7 +665,7 @@ function FloorDetailContent() {
       />
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 space-y-4">
-          <div className="px-4 pt-4 pb-4 max-w-lg mx-auto space-y-4">
+          <div className="mx-auto w-full max-w-lg space-y-4 px-4 pb-4 pt-4 lg:max-w-none lg:px-6 xl:px-8">
         {/* Floor Name (editable) */}
         <div className="flex items-center gap-2 group/flname">
           {editingFloorName ? (
@@ -870,7 +870,7 @@ function FloorDetailContent() {
 
         {/* Room Views — list/empty stay narrow; kanban uses full width (Trello-style on desktop) */}
         {rooms.length === 0 ? (
-          <div className="shrink-0 px-4 pb-4 max-w-lg mx-auto">
+          <div className="mx-auto w-full max-w-lg shrink-0 px-4 pb-4 lg:max-w-none lg:px-6 xl:px-8">
             <Card className="p-8 text-center">
               <DoorOpen className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
               <p className="text-muted-foreground mb-2">No rooms yet</p>
@@ -882,7 +882,7 @@ function FloorDetailContent() {
             </Card>
           </div>
         ) : viewMode === 'kanban' ? (
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col px-4 pb-4">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col px-4 pb-4 lg:px-6 xl:px-8">
             <PhaseBoard
               rooms={rooms}
               checklistByRoomId={checklistByRoomId}
@@ -899,7 +899,7 @@ function FloorDetailContent() {
             />
           </div>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 max-w-lg mx-auto space-y-2">
+          <div className="mx-auto min-h-0 w-full max-w-lg flex-1 space-y-2 overflow-y-auto px-4 pb-4 lg:max-w-none lg:px-6 xl:px-8">
             {rooms.map((room) => {
               const summary = checklistByRoomId[room.id];
               const completed = summary?.completed ?? 0;
