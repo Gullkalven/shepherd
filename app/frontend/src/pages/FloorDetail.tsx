@@ -6,11 +6,13 @@ import Header from '@/components/Header';
 import PhaseBoard, { type ChecklistSummaryMap } from '@/components/PhaseBoard';
 import RoomDashboardCard from '@/components/RoomDashboardCard';
 import {
+  computeFloorPhaseProgress,
   DEFAULT_PHASE_WORKFLOW,
   formatPhaseStrip,
   normalizeRoomPhase,
   phaseLabel,
   syncIncompleteTasksPhaseForRoom,
+  type FloorPhaseProgressEntry,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import { Button } from '@/components/ui/button';
@@ -100,6 +102,7 @@ function FloorDetailContent() {
   const [selectedRoomIds, setSelectedRoomIds] = useState<number[]>([]);
   const [checklistByRoomId, setChecklistByRoomId] = useState<ChecklistSummaryMap>({});
   const [phaseWorkflow, setPhaseWorkflow] = useState<PhaseWorkflowEntry[]>(DEFAULT_PHASE_WORKFLOW);
+  const [floorPhaseProgress, setFloorPhaseProgress] = useState<FloorPhaseProgressEntry[]>([]);
   const [showWorkflowDialog, setShowWorkflowDialog] = useState(false);
   const [workflowDraft, setWorkflowDraft] = useState<PhaseWorkflowEntry[]>([]);
   const [savingWorkflow, setSavingWorkflow] = useState(false);
@@ -155,8 +158,10 @@ function FloorDetailContent() {
         }
       }
       setChecklistByRoomId(summary);
+      setFloorPhaseProgress(computeFloorPhaseProgress(roomItems, taskItems, summaryWorkflow));
     } catch {
       toast.error('Failed to load floor data');
+      setFloorPhaseProgress([]);
     } finally {
       setLoading(false);
     }
@@ -784,9 +789,40 @@ function FloorDetailContent() {
           )}
         </div>
 
-        {/* Room count */}
+        {/* Room count + per-phase checklist progress (rooms with that phase’s items 100% done / all rooms) */}
         {rooms.length > 0 && (
-          <p className="text-sm text-muted-foreground">{rooms.length} rooms on this floor</p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{rooms.length} rooms on this floor</p>
+            {floorPhaseProgress.length > 0 && (
+              <div
+                className="flex flex-wrap gap-x-3 gap-y-2 rounded-lg border border-slate-200/90 bg-white/80 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50"
+                aria-label="Floor progress by work phase"
+                title="Per phase: rooms where every checklist item in that phase is done, out of all rooms on this floor. Rooms with no items in a phase yet are not counted as done for that phase."
+              >
+                {floorPhaseProgress.map((row) => {
+                  const pct = row.totalRooms > 0 ? Math.round((row.completedRooms / row.totalRooms) * 100) : 0;
+                  return (
+                    <div
+                      key={row.key}
+                      className="flex min-w-[7.5rem] flex-1 basis-[calc(50%-0.375rem)] items-center gap-2 sm:basis-0 sm:flex-initial"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-1">
+                          <span className="truncate text-xs font-medium text-slate-700 dark:text-slate-200">
+                            {phaseLabel(row.key, phaseWorkflow)}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-xs text-muted-foreground">
+                            {row.completedRooms}/{row.totalRooms}
+                          </span>
+                        </div>
+                        <Progress value={pct} className="mt-1 h-1.5" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
         {selectionMode && (
           <Card className="p-3">

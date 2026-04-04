@@ -103,6 +103,56 @@ export function effectiveTaskPhase(
   return normalizeRoomPhase(roomPhaseWhenUnknown, workflow);
 }
 
+export type FloorPhaseProgressEntry = {
+  key: string;
+  /** Rooms that have at least one checklist item in this phase and all of them are completed */
+  completedRooms: number;
+  /** All rooms on the floor (same for every phase) */
+  totalRooms: number;
+};
+
+type RoomRowForProgress = { id: number; phase?: string | null };
+type TaskRowForProgress = {
+  room_id: number;
+  phase?: string | null;
+  is_completed?: boolean | null;
+};
+
+/**
+ * Per-phase floor progress from checklists (not from board position alone).
+ * A room counts toward "completed" for phase P only if it has at least one task in P and every task in P is done.
+ * Rooms with no tasks in P do not add to completed (shows how many rooms actually finished that stage’s checklist).
+ */
+export function computeFloorPhaseProgress(
+  rooms: RoomRowForProgress[],
+  tasks: TaskRowForProgress[],
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
+): FloorPhaseProgressEntry[] {
+  const keys = phaseKeys(workflow);
+  const totalRooms = rooms.length;
+  const byRoom = new Map<number, TaskRowForProgress[]>();
+  for (const t of tasks) {
+    const rid = Number(t.room_id);
+    if (Number.isNaN(rid)) continue;
+    if (!byRoom.has(rid)) byRoom.set(rid, []);
+    byRoom.get(rid)!.push(t);
+  }
+
+  return keys.map((phaseKey) => {
+    let completedRooms = 0;
+    for (const room of rooms) {
+      const roomPhase = normalizeRoomPhase(room.phase, workflow);
+      const roomTasks = byRoom.get(room.id) ?? [];
+      const inPhase = roomTasks.filter(
+        (t) => effectiveTaskPhase(t.phase, roomPhase, workflow) === phaseKey
+      );
+      if (inPhase.length === 0) continue;
+      if (inPhase.every((t) => Boolean(t.is_completed))) completedRooms += 1;
+    }
+    return { key: phaseKey, completedRooms, totalRooms };
+  });
+}
+
 /** After the room’s phase changes: move incomplete checklist items from the old bucket into the new one. */
 export async function syncIncompleteTasksPhaseForRoom(
   roomId: number,
