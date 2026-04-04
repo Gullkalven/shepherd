@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { client } from '@/lib/api';
 import { PermissionProvider, usePermissions } from '@/lib/permissions';
@@ -10,6 +10,23 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
 import { Plus, Layers, Trash2, BarChart3, ChevronRight, Pencil, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  computeFloorPhaseProgress,
+  DEFAULT_PHASE_WORKFLOW,
+  type FloorPhaseProgressEntry,
+  type PhaseWorkflowEntry,
+} from '@/lib/roomPhases';
+
+/** Compact labels for default phases; other keys use first letter */
+function phaseProgressLetter(key: string): string {
+  const m: Record<string, string> = {
+    demontering: 'D',
+    varmekabel: 'V',
+    remontering: 'R',
+    sluttkontroll: 'S',
+  };
+  return m[key] ?? (key.charAt(0) || '?').toUpperCase();
+}
 
 interface Floor {
   id: number;
@@ -21,6 +38,13 @@ interface Room {
   id: number;
   status: string;
   floor_id: number;
+  phase?: string;
+}
+
+interface ProjectTaskRow {
+  room_id: number;
+  phase?: string | null;
+  is_completed?: boolean | null;
 }
 
 interface Project {
@@ -35,6 +59,8 @@ function ProjectDetailContent() {
   const [project, setProject] = useState<Project | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [allRooms, setAllRooms] = useState<Room[]>([]);
+  const [projectTasks, setProjectTasks] = useState<ProjectTaskRow[]>([]);
+  const [phaseWorkflow, setPhaseWorkflow] = useState<PhaseWorkflowEntry[]>(DEFAULT_PHASE_WORKFLOW);
   const [showCreate, setShowCreate] = useState(false);
   const [floorNumber, setFloorNumber] = useState('');
   const [floorName, setFloorName] = useState('');
@@ -53,14 +79,31 @@ function ProjectDetailContent() {
   const loadData = useCallback(async () => {
     if (!projectId) return;
     try {
-      const [projRes, floorsRes, roomsRes] = await Promise.all([
+      const [projRes, floorsRes, roomsRes, tasksRes, wfRes] = await Promise.all([
         client.entities.projects.get({ id: projectId }),
         client.entities.floors.query({ query: { project_id: Number(projectId) }, sort: 'floor_number', limit: 100 }),
         client.entities.rooms.query({ query: { project_id: Number(projectId) }, limit: 500 }),
+        client.entities.tasks.query({ limit: 2000, sort: 'room_id' }),
+        client.apiCall.invoke({
+          url: `/api/v1/projects/${projectId}/workflow`,
+          method: 'GET',
+          data: {},
+        }),
       ]);
       setProject(projRes?.data || null);
       setFloors(floorsRes?.data?.items || []);
-      setAllRooms(roomsRes?.data?.items || []);
+      const roomItems: Room[] = roomsRes?.data?.items || [];
+      setAllRooms(roomItems);
+      setProjectTasks((tasksRes?.data?.items || []) as ProjectTaskRow[]);
+      const rawPhases = wfRes?.data?.phases;
+      let wf: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW;
+      if (Array.isArray(rawPhases) && rawPhases.length > 0) {
+        const parsed = rawPhases
+          .filter((p: { key?: string; label?: string }) => p?.key && p?.label)
+          .map((p: { key: string; label: string }) => ({ key: String(p.key), label: String(p.label) }));
+        if (parsed.length > 0) wf = parsed;
+      }
+      setPhaseWorkflow(wf);
     } catch {
       toast.error('Failed to load project');
     } finally {
@@ -116,6 +159,19 @@ function ProjectDetailContent() {
     const completed = floorRooms.filter((r) => r.status === 'completed').length;
     return { total: floorRooms.length, completed };
   };
+
+  const floorPhaseProgressByFloorId = useMemo(() => {
+    const map = new Map<number, FloorPhaseProgressEntry[]>();
+    const projectRoomIds = new Set(allRooms.map((r) => r.id));
+    const tasksInProject = projectTasks.filter((t) => projectRoomIds.has(Number(t.room_id)));
+    for (const floor of floors) {
+      const floorRooms = allRooms.filter((r) => r.floor_id === floor.id);
+      const floorRoomIds = new Set(floorRooms.map((r) => r.id));
+      const floorTasks = tasksInProject.filter((t) => floorRoomIds.has(Number(t.room_id)));
+      map.set(floor.id, computeFloorPhaseProgress(floorRooms, floorTasks, phaseWorkflow));
+    }
+    return map;
+  }, [floors, allRooms, projectTasks, phaseWorkflow]);
 
   const startEditProjectName = () => {
     if (!project) return;
@@ -333,9 +389,23 @@ function ProjectDetailContent() {
                         </div>
                       )}
                       {editingFloorId !== floor.id && (
-                        <p className="text-sm text-muted-foreground mt-0.5">
-                          {counts.total} rooms · {counts.completed} completed
-                        </p>
+                        <>
+                          <p className="text-sm text-muted-foreground mt-0.5">
+                            {counts.total} rooms · {counts.completed} completed
+                          </p>
+                          {(floorPhaseProgressByFloorId.get(floor.id) ?? []).length > 0 && (
+                            <p
+                              className="mt-1 text-xs leading-snug text-muted-foreground tabular-nums"
+                              title="Checklist progress per phase: rooms with all items in that phase done / rooms on floor"
+                            >
+                              {(floorPhaseProgressByFloorId.get(floor.id) ?? []).map((row) => (
+                                <span key={row.key} className="mr-2 inline-block">
+                                  {phaseProgressLetter(row.key)}: {row.completedRooms}/{row.totalRooms}
+                                </span>
+                              ))}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                     {editingFloorId !== floor.id && (
