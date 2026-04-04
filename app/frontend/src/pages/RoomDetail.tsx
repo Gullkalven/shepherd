@@ -30,6 +30,7 @@ import {
   photoMatchesPhase,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
+import { cn } from '@/lib/utils';
 
 const STATUS_OPTIONS = [
   { value: 'not_started', label: 'Not Started', color: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
@@ -837,11 +838,11 @@ function RoomDetailContent() {
           )}
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
-              Active phase:{' '}
+              <span className="font-medium text-slate-700 dark:text-slate-200">Floor board phase:</span>{' '}
               <span className="font-semibold text-slate-800 dark:text-foreground">
                 {phaseLabel(roomPhaseNorm, phaseWorkflow)}
               </span>
-              . Use the tabs below to open earlier or later phases.
+              <span className="text-muted-foreground"> — tabs are for this room&apos;s history and other stages.</span>
             </p>
             <Button
               variant="outline"
@@ -874,16 +875,50 @@ function RoomDetailContent() {
               className="hidden"
               onChange={handlePhotoUpload}
             />
-            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/80 p-1">
-              {workflowPhaseKeys.map((key) => (
-                <TabsTrigger
-                  key={key}
-                  value={key}
-                  className="shrink-0 px-2.5 py-2 text-xs sm:text-sm data-[state=active]:bg-background"
+            {phaseTab !== roomPhaseNorm && (
+              <div className="mb-3 flex flex-col gap-2 rounded-lg border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 dark:border-amber-900/50 dark:bg-amber-950/35 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-amber-950 dark:text-amber-100">
+                  You&apos;re viewing{' '}
+                  <span className="font-semibold">{phaseLabel(phaseTab, phaseWorkflow)}</span>. The floor board still has
+                  this room in{' '}
+                  <span className="font-semibold">{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>.
+                </p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-9 shrink-0 border-amber-300/80 bg-white hover:bg-amber-100/80 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
+                  onClick={() => setPhaseTab(roomPhaseNorm)}
                 >
-                  {phaseLabel(key, phaseWorkflow)}
-                </TabsTrigger>
-              ))}
+                  Show current phase
+                </Button>
+              </div>
+            )}
+            <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 bg-muted/80 p-1">
+              {workflowPhaseKeys.map((key) => {
+                const tabTl = phaseTimelineState(roomPhaseNorm, key, phaseWorkflow);
+                const isBoardPhase = key === roomPhaseNorm;
+                return (
+                  <TabsTrigger
+                    key={key}
+                    value={key}
+                    className={cn(
+                      'shrink-0 gap-1 px-2.5 py-2 text-xs sm:text-sm data-[state=active]:bg-background',
+                      isBoardPhase &&
+                        'font-semibold ring-2 ring-amber-400/70 ring-offset-1 ring-offset-muted/80 dark:ring-amber-500/50 dark:ring-offset-background',
+                      tabTl === 'done' && !isBoardPhase && 'opacity-80',
+                      tabTl === 'upcoming' && !isBoardPhase && 'opacity-75'
+                    )}
+                  >
+                    {phaseLabel(key, phaseWorkflow)}
+                    {isBoardPhase ? (
+                      <span className="hidden rounded bg-amber-500/20 px-1 py-0 text-[10px] font-medium uppercase tracking-wide text-amber-900 dark:text-amber-200 sm:inline">
+                        Now
+                      </span>
+                    ) : null}
+                  </TabsTrigger>
+                );
+              })}
             </TabsList>
 
             {workflowPhaseKeys.map((phaseKey) => {
@@ -923,22 +958,21 @@ function RoomDetailContent() {
                     }`}
                   >
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="font-medium text-slate-800 dark:text-slate-100">
+                      <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
                         {tl === 'done' && (
                           <span className="text-emerald-800 dark:text-emerald-200">
-                            Earlier or same stage as the board — workers can keep working here unless this phase is
-                            locked.
+                            Past stage — you can still update checklist, visits, and photos unless this phase is locked.
                           </span>
                         )}
                         {tl === 'active' && (
                           <span className="text-amber-900 dark:text-amber-100">
-                            Current stage on the floor board — usual place for new checklist work.
+                            This is the room&apos;s current stage on the floor board — your main checklist is below.
                           </span>
                         )}
                         {tl === 'upcoming' && (
                           <span className="text-slate-700 dark:text-slate-200">
-                            After the room&apos;s current board stage — closed for workers until the room reaches it,
-                            unless BAS/admin opens it early.
+                            Future stage — workers are usually locked out until the room moves here, unless BAS/admin
+                            opens it early.
                           </span>
                         )}
                       </div>
@@ -965,16 +999,16 @@ function RoomDetailContent() {
                       ) : null}
                     </div>
                     {!canEdit && phaseReadOnly ? (
-                      <p className="font-medium text-amber-900 dark:text-amber-200 border-t border-amber-200/60 dark:border-amber-800/50 pt-2">
+                      <p className="text-sm font-medium text-amber-900 dark:text-amber-200 border-t border-amber-200/60 dark:border-amber-800/50 pt-2">
                         {tl === 'upcoming'
-                          ? 'You can view this tab, but only BAS/admin can change data here until the room reaches this phase or unlocks it.'
-                          : 'This phase is locked for workers. Only BAS/admin can change checklist, visits, or photos here.'}
+                          ? 'View only until the room reaches this phase, or until BAS/admin unlocks it.'
+                          : 'This phase is locked for workers — only BAS/admin can change data here.'}
                       </p>
                     ) : null}
                     {!canEdit && !phaseReadOnly && tl === 'upcoming' ? (
-                      <p className="font-medium text-emerald-800 dark:text-emerald-200 border-t border-emerald-200/60 dark:border-emerald-800/50 pt-2">
-                        BAS/admin has opened this future stage — you can edit here even though the board is still on an
-                        earlier phase.
+                      <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200 border-t border-emerald-200/60 dark:border-emerald-800/50 pt-2">
+                        BAS/admin opened this stage early — you can edit here while the board is still on an earlier
+                        phase.
                       </p>
                     ) : null}
                   </div>
