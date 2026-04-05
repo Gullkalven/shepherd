@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '@/lib/api';
-import { PermissionProvider, usePermissions } from '@/lib/permissions';
-import Header from '@/components/Header';
+import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -70,7 +69,7 @@ const SECTION_ICONS: Record<string, React.ReactNode> = {
   assigned_worker: <UserCheck className="h-4 w-4 text-teal-500" />,
 };
 
-function AdminUsersContent() {
+export default function AdminUsers() {
   const navigate = useNavigate();
   const { isAdmin, loading: permLoading } = usePermissions();
   const [users, setUsers] = useState<UserWithRole[]>([]);
@@ -180,8 +179,7 @@ function AdminUsersContent() {
 
   if (!isAdmin) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-background">
-        <Header breadcrumbs={[{ label: 'Projects', path: '/' }, { label: 'Admin' }]} />
+      <div className="min-h-dvh bg-slate-50 dark:bg-background">
         <div className="p-4 max-w-lg mx-auto">
           <Card className="p-8 text-center">
             <Shield className="h-12 w-12 text-red-400 mx-auto mb-3" />
@@ -203,8 +201,7 @@ function AdminUsersContent() {
     sections.filter((s) => s.role_name === roleName);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-background pb-8">
-      <Header breadcrumbs={[{ label: 'Projects', path: '/' }, { label: 'Admin Settings' }]} />
+    <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="p-4 max-w-lg mx-auto space-y-4">
         {/* Tab Toggle */}
         <div className="flex bg-slate-200 dark:bg-slate-800 rounded-lg p-0.5">
@@ -417,38 +414,5 @@ function AdminUsersContent() {
         )}
       </div>
     </div>
-  );
-}
-
-export default function AdminUsers() {
-  const [isAuth, setIsAuth] = useState(false);
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await client.auth.me();
-        setIsAuth(!!res?.data);
-      } catch {
-        setIsAuth(false);
-      } finally {
-        setChecking(false);
-      }
-    };
-    check();
-  }, []);
-
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  return (
-    <PermissionProvider isAuthenticated={isAuth}>
-      <AdminUsersContent />
-    </PermissionProvider>
   );
 }

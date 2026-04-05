@@ -1,18 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { client, fetchProjectsListAll } from '@/lib/api';
-import { PermissionProvider, usePermissions } from '@/lib/permissions';
-import Header from '@/components/Header';
+import { usePermissions } from '@/lib/permissions';
+import type { AppShellOutletContext } from '@/layouts/AppShellLayout';
+import { APP_LOGOUT_EVENT, PROJECTS_NAV_REFRESH_EVENT } from '@/lib/runAppLogout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
-import { Plus, FolderOpen, Trash2, HardHat, Shield, Crown, ShieldCheck, Wrench, Pencil, Check, X } from 'lucide-react';
+import { Plus, FolderOpen, Trash2, HardHat, Crown, ShieldCheck, Wrench, Pencil, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import {
-  DEV_ROLE_CHANGED_EVENT,
   ensureDemoBearerToken,
   getLocalDevUser,
   isDevRoleSwitcherHost,
@@ -21,7 +21,6 @@ import {
   type DevAppRole,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
-import { clearLocalAuthMarks, logoutRemoteSession } from '@/lib/appLogout';
 
 interface Project {
   id: number;
@@ -54,7 +53,7 @@ function IndexContent({
 }) {
   const navigate = useNavigate();
   const { activateSession, endSession, sessionActive } = useDevPresentationSession();
-  const { role, loading: permLoading, canCreateProject, canDeleteProject, canManageUsers, canEdit } = usePermissions();
+  const { role, canCreateProject, canDeleteProject, canEdit } = usePermissions();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -127,6 +126,16 @@ function IndexContent({
     void loadProjects();
   }, [user, loadProjects]);
 
+  useEffect(() => {
+    const onAppLogout = () => {
+      setUser(null);
+      setProjects([]);
+      onLogoutClearServer();
+    };
+    window.addEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
+    return () => window.removeEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
+  }, [onLogoutClearServer]);
+
   const signInAsDemoRole = (role: DevAppRole) => {
     persistDemoSignIn(role);
     ensureDemoBearerToken();
@@ -138,19 +147,6 @@ function IndexContent({
       void checkAuth();
       navigate('/', { replace: true });
     }
-  };
-
-  const handleLogout = async () => {
-    endSession();
-    clearLocalAuthMarks();
-    onLogoutClearServer();
-    setUser(null);
-    setProjects([]);
-
-    void logoutRemoteSession();
-
-    window.dispatchEvent(new Event(DEV_ROLE_CHANGED_EVENT));
-    navigate('/', { replace: true });
   };
 
   const handleCreate = async () => {
@@ -165,6 +161,7 @@ function IndexContent({
       setNewName('');
       setNewDesc('');
       loadProjects();
+      window.dispatchEvent(new CustomEvent(PROJECTS_NAV_REFRESH_EVENT));
     } catch {
       toast.error('Failed to create project');
     } finally {
@@ -179,6 +176,7 @@ function IndexContent({
       await client.entities.projects.delete({ id: String(id) });
       toast.success('Project deleted');
       loadProjects();
+      window.dispatchEvent(new CustomEvent(PROJECTS_NAV_REFRESH_EVENT));
     } catch {
       toast.error('Failed to delete project');
     }
@@ -204,6 +202,7 @@ function IndexContent({
         prev.map((p) => (p.id === projectId ? { ...p, name: editProjectName.trim() } : p))
       );
       toast.success('Project name updated');
+      window.dispatchEvent(new CustomEvent(PROJECTS_NAV_REFRESH_EVENT));
     } catch {
       toast.error('Failed to update project name');
     }
@@ -263,26 +262,13 @@ function IndexContent({
   const roleBadge = ROLE_BADGE[role] || ROLE_BADGE.worker;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-background">
-      <Header onLogout={handleLogout} />
+    <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
-        {/* Role indicator + Admin link */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-start">
           <Badge className={`${roleBadge.bg} ${roleBadge.color} border-0 gap-1`}>
             {roleBadge.icon}
             {roleBadge.label}
           </Badge>
-          {canManageUsers && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs gap-1 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950"
-              onClick={() => navigate('/admin/users')}
-            >
-              <Shield className="h-3 w-3" />
-              Manage Users
-            </Button>
-          )}
         </div>
 
         <div className="flex items-center justify-between">
@@ -421,54 +407,11 @@ function IndexContent({
 }
 
 export default function Index() {
-  const { sessionActive } = useDevPresentationSession();
-  const [apiUser, setApiUser] = useState<unknown>(null);
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    if (isDevRoleSwitcherHost()) {
-      void (async () => {
-        ensureDemoBearerToken();
-        try {
-          const res = await client.auth.me();
-          setApiUser(res?.data ?? null);
-        } catch {
-          setApiUser(null);
-        } finally {
-          setChecking(false);
-        }
-      })();
-      return;
-    }
-
-    // Deployed: show app immediately from localStorage demo; refresh apiUser if auth.me() succeeds later.
-    ensureDemoBearerToken();
-    setApiUser(readDemoLocalStorageUser());
-    setChecking(false);
-    void client.auth.me().then((res) => {
-      if (res?.data) setApiUser(res.data);
-    }).catch(() => {});
-  }, []);
-
-  const devSignedIn = sessionActive && !!getLocalDevUser();
-  const devHost = isDevRoleSwitcherHost();
-  // On localhost, demo sign-in is the only gate — ignore /auth/me cookies so logout matches permissions.
-  const isAuth = devHost ? devSignedIn : !!apiUser;
-
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
+  const ctx = useOutletContext<AppShellOutletContext>();
   return (
-    <PermissionProvider isAuthenticated={isAuth}>
-      <IndexContent
-        onLogoutClearServer={() => setApiUser(null)}
-        onDemoSignedIn={() => setApiUser(readDemoLocalStorageUser())}
-      />
-    </PermissionProvider>
+    <IndexContent
+      onLogoutClearServer={ctx.onLogoutClearServer}
+      onDemoSignedIn={ctx.onDemoSignedIn}
+    />
   );
 }

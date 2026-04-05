@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { client } from '@/lib/api';
-import { PermissionProvider, usePermissions } from '@/lib/permissions';
-import Header from '@/components/Header';
+import { usePermissions } from '@/lib/permissions';
 import PhaseBoard, { type ChecklistSummaryMap } from '@/components/PhaseBoard';
 import RoomDashboardCard from '@/components/RoomDashboardCard';
 import {
@@ -62,7 +61,7 @@ interface ChecklistTemplateItem {
   sort_order?: number;
 }
 
-function FloorDetailContent() {
+export default function FloorDetail() {
   const { projectId, floorId } = useParams<{ projectId: string; floorId: string }>();
   const navigate = useNavigate();
   const { canCreateRoom, canDeleteRoom, canChangeStatus, canMovePhase, canEdit } = usePermissions();
@@ -719,13 +718,6 @@ function FloorDetailContent() {
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-slate-50 dark:bg-background">
-      <Header
-        breadcrumbs={[
-          { label: 'Projects', path: '/' },
-          { label: project?.name || 'Project', path: `/project/${projectId}` },
-          { label: floor?.name || `Floor ${floor?.floor_number}` },
-        ]}
-      />
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 space-y-4">
           <div className="mx-auto w-full max-w-lg space-y-4 px-4 pb-4 pt-4 lg:max-w-none lg:px-6 xl:px-8">
@@ -1436,38 +1428,5 @@ function FloorDetailContent() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-export default function FloorDetail() {
-  const [isAuth, setIsAuth] = useState(false);
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await client.auth.me();
-        setIsAuth(!!res?.data);
-      } catch {
-        setIsAuth(false);
-      } finally {
-        setChecking(false);
-      }
-    };
-    check();
-  }, []);
-
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  return (
-    <PermissionProvider isAuthenticated={isAuth}>
-      <FloorDetailContent />
-    </PermissionProvider>
   );
 }

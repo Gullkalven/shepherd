@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { client } from '@/lib/api';
-import { PermissionProvider, usePermissions } from '@/lib/permissions';
-import Header from '@/components/Header';
+import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -176,7 +175,7 @@ function formatVisitDate(dateStr: string): string {
   }
 }
 
-function RoomDetailContent() {
+export default function RoomDetail() {
   const { projectId, floorId, roomId } = useParams<{
     projectId: string;
     floorId: string;
@@ -970,15 +969,7 @@ function RoomDetailContent() {
   const chipUiSel = computePhaseChipUi(selPhase, areaMainPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-background pb-8">
-      <Header
-        breadcrumbs={[
-          { label: 'Projects', path: '/' },
-          { label: project?.name || 'Project', path: `/project/${projectId}` },
-          { label: floor?.name || 'Floor', path: `/project/${projectId}/floor/${floorId}` },
-          { label: `Room ${room.room_number}` },
-        ]}
-      />
+    <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="px-3 py-3 sm:px-4 sm:py-4 max-w-lg mx-auto space-y-4">
         {/* Room header — clear anchor; admin controls stay quiet */}
         <Card className="border-border/45 bg-background/70 shadow-none p-2.5 sm:p-3">
@@ -1985,38 +1976,5 @@ function RoomDetailContent() {
         </div>
       )}
     </div>
-  );
-}
-
-export default function RoomDetail() {
-  const [isAuth, setIsAuth] = useState(false);
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await client.auth.me();
-        setIsAuth(!!res?.data);
-      } catch {
-        setIsAuth(false);
-      } finally {
-        setChecking(false);
-      }
-    };
-    check();
-  }, []);
-
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  return (
-    <PermissionProvider isAuthenticated={isAuth}>
-      <RoomDetailContent />
-    </PermissionProvider>
   );
 }

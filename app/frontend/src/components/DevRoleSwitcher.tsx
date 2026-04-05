@@ -25,7 +25,7 @@ export default function DevRoleSwitcher() {
       className="flex max-w-[min(52vw,14rem)] shrink-0 items-center gap-1.5"
       title="Development only: switch role stored in localStorage"
     >
-      <span className="hidden text-[10px] font-medium uppercase tracking-wide text-white/60 sm:inline">
+      <span className="hidden text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:inline">
         Role
       </span>
       <Select
@@ -37,7 +37,7 @@ export default function DevRoleSwitcher() {
         }}
       >
         <SelectTrigger
-          className="h-8 w-full min-w-0 border-white/25 bg-white/10 px-2 text-xs text-white ring-offset-[#1E3A5F] focus:ring-amber-300/50 [&_svg]:text-white/70"
+          className="h-8 w-full min-w-0 border-input bg-background px-2 text-xs text-foreground"
           aria-label="Development role"
         >
           <SelectValue placeholder="Role" />

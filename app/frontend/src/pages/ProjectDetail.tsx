@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { client } from '@/lib/api';
-import { PermissionProvider, usePermissions } from '@/lib/permissions';
-import Header from '@/components/Header';
+import { usePermissions } from '@/lib/permissions';
 import DashboardStats from '@/components/DashboardStats';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -55,7 +54,7 @@ interface Project {
   name: string;
 }
 
-function ProjectDetailContent() {
+export default function ProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { canCreateFloor, canDeleteFloor, canEdit } = usePermissions();
@@ -246,13 +245,7 @@ function ProjectDetailContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-background">
-      <Header
-        breadcrumbs={[
-          { label: 'Projects', path: '/' },
-          { label: project?.name || 'Project' },
-        ]}
-      />
+    <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
         {/* Dashboard Toggle */}
         <Button
@@ -473,38 +466,5 @@ function ProjectDetailContent() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-export default function ProjectDetail() {
-  const [isAuth, setIsAuth] = useState(false);
-  const [checking, setChecking] = useState(true);
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await client.auth.me();
-        setIsAuth(!!res?.data);
-      } catch {
-        setIsAuth(false);
-      } finally {
-        setChecking(false);
-      }
-    };
-    check();
-  }, []);
-
-  if (checking) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  return (
-    <PermissionProvider isAuthenticated={isAuth}>
-      <ProjectDetailContent />
-    </PermissionProvider>
   );
 }
