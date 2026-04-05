@@ -7,6 +7,7 @@ import { DevPresentationSessionProvider } from '@/lib/devPresentationSession';
 import Index from './pages/Index';
 import AuthCallback from './pages/AuthCallback';
 import AuthError from './pages/AuthError';
+import ProjectLayout from './layouts/ProjectLayout';
 import ProjectDetail from './pages/ProjectDetail';
 import FloorDetail from './pages/FloorDetail';
 import RoomDetail from './pages/RoomDetail';
@@ -27,9 +28,11 @@ const App = () => (
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/auth/error" element={<AuthError />} />
             <Route path="/admin/users" element={<AdminUsers />} />
-            <Route path="/project/:projectId" element={<ProjectDetail />} />
-            <Route path="/project/:projectId/floor/:floorId" element={<FloorDetail />} />
-            <Route path="/project/:projectId/floor/:floorId/room/:roomId" element={<RoomDetail />} />
+            <Route path="/project/:projectId" element={<ProjectLayout />}>
+              <Route index element={<ProjectDetail />} />
+              <Route path="floor/:floorId" element={<FloorDetail />} />
+              <Route path="floor/:floorId/room/:roomId" element={<RoomDetail />} />
+            </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
           </DevPresentationSessionProvider>
