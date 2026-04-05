@@ -2,7 +2,17 @@ import { createContext, useContext, useState, useEffect, useCallback, ReactNode 
 import { client } from '@/lib/api';
 import { DEV_ROLE_CHANGED_EVENT, readDemoLocalStorageUser } from '@/lib/devRole';
 
-export type AppRole = 'admin' | 'manager' | 'electrician' | 'apprentice';
+export type AppRole = 'admin' | 'worker';
+
+/** Maps API / localStorage values (including legacy roles) to admin | worker. */
+export function normalizeAppRole(raw: string | null | undefined): AppRole {
+  if (!raw) return 'worker';
+  const r = String(raw).toLowerCase();
+  if (r === 'admin') return 'admin';
+  if (r === 'manager') return 'admin';
+  if (r === 'electrician' || r === 'apprentice' || r === 'worker') return 'worker';
+  return 'worker';
+}
 
 export interface SectionVisibility {
   visit_log: boolean;
@@ -27,9 +37,7 @@ interface PermissionContextType {
   displayName: string | null;
   loading: boolean;
   isAdmin: boolean;
-  isManager: boolean;
-  isElectrician: boolean;
-  isApprentice: boolean;
+  isWorker: boolean;
   canEdit: boolean;
   canManageUsers: boolean;
   canCreateProject: boolean;
@@ -54,13 +62,11 @@ interface PermissionContextType {
 }
 
 const PermissionContext = createContext<PermissionContextType>({
-  role: 'electrician',
+  role: 'worker',
   displayName: null,
   loading: true,
   isAdmin: false,
-  isManager: false,
-  isElectrician: true,
-  isApprentice: false,
+  isWorker: true,
   canEdit: false,
   canManageUsers: false,
   canCreateProject: false,
@@ -76,7 +82,7 @@ const PermissionContext = createContext<PermissionContextType>({
   canUploadPhoto: true,
   canDeletePhoto: false,
   canEditComment: true,
-  canChangeStatus: false,
+  canChangeStatus: true,
   canMovePhase: false,
   canDeleteVisit: false,
   sectionVisibility: DEFAULT_VISIBILITY,
@@ -85,7 +91,7 @@ const PermissionContext = createContext<PermissionContextType>({
 });
 
 export function PermissionProvider({ children, isAuthenticated }: { children: ReactNode; isAuthenticated: boolean }) {
-  const [role, setRole] = useState<AppRole>('electrician');
+  const [role, setRole] = useState<AppRole>('worker');
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sectionVisibility, setSectionVisibility] = useState<SectionVisibility>(DEFAULT_VISIBILITY);
@@ -103,8 +109,6 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
       }
     })();
     const localRole = localUser?.role;
-    // Dev role in localStorage is only active while the app considers the user signed in.
-    // Otherwise we would show a stale role after logout while cookies still return /auth/me.
     if (
       isDevMode &&
       isAuthenticated &&
@@ -114,7 +118,7 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
         localRole === 'apprentice' ||
         localRole === 'worker')
     ) {
-      setRole((localRole === 'worker' ? 'electrician' : localRole) as AppRole);
+      setRole(normalizeAppRole(localRole));
       setDisplayName(localUser?.name || null);
       setLoading(false);
       return;
@@ -132,14 +136,14 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
         demoRole === 'apprentice' ||
         demoRole === 'worker')
     ) {
-      setRole((demoRole === 'worker' ? 'electrician' : demoRole) as AppRole);
+      setRole(normalizeAppRole(demoRole));
       setDisplayName((demoLocal.name as string) || null);
       setLoading(false);
       return;
     }
 
     if (!isAuthenticated) {
-      setRole('electrician');
+      setRole('worker');
       setDisplayName(null);
       setLoading(false);
       return;
@@ -152,13 +156,13 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
       });
       const data = res?.data;
       if (data?.app_role) {
-        setRole((data.app_role === 'worker' ? 'electrician' : data.app_role) as AppRole);
+        setRole(normalizeAppRole(data.app_role));
         setDisplayName(data.display_name || null);
       } else {
-        setRole('electrician');
+        setRole('worker');
       }
     } catch {
-      setRole('electrician');
+      setRole('worker');
     } finally {
       setLoading(false);
     }
@@ -177,7 +181,7 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
         const vis: SectionVisibility = { ...DEFAULT_VISIBILITY };
         items.forEach((item: { section_key: string; is_visible: boolean }) => {
           if (item.section_key in vis) {
-            (vis as any)[item.section_key] = item.is_visible;
+            (vis as Record<string, boolean>)[item.section_key] = item.is_visible;
           }
         });
         setSectionVisibility(vis);
@@ -206,19 +210,15 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
   }, [loading, isAuthenticated, role, fetchVisibility]);
 
   const isAdmin = role === 'admin';
-  const isManager = role === 'manager';
-  const isElectrician = role === 'electrician';
-  const isApprentice = role === 'apprentice';
-  const canEdit = isAdmin || isManager;
+  const isWorker = role === 'worker';
+  const canEdit = isAdmin;
 
   const value: PermissionContextType = {
     role,
     displayName,
     loading,
     isAdmin,
-    isManager,
-    isElectrician,
-    isApprentice,
+    isWorker,
     canEdit,
     canManageUsers: isAdmin,
     canCreateProject: canEdit,
@@ -231,11 +231,11 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
     canAddChecklistItem: canEdit,
     canDeleteChecklistItem: canEdit,
     canCheckItem: true,
-    canUploadPhoto: !isApprentice || sectionVisibility.photos,
+    canUploadPhoto: isAdmin || sectionVisibility.photos,
     canDeletePhoto: canEdit,
     canEditComment: true,
-    canChangeStatus: isAdmin || isManager || isElectrician,
-    canMovePhase: isAdmin || isManager,
+    canChangeStatus: true,
+    canMovePhase: isAdmin,
     canDeleteVisit: canEdit,
     sectionVisibility,
     refreshRole: fetchRole,

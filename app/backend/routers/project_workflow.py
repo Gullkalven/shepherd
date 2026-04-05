@@ -1,4 +1,4 @@
-"""Per-project workflow phases (order + labels). Admin and BAS (manager) can edit."""
+"""Per-project workflow phases (order + labels). Admins can edit."""
 
 import json
 import logging
@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user
-from dependencies.roles import require_admin_or_manager
+from dependencies.roles import require_admin_role
 from models.rooms import Rooms
 from models.tasks import Tasks
 from schemas.auth import UserResponse
@@ -139,7 +139,7 @@ async def put_project_workflow(
     project_id: int,
     body: ProjectWorkflowUpdate,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     service = ProjectsService(db)

@@ -15,9 +15,8 @@ from dependencies.auth import get_current_user
 from dependencies.room_lock import ROOM_LOCKED_DETAIL, ensure_room_mutable
 from dependencies.roles import (
     ROLE_ADMIN,
-    ROLE_MANAGER,
     get_current_app_role,
-    require_admin_or_manager,
+    require_admin_role,
     require_room_collaborator,
 )
 from schemas.auth import UserResponse
@@ -125,7 +124,7 @@ class RoomsBatchDeleteRequest(BaseModel):
 
 def _prepare_room_update_dict(existing: Any, update_dict: Dict[str, Any], app_role: str) -> None:
     """Keep room.phase / areas[0] in sync for multi-area rooms (mutates update_dict)."""
-    if app_role not in (ROLE_ADMIN, ROLE_MANAGER):
+    if app_role != ROLE_ADMIN:
         update_dict.pop("areas", None)
         return
     if "areas" in update_dict:
@@ -258,7 +257,7 @@ async def get_rooms(
 async def create_rooms(
     data: RoomsData,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new rooms"""
@@ -291,7 +290,7 @@ async def create_rooms(
 async def create_roomss_batch(
     request: RoomsBatchCreateRequest,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple roomss in a single request"""
@@ -326,7 +325,7 @@ async def create_roomss_batch(
 async def update_roomss_batch(
     request: RoomsBatchUpdateRequest,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
@@ -377,7 +376,7 @@ async def update_rooms(
         if not existing:
             logger.warning(f"Rooms with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Rooms not found")
-        if app_role not in (ROLE_ADMIN, ROLE_MANAGER):
+        if app_role != ROLE_ADMIN:
             update_dict.pop("is_locked", None)
             update_dict.pop("phase_lock_overrides", None)
             update_dict.pop("phase", None)
@@ -409,7 +408,7 @@ async def update_rooms(
 async def delete_roomss_batch(
     request: RoomsBatchDeleteRequest,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple roomss by their IDs (requires ownership)"""
@@ -436,7 +435,7 @@ async def delete_roomss_batch(
 async def delete_rooms(
     id: int,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single rooms by ID (requires ownership)"""

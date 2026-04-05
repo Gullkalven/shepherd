@@ -1344,7 +1344,7 @@ export default function FloorDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Project workflow phases — admin / BAS only */}
+      {/* Project workflow phases — admin only */}
       <Dialog open={showWorkflowDialog} onOpenChange={setShowWorkflowDialog}>
         <DialogContent className="max-w-lg mx-4 max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -1356,7 +1356,7 @@ export default function FloorDetail() {
           <p className="text-sm text-muted-foreground">
             Change the order and names shown to the team. Internal keys stay fixed so existing data stays linked;
             you can add phases or remove unused ones. Workers still use the simple board and room screens — only
-            admin and BAS see this screen.
+            Admins see this screen.
           </p>
           <div className="space-y-2">
             {workflowDraft.map((row, index) => (

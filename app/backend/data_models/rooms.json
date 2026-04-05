@@ -44,7 +44,7 @@
         },
         "is_locked": {
             "type": "boolean",
-            "description": "When true, only admin and BAS (manager) can edit room data"
+            "description": "When true, only an admin can edit room data"
         },
         "phase_lock_overrides": {
             "type": "object",

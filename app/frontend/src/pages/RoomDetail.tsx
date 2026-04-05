@@ -83,7 +83,7 @@ interface Room {
   comment?: string;
   blocked_reason?: string;
   is_locked?: boolean;
-  /** Admin/BAS: per-phase worker lock overrides (true = locked for workers) */
+  /** Admin: per-phase worker lock overrides (true = locked for workers) */
   phase_lock_overrides?: Record<string, boolean> | null;
   workflow_deviations?: unknown;
   /** When set: multiple areas with their own phase / locks; null/absent = legacy single area */
@@ -1124,7 +1124,7 @@ export default function RoomDetail() {
             <div className="mt-2 rounded-md border-l-2 border-muted-foreground/25 bg-muted/15 pl-2 pr-2 py-1 flex items-start gap-1.5">
               <Lock className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
               <p className="text-[10px] text-muted-foreground leading-snug">
-                Room locked — view only unless you are admin or BAS.
+                Room locked — view only unless you are an admin.
               </p>
             </div>
           ) : null}
@@ -1262,7 +1262,7 @@ export default function RoomDetail() {
             {phaseReadOnly ? (
               <div className="rounded-md border-l-2 border-muted-foreground/20 bg-muted/10 pl-2.5 pr-2 py-1.5 dark:bg-muted/15">
                 <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Read-only for your role — only BAS/admin can change this phase.
+                  Read-only for your role — only an admin can change this phase.
                 </p>
               </div>
             ) : null}

@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
-import { Plus, FolderOpen, Trash2, HardHat, Crown, ShieldCheck, Wrench, Pencil, Check, X } from 'lucide-react';
+import { Plus, FolderOpen, Trash2, HardHat, Crown, Wrench, Pencil, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import {
@@ -31,17 +31,12 @@ interface Project {
 
 const ROLE_BADGE: Record<string, { label: string; icon: React.ReactNode; color: string; bg: string }> = {
   admin: { label: 'Admin', icon: <Crown className="h-3 w-3" />, color: 'text-amber-700 dark:text-amber-300', bg: 'bg-amber-100 dark:bg-amber-900/40' },
-  manager: { label: 'Manager', icon: <ShieldCheck className="h-3 w-3" />, color: 'text-blue-700 dark:text-blue-300', bg: 'bg-blue-100 dark:bg-blue-900/40' },
-  electrician: { label: 'Electrician', icon: <Wrench className="h-3 w-3" />, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' },
-  apprentice: { label: 'Apprentice', icon: <HardHat className="h-3 w-3" />, color: 'text-violet-700 dark:text-violet-300', bg: 'bg-violet-100 dark:bg-violet-900/40' },
-  worker: { label: 'Electrician', icon: <Wrench className="h-3 w-3" />, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' },
+  worker: { label: 'Worker', icon: <Wrench className="h-3 w-3" />, color: 'text-slate-700 dark:text-slate-300', bg: 'bg-slate-100 dark:bg-slate-800' },
 };
 
 const DEMO_ROLE_SIGN_IN: { role: DevAppRole; label: string }[] = [
   { role: 'admin', label: 'Admin' },
-  { role: 'manager', label: 'BAS / Prosjektleder' },
-  { role: 'electrician', label: 'Montør' },
-  { role: 'apprentice', label: 'Lærling' },
+  { role: 'worker', label: 'Worker' },
 ];
 
 function IndexContent({

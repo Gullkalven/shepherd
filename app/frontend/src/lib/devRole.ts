@@ -1,19 +1,24 @@
 /** Mirrors `AppRole` in permissions — kept local to avoid import cycles. */
-export type DevAppRole = 'admin' | 'manager' | 'electrician' | 'apprentice';
+export type DevAppRole = 'admin' | 'worker';
 
 export const DEV_ROLE_CHANGED_EVENT = 'shepherd-dev-role-changed';
 
-/** Demo / test users: stable ids in `localStorage.user` for deployed and local demos. */
 export const DEMO_USER_PRESETS: Record<DevAppRole, { id: string; name: string }> = {
   admin: { id: 'local-admin', name: 'Demo Admin' },
-  manager: { id: 'local-manager', name: 'Demo BAS / Prosjektleder' },
-  electrician: { id: 'local-electrician', name: 'Demo Montør' },
-  apprentice: { id: 'local-apprentice', name: 'Demo Lærling' },
+  worker: { id: 'local-worker', name: 'Demo Worker' },
 };
 
-const DEMO_USER_IDS = new Set(
-  Object.values(DEMO_USER_PRESETS).map((p) => p.id)
-);
+/** Recognize older demo sign-ins so deployed demos keep working after role simplification. */
+const LEGACY_DEMO_IDS = new Set([
+  'local-manager',
+  'local-electrician',
+  'local-apprentice',
+]);
+
+const DEMO_USER_IDS = new Set([
+  ...Object.values(DEMO_USER_PRESETS).map((p) => p.id),
+  ...LEGACY_DEMO_IDS,
+]);
 
 /** Writes demo user + role and notifies `PermissionProvider` (same pattern as dev role switcher). */
 export function persistDemoSignIn(role: DevAppRole): void {
@@ -53,9 +58,11 @@ export function readDemoLocalStorageUser(): Record<string, unknown> | null {
   try {
     const raw = localStorage.getItem('user');
     if (!raw) return null;
-    const u = JSON.parse(raw) as { id?: string };
+    const u = JSON.parse(raw) as { id?: string; role?: string };
     if (!u?.id || !DEMO_USER_IDS.has(String(u.id))) return null;
-    return u as Record<string, unknown>;
+    const normalizedRole: DevAppRole =
+      u.role === 'admin' || u.role === 'manager' ? 'admin' : 'worker';
+    return { ...u, role: normalizedRole };
   } catch {
     return null;
   }
@@ -80,23 +87,21 @@ export function ensureDemoBearerToken(): void {
 
 export const DEV_ROLE_OPTIONS: { value: DevAppRole; label: string }[] = [
   { value: 'admin', label: 'Admin' },
-  { value: 'manager', label: 'Manager (BAS / Prosjektleder)' },
-  { value: 'electrician', label: 'Electrician (Montør)' },
-  { value: 'apprentice', label: 'Apprentice (Lærling)' },
+  { value: 'worker', label: 'Worker' },
 ];
 
 export function readDevRoleFromStorage(): DevAppRole {
-  if (!isDevRoleSwitcherHost()) return 'electrician';
+  if (!isDevRoleSwitcherHost()) return 'worker';
   try {
     const raw = localStorage.getItem('user');
-    if (!raw) return 'electrician';
+    if (!raw) return 'worker';
     const u = JSON.parse(raw) as { role?: string };
     const r = u?.role;
-    if (r === 'worker' || r === 'electrician') return 'electrician';
-    if (r === 'admin' || r === 'manager' || r === 'apprentice') return r;
-    return 'electrician';
+    if (r === 'admin' || r === 'manager') return 'admin';
+    if (r === 'worker' || r === 'electrician' || r === 'apprentice') return 'worker';
+    return 'worker';
   } catch {
-    return 'electrician';
+    return 'worker';
   }
 }
 

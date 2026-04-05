@@ -12,13 +12,14 @@ from dependencies.auth import get_current_user
 from models.section_settings import Section_settings
 from models.user_roles import User_roles
 from schemas.auth import UserResponse
+from dependencies.roles import ROLE_ADMIN, ROLE_WORKER, normalize_role
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/sections", tags=["section_visibility"])
 
 VALID_SECTIONS = {"visit_log", "checklist", "photos", "comments", "status", "assigned_worker"}
-VALID_ROLES = {"admin", "manager", "electrician", "apprentice", "worker"}
+VALID_ROLES = {ROLE_ADMIN, ROLE_WORKER}
 
 SECTION_LABELS = {
     "visit_log": "Visit Log",
@@ -61,7 +62,7 @@ async def require_admin(
         select(User_roles).where(User_roles.user_id == str(current_user.id))
     )
     role_record = result.scalar_one_or_none()
-    if role_record and role_record.app_role == "admin":
+    if role_record and normalize_role(role_record.app_role) == ROLE_ADMIN:
         return current_user
     raise HTTPException(status_code=403, detail="Admin access required")
 

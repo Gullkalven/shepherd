@@ -12,7 +12,7 @@
         },
         "app_role": {
             "type": "string",
-            "description": "Application role: admin, manager, or worker"
+            "description": "Application role: admin or worker (legacy manager/electrician/apprentice values are normalized on read)"
         },
         "display_name": {
             "type": "string",

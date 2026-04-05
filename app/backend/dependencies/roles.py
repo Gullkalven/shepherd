@@ -11,20 +11,26 @@ from models.user_roles import User_roles
 from schemas.auth import UserResponse
 
 ROLE_ADMIN = "admin"
-ROLE_MANAGER = "manager"
-ROLE_ELECTRICIAN = "electrician"
-ROLE_APPRENTICE = "apprentice"
-LEGACY_ROLE_WORKER = "worker"
+ROLE_WORKER = "worker"
 
-VALID_APP_ROLES: Set[str] = {ROLE_ADMIN, ROLE_MANAGER, ROLE_ELECTRICIAN, ROLE_APPRENTICE}
+# Legacy stored values (BAS / project manager / field roles) map to the two canonical roles.
+_LEGACY_ADMIN_ALIASES = frozenset({"manager"})
+_LEGACY_WORKER_ALIASES = frozenset({"electrician", "apprentice", "worker"})
+
+VALID_APP_ROLES: Set[str] = {ROLE_ADMIN, ROLE_WORKER}
 
 
 def normalize_role(role: Optional[str]) -> str:
-    if role == LEGACY_ROLE_WORKER:
-        return ROLE_ELECTRICIAN
-    if role in VALID_APP_ROLES:
-        return role
-    return ROLE_APPRENTICE
+    if not role or not str(role).strip():
+        return ROLE_WORKER
+    r = str(role).strip().lower()
+    if r == ROLE_ADMIN:
+        return ROLE_ADMIN
+    if r in _LEGACY_ADMIN_ALIASES:
+        return ROLE_ADMIN
+    if r in _LEGACY_WORKER_ALIASES:
+        return ROLE_WORKER
+    return ROLE_WORKER
 
 
 async def get_current_app_role(
@@ -51,13 +57,7 @@ async def get_current_app_role(
         await db.commit()
         return ROLE_ADMIN
 
-    return ROLE_ELECTRICIAN
-
-
-async def require_admin_or_manager(app_role: str = Depends(get_current_app_role)) -> str:
-    if app_role in {ROLE_ADMIN, ROLE_MANAGER}:
-        return app_role
-    raise HTTPException(status_code=403, detail="Manager or admin access required")
+    return ROLE_WORKER
 
 
 async def require_admin_role(app_role: str = Depends(get_current_app_role)) -> str:
@@ -66,14 +66,8 @@ async def require_admin_role(app_role: str = Depends(get_current_app_role)) -> s
     raise HTTPException(status_code=403, detail="Admin access required")
 
 
-async def require_admin_manager_or_electrician(app_role: str = Depends(get_current_app_role)) -> str:
-    if app_role in {ROLE_ADMIN, ROLE_MANAGER, ROLE_ELECTRICIAN}:
-        return app_role
-    raise HTTPException(status_code=403, detail="Electrician, manager, or admin access required")
-
-
 async def require_room_collaborator(app_role: str = Depends(get_current_app_role)) -> str:
-    """Montør, Lærling, BAS, and admin may update room fields that are not admin-only."""
-    if app_role in {ROLE_ADMIN, ROLE_MANAGER, ROLE_ELECTRICIAN, ROLE_APPRENTICE}:
+    """Admin and worker may update room fields that are not admin-only."""
+    if app_role in {ROLE_ADMIN, ROLE_WORKER}:
         return app_role
     raise HTTPException(status_code=403, detail="Sign in with a valid role to update this room")

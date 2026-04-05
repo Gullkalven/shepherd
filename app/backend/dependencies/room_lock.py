@@ -1,12 +1,12 @@
-"""Enforce room lock for field roles (electrician / apprentice)."""
+"""Enforce room lock for workers."""
 
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dependencies.roles import ROLE_ADMIN, ROLE_MANAGER
+from dependencies.roles import ROLE_ADMIN
 from services.rooms import RoomsService
 
-ROOM_LOCKED_DETAIL = "This room is locked. Only admin or BAS can change data here."
+ROOM_LOCKED_DETAIL = "This room is locked. Only an admin can change data here."
 
 
 async def ensure_room_mutable(
@@ -15,7 +15,7 @@ async def ensure_room_mutable(
     user_id: str,
     app_role: str,
 ) -> None:
-    if app_role in (ROLE_ADMIN, ROLE_MANAGER):
+    if app_role == ROLE_ADMIN:
         return
     service = RoomsService(db)
     room = await service.get_by_id(room_id, user_id=user_id)

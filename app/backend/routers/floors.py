@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.floors import FloorsService
 from dependencies.auth import get_current_user
-from dependencies.roles import require_admin_or_manager
+from dependencies.roles import require_admin_role
 from schemas.auth import UserResponse
 
 # Set up logging
@@ -185,7 +185,7 @@ async def get_floors(
 async def create_floors(
     data: FloorsData,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new floors"""
@@ -211,7 +211,7 @@ async def create_floors(
 async def create_floorss_batch(
     request: FloorsBatchCreateRequest,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple floorss in a single request"""
@@ -238,7 +238,7 @@ async def create_floorss_batch(
 async def update_floorss_batch(
     request: FloorsBatchUpdateRequest,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple floorss in a single request (requires ownership)"""
@@ -268,7 +268,7 @@ async def update_floors(
     id: int,
     data: FloorsUpdateData,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing floors (requires ownership)"""
@@ -299,7 +299,7 @@ async def update_floors(
 async def delete_floorss_batch(
     request: FloorsBatchDeleteRequest,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple floorss by their IDs (requires ownership)"""
@@ -326,7 +326,7 @@ async def delete_floorss_batch(
 async def delete_floors(
     id: int,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single floors by ID (requires ownership)"""

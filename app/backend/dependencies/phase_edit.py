@@ -1,4 +1,4 @@
-"""Rules for whether Montør/Lærling may edit checklist/media for a given workflow phase."""
+"""Rules for whether workers may edit checklist/media for a given workflow phase."""
 
 import json
 import logging
@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dependencies.roles import ROLE_ADMIN, ROLE_MANAGER
+from dependencies.roles import ROLE_ADMIN
 from models.projects import Projects
 from models.rooms import Rooms
 from services.rooms import RoomsService
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_PHASE_KEYS: List[str] = ["demontering", "varmekabel", "remontering", "sluttkontroll"]
 
 PHASE_WORKER_LOCKED_DETAIL = (
-    "This phase is locked for workers. Only admin or BAS can change data for this stage."
+    "This phase is locked for workers. Only an admin can change data for this stage."
 )
 
 
@@ -128,7 +128,7 @@ async def ensure_room_phase_editable_for_worker(
     content_phase: str,
     area_id: Optional[str] = None,
 ) -> None:
-    if app_role in (ROLE_ADMIN, ROLE_MANAGER):
+    if app_role == ROLE_ADMIN:
         return
     service = RoomsService(db)
     room = await service.get_by_id(room_id, user_id=user_id)

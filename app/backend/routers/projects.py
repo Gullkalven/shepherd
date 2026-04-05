@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.projects import ProjectsService
 from dependencies.auth import get_current_user
-from dependencies.roles import require_admin_or_manager
+from dependencies.roles import require_admin_role
 from schemas.auth import UserResponse
 
 # Set up logging
@@ -182,7 +182,7 @@ async def get_projects(
 async def create_projects(
     data: ProjectsData,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new projects"""
@@ -208,7 +208,7 @@ async def create_projects(
 async def create_projectss_batch(
     request: ProjectsBatchCreateRequest,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Create multiple projectss in a single request"""
@@ -235,7 +235,7 @@ async def create_projectss_batch(
 async def update_projectss_batch(
     request: ProjectsBatchUpdateRequest,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple projectss in a single request (requires ownership)"""
@@ -265,7 +265,7 @@ async def update_projects(
     id: int,
     data: ProjectsUpdateData,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update an existing projects (requires ownership)"""
@@ -296,7 +296,7 @@ async def update_projects(
 async def delete_projectss_batch(
     request: ProjectsBatchDeleteRequest,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete multiple projectss by their IDs (requires ownership)"""
@@ -323,7 +323,7 @@ async def delete_projectss_batch(
 async def delete_projects(
     id: int,
     current_user: UserResponse = Depends(get_current_user),
-    _role: str = Depends(require_admin_or_manager),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a single projects by ID (requires ownership)"""

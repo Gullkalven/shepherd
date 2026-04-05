@@ -12,7 +12,7 @@
         },
         "role_name": {
             "type": "string",
-            "description": "Role name: admin, manager, worker"
+            "description": "Role name: admin or worker"
         },
         "section_key": {
             "type": "string",

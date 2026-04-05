@@ -15,6 +15,7 @@ from models.rooms import Rooms
 from models.tasks import Tasks
 from models.user_roles import User_roles
 from schemas.auth import UserResponse
+from dependencies.roles import ROLE_ADMIN, normalize_role
 from routers.project_workflow import DEFAULT_PHASES, _parse_stored_workflow
 from services.checklist_templates import ChecklistTemplatesService
 
@@ -75,7 +76,7 @@ async def require_manager_or_admin(
 ) -> UserResponse:
     result = await db.execute(select(User_roles).where(User_roles.user_id == str(current_user.id)))
     role_record = result.scalar_one_or_none()
-    if role_record and role_record.app_role in ("admin", "manager"):
+    if role_record and normalize_role(role_record.app_role) == ROLE_ADMIN:
         return current_user
 
     count_result = await db.execute(select(func.count(User_roles.id)))
@@ -83,7 +84,7 @@ async def require_manager_or_admin(
     if total_roles == 0:
         return current_user
 
-    raise HTTPException(status_code=403, detail="Manager or admin access required")
+    raise HTTPException(status_code=403, detail="Admin access required")
 
 
 @router.get("", response_model=ChecklistTemplatesListResponse)

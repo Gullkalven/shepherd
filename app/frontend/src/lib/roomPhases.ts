@@ -50,9 +50,9 @@ export function phaseTimelineState(
 }
 
 /**
- * Whether Montør/Lærling should be read-only in this phase tab.
+ * Whether workers should be read-only in this phase tab.
  * Default: phases after the room's current (board) phase are locked; earlier or equal are open.
- * Admin/BAS overrides: { phaseKey: true } forces locked; { phaseKey: false } forces unlocked
+ * Admin overrides: { phaseKey: true } forces locked; { phaseKey: false } forces unlocked
  * (e.g. allow finishing an older phase after the room moved forward, or allow work ahead).
  */
 export function phaseTabReadOnlyForWorker(

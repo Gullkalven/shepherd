@@ -12,6 +12,7 @@ from dependencies.auth import get_current_user
 from models.auth import User
 from models.user_roles import User_roles
 from schemas.auth import UserResponse
+from dependencies.roles import ROLE_ADMIN, ROLE_WORKER, normalize_role
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,7 @@ router = APIRouter(prefix="/api/v1/admin/roles", tags=["admin_roles"])
 # ---------- Schemas ----------
 class AssignRoleRequest(BaseModel):
     user_id: str
-    app_role: str  # admin, manager, worker
+    app_role: str  # admin | worker
     display_name: Optional[str] = None
 
 
@@ -53,7 +54,7 @@ class MyRoleResponse(BaseModel):
     display_name: Optional[str] = None
 
 
-VALID_ROLES = {"admin", "manager", "electrician", "apprentice", "worker"}
+VALID_ROLES = {ROLE_ADMIN, ROLE_WORKER}
 
 
 async def require_admin(
@@ -66,7 +67,7 @@ async def require_admin(
     )
     role_record = result.scalar_one_or_none()
 
-    if role_record and role_record.app_role == "admin":
+    if role_record and normalize_role(role_record.app_role) == ROLE_ADMIN:
         return current_user
 
     # Also check if there are NO roles at all (first user becomes admin)
@@ -102,7 +103,7 @@ async def get_my_role(
 
     if role_record:
         return MyRoleResponse(
-            app_role=role_record.app_role,
+            app_role=normalize_role(role_record.app_role),
             display_name=role_record.display_name,
         )
 
@@ -123,7 +124,7 @@ async def get_my_role(
         return MyRoleResponse(app_role="admin", display_name=new_role.display_name)
 
     # Default role for users without an assigned role
-    return MyRoleResponse(app_role="electrician", display_name=None)
+    return MyRoleResponse(app_role=ROLE_WORKER, display_name=None)
 
 
 @router.get("/users", response_model=List[UserWithRoleResponse])
@@ -149,7 +150,7 @@ async def list_users_with_roles(
                 user_id=user.id,
                 email=user.email,
                 name=user.name,
-                app_role=role_record.app_role if role_record else "electrician",
+                app_role=normalize_role(role_record.app_role) if role_record else ROLE_WORKER,
                 display_name=role_record.display_name if role_record else None,
                 role_id=role_record.id if role_record else None,
             )

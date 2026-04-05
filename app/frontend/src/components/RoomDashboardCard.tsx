@@ -56,7 +56,7 @@ interface RoomDashboardCardProps {
   completed: number;
   total: number;
   blocked: boolean;
-  /** Content locked by admin/BAS — workers can view only */
+  /** Content locked by admin — workers can view only */
   contentLocked?: boolean;
   blockedReason?: string;
   assignedWorker?: string;
