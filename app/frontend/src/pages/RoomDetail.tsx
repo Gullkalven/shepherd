@@ -970,7 +970,7 @@ export default function RoomDetail() {
 
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
-      <div className="px-3 py-3 sm:px-4 sm:py-4 max-w-lg mx-auto space-y-4">
+      <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-3 sm:px-4 sm:py-4 lg:max-w-none lg:mx-0 lg:px-6 xl:px-8">
         {/* Room header — clear anchor; admin controls stay quiet */}
         <Card className="border-border/45 bg-background/70 shadow-none p-2.5 sm:p-3">
           <div className="min-w-0">
