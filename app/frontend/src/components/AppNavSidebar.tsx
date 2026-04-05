@@ -94,7 +94,6 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
     roomId?: string;
   }>();
   const navigate = useNavigate();
-  const location = useLocation();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [projectSearch, setProjectSearch] = useState('');
@@ -128,7 +127,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
 
   useEffect(() => {
     void loadProjects();
-  }, [loadProjects, location.pathname]);
+  }, [loadProjects]);
 
   useEffect(() => {
     const onRefresh = () => void loadProjects();
@@ -177,7 +176,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
 
   useEffect(() => {
     void loadProjectTree();
-  }, [loadProjectTree, location.pathname]);
+  }, [loadProjectTree]);
 
   useEffect(() => {
     const onRoleChange = () => {
