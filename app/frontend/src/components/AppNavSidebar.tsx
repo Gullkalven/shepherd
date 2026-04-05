@@ -5,7 +5,7 @@ import { client, fetchProjectsListAll } from '@/lib/api';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import { usePermissions } from '@/lib/permissions';
 import { runAppLogout, PROJECTS_NAV_REFRESH_EVENT, APP_LOGOUT_EVENT } from '@/lib/runAppLogout';
-import { isDevRoleSwitcherHost } from '@/lib/devRole';
+import { DEV_ROLE_CHANGED_EVENT, isDevRoleSwitcherHost } from '@/lib/devRole';
 import { useTheme } from '@/lib/theme';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import { Button } from '@/components/ui/button';
@@ -178,6 +178,15 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
   useEffect(() => {
     void loadProjectTree();
   }, [loadProjectTree, location.pathname]);
+
+  useEffect(() => {
+    const onRoleChange = () => {
+      void loadProjects();
+      void loadProjectTree();
+    };
+    window.addEventListener(DEV_ROLE_CHANGED_EVENT, onRoleChange);
+    return () => window.removeEventListener(DEV_ROLE_CHANGED_EVENT, onRoleChange);
+  }, [loadProjects, loadProjectTree]);
 
   useEffect(() => {
     setOpenFloors(new Set());

@@ -1,0 +1,13 @@
+# Optional Render Blueprint: link in the dashboard or merge `routes` into an existing static site.
+# Fixes client-side routing: a hard refresh on /project/... must serve index.html (SPA fallback).
+services:
+  - type: web
+    name: shepherd-frontend
+    runtime: static
+    rootDir: app/frontend
+    buildCommand: npm install -g pnpm@8 && pnpm install && pnpm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

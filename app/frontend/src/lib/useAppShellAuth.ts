@@ -7,6 +7,7 @@ import {
   readDemoLocalStorageUser,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
+import { APP_LOGOUT_EVENT } from '@/lib/runAppLogout';
 
 /**
  * Same sign-in gate as the former Index wrapper: drives the global shell (sidebar vs sign-in).
@@ -41,6 +42,12 @@ export function useAppShellAuth() {
         if (res?.data) setApiUser(res.data);
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const onAppLogout = () => setApiUser(null);
+    window.addEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
+    return () => window.removeEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
   }, []);
 
   const devSignedIn = sessionActive && !!getLocalDevUser();

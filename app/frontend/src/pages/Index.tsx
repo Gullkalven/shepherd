@@ -13,6 +13,7 @@ import { Plus, FolderOpen, Trash2, HardHat, Crown, Wrench, Pencil, Check, X } fr
 import { toast } from 'sonner';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import {
+  DEV_ROLE_CHANGED_EVENT,
   ensureDemoBearerToken,
   getLocalDevUser,
   isDevRoleSwitcherHost,
@@ -130,6 +131,14 @@ function IndexContent({
     window.addEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
     return () => window.removeEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
   }, [onLogoutClearServer]);
+
+  useEffect(() => {
+    const onRoleChange = () => {
+      void checkAuth();
+    };
+    window.addEventListener(DEV_ROLE_CHANGED_EVENT, onRoleChange);
+    return () => window.removeEventListener(DEV_ROLE_CHANGED_EVENT, onRoleChange);
+  }, [checkAuth]);
 
   const signInAsDemoRole = (role: DevAppRole) => {
     persistDemoSignIn(role);
