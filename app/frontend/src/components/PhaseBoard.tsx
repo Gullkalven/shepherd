@@ -1,4 +1,7 @@
 import RoomDashboardCard from '@/components/RoomDashboardCard';
+import RoomFloorCardContextMenu, {
+  type RoomFloorCardContextMenuProps,
+} from '@/components/RoomFloorCardContextMenu';
 export type { ChecklistSummaryMap } from '@/lib/roomDashboardDerived';
 import {
   DEFAULT_PHASE_WORKFLOW,
@@ -6,6 +9,11 @@ import {
   normalizeRoomPhase,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
+
+export type RoomBoardContextMenuConfig = Omit<
+  RoomFloorCardContextMenuProps,
+  'roomId' | 'roomLabel' | 'children'
+>;
 
 export interface RoomPhaseCard {
   id: number;
@@ -30,6 +38,7 @@ interface PhaseBoardProps {
   selectionMode?: boolean;
   selectedRoomIds?: number[];
   onToggleSelect?: (roomId: number) => void;
+  roomContextMenu?: RoomBoardContextMenuConfig;
 }
 
 export default function PhaseBoard({
@@ -42,6 +51,7 @@ export default function PhaseBoard({
   selectionMode = false,
   selectedRoomIds = [],
   onToggleSelect,
+  roomContextMenu,
 }: PhaseBoardProps) {
   const handleDragStart = (e: React.DragEvent, roomId: number) => {
     e.dataTransfer.setData('roomId', roomId.toString());
@@ -86,25 +96,34 @@ export default function PhaseBoard({
                 const blocked = room.status === 'blocked';
 
                 const rp = normalizeRoomPhase(room.phase, phases);
-                return (
-                  <RoomDashboardCard
+                const cardProps = {
+                  roomNumber: room.room_number,
+                  floorLabel,
+                  phaseStrip: formatPhaseStrip(rp, phases),
+                  completed,
+                  total,
+                  blocked,
+                  contentLocked: Boolean(room.is_locked),
+                  blockedReason: room.blocked_reason,
+                  assignedWorker: room.assigned_worker,
+                  updatedAt: room.updated_at,
+                  onClick: () => (selectionMode ? onToggleSelect?.(room.id) : onRoomClick(room.id)),
+                  selectionMode,
+                  selected: selectedRoomIds.includes(room.id),
+                  draggable: !!onPhaseChange && !selectionMode,
+                  onDragStart: onPhaseChange ? (e) => handleDragStart(e, room.id) : undefined,
+                };
+                return roomContextMenu ? (
+                  <RoomFloorCardContextMenu
                     key={room.id}
-                    roomNumber={room.room_number}
-                    floorLabel={floorLabel}
-                    phaseStrip={formatPhaseStrip(rp, phases)}
-                    completed={completed}
-                    total={total}
-                    blocked={blocked}
-                    contentLocked={Boolean(room.is_locked)}
-                    blockedReason={room.blocked_reason}
-                    assignedWorker={room.assigned_worker}
-                    updatedAt={room.updated_at}
-                    onClick={() => (selectionMode ? onToggleSelect?.(room.id) : onRoomClick(room.id))}
-                    selectionMode={selectionMode}
-                    selected={selectedRoomIds.includes(room.id)}
-                    draggable={!!onPhaseChange && !selectionMode}
-                    onDragStart={onPhaseChange ? (e) => handleDragStart(e, room.id) : undefined}
-                  />
+                    roomId={room.id}
+                    roomLabel={room.room_number}
+                    {...roomContextMenu}
+                  >
+                    <RoomDashboardCard {...cardProps} />
+                  </RoomFloorCardContextMenu>
+                ) : (
+                  <RoomDashboardCard key={room.id} {...cardProps} />
                 );
               })}
             </div>

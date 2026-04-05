@@ -4,6 +4,7 @@ import { client } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import PhaseBoard, { type ChecklistSummaryMap } from '@/components/PhaseBoard';
 import RoomDashboardCard from '@/components/RoomDashboardCard';
+import RoomFloorCardContextMenu from '@/components/RoomFloorCardContextMenu';
 import {
   computeFloorPhaseProgress,
   DEFAULT_PHASE_WORKFLOW,
@@ -525,6 +526,116 @@ export default function FloorDetail() {
     }
   };
 
+  const handleContextOpenRoom = useCallback(
+    (roomId: number) => {
+      if (!projectId || !floorId) return;
+      navigate(`/project/${projectId}/floor/${floorId}/room/${roomId}`);
+    },
+    [projectId, floorId, navigate]
+  );
+
+  const handleContextDeleteRooms = async (ids: number[]) => {
+    if (!canDeleteRoom || ids.length === 0) return;
+    const n = ids.length;
+    if (!confirm(`Delete ${n} room(s) and their checklists, photos, and visit logs?`)) return;
+    let deleted = 0;
+    let failed = 0;
+    for (const roomId of ids) {
+      try {
+        await client.entities.rooms.delete({ id: String(roomId) });
+        deleted++;
+      } catch {
+        failed++;
+      }
+    }
+    if (deleted > 0) {
+      setRooms((prev) => prev.filter((r) => !ids.includes(r.id)));
+      setSelectedRoomIds((prev) => prev.filter((id) => !ids.includes(id)));
+    }
+    if (failed > 0) {
+      toast.warning(`Deleted ${deleted} rooms, ${failed} failed`);
+    } else {
+      toast.success(`Deleted ${deleted} room(s)`);
+    }
+  };
+
+  const handleContextPhaseRooms = async (ids: number[], phaseKey: string) => {
+    if (!canMovePhase || ids.length === 0) return;
+    const nextPhase = normalizeRoomPhase(phaseKey, phaseWorkflow);
+    const succeeded: number[] = [];
+    let skipped = 0;
+    let failed = 0;
+    for (const roomId of ids) {
+      const row = rooms.find((r) => r.id === roomId);
+      const oldPhase = normalizeRoomPhase(row?.phase, phaseWorkflow);
+      if (oldPhase === nextPhase) {
+        skipped++;
+        continue;
+      }
+      try {
+        await client.entities.rooms.update({
+          id: String(roomId),
+          data: { phase: nextPhase },
+        });
+        succeeded.push(roomId);
+      } catch {
+        failed++;
+      }
+    }
+    if (succeeded.length > 0) {
+      setRooms((prev) =>
+        prev.map((r) => (succeeded.includes(r.id) ? { ...r, phase: nextPhase } : r))
+      );
+      await loadData();
+    }
+    if (failed > 0) {
+      toast.warning(`Updated phase for ${succeeded.length} rooms, ${failed} failed`);
+    } else if (succeeded.length > 0) {
+      toast.success(`Updated phase for ${succeeded.length} room(s)`);
+    } else if (skipped > 0 && failed === 0) {
+      toast.info('Already in that phase');
+    }
+  };
+
+  const handleContextLockRooms = async (ids: number[], locked: boolean) => {
+    if (!canEdit || ids.length === 0) return;
+    const succeeded: number[] = [];
+    let failed = 0;
+    for (const roomId of ids) {
+      try {
+        await client.entities.rooms.update({
+          id: String(roomId),
+          data: { is_locked: locked },
+        });
+        succeeded.push(roomId);
+      } catch {
+        failed++;
+      }
+    }
+    if (succeeded.length > 0) {
+      setRooms((prev) =>
+        prev.map((r) => (succeeded.includes(r.id) ? { ...r, is_locked: locked } : r))
+      );
+    }
+    if (failed > 0) {
+      toast.warning(`${locked ? 'Locked' : 'Unlocked'} ${succeeded.length} rooms, ${failed} failed`);
+    } else if (succeeded.length > 0) {
+      toast.success(locked ? `Locked ${succeeded.length} room(s)` : `Unlocked ${succeeded.length} room(s)`);
+    }
+  };
+
+  const roomContextMenuProps = {
+    selectedRoomIds,
+    phaseWorkflow,
+    canDelete: canDeleteRoom,
+    canChangePhase: canMovePhase,
+    canLock: canEdit,
+    onOpenRoom: handleContextOpenRoom,
+    onDeleteRooms: handleContextDeleteRooms,
+    onPhaseRooms: handleContextPhaseRooms,
+    onLockRooms: handleContextLockRooms,
+  };
+
   const loadTemplateForEdit = async (templateId: string) => {
     setEditingTemplateId(templateId);
     const selected = templates.find((t) => String(t.id) === templateId);
@@ -951,6 +1062,7 @@ export default function FloorDetail() {
               selectionMode={selectionMode}
               selectedRoomIds={selectedRoomIds}
               onToggleSelect={toggleRoomSelection}
+              roomContextMenu={roomContextMenuProps}
             />
           </div>
         ) : (
@@ -961,42 +1073,48 @@ export default function FloorDetail() {
               const total = summary?.total ?? 0;
               const rp = normalizeRoomPhase(room.phase, phaseWorkflow);
               return (
-                <RoomDashboardCard
+                <RoomFloorCardContextMenu
                   key={room.id}
-                  roomNumber={room.room_number}
-                  floorLabel={
-                    floor?.name ||
-                    (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
-                  }
-                  phaseLabel={phaseLabel(rp, phaseWorkflow)}
-                  phaseStrip={formatPhaseStrip(rp, phaseWorkflow)}
-                  completed={completed}
-                  total={total}
-                  blocked={room.status === 'blocked'}
-                  contentLocked={Boolean(room.is_locked)}
-                  blockedReason={room.blocked_reason}
-                  assignedWorker={room.assigned_worker}
-                  updatedAt={room.updated_at}
-                  onClick={() =>
-                    selectionMode
-                      ? toggleRoomSelection(room.id)
-                      : navigate(`/project/${projectId}/floor/${floorId}/room/${room.id}`)
-                  }
-                  selectionMode={selectionMode}
-                  selected={selectedRoomIds.includes(room.id)}
-                  trailing={
-                    canDeleteRoom ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
-                        onClick={(e) => handleDeleteRoom(e, room.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    ) : undefined
-                  }
-                />
+                  roomId={room.id}
+                  roomLabel={room.room_number}
+                  {...roomContextMenuProps}
+                >
+                  <RoomDashboardCard
+                    roomNumber={room.room_number}
+                    floorLabel={
+                      floor?.name ||
+                      (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
+                    }
+                    phaseLabel={phaseLabel(rp, phaseWorkflow)}
+                    phaseStrip={formatPhaseStrip(rp, phaseWorkflow)}
+                    completed={completed}
+                    total={total}
+                    blocked={room.status === 'blocked'}
+                    contentLocked={Boolean(room.is_locked)}
+                    blockedReason={room.blocked_reason}
+                    assignedWorker={room.assigned_worker}
+                    updatedAt={room.updated_at}
+                    onClick={() =>
+                      selectionMode
+                        ? toggleRoomSelection(room.id)
+                        : navigate(`/project/${projectId}/floor/${floorId}/room/${room.id}`)
+                    }
+                    selectionMode={selectionMode}
+                    selected={selectedRoomIds.includes(room.id)}
+                    trailing={
+                      canDeleteRoom ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                          onClick={(e) => handleDeleteRoom(e, room.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : undefined
+                    }
+                  />
+                </RoomFloorCardContextMenu>
               );
             })}
           </div>
