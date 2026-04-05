@@ -100,7 +100,11 @@ export default function RoomDashboardCard({
   return (
     <Card
       className={cn(
-        'cursor-pointer border py-2 px-2.5 shadow-sm transition-shadow hover:shadow-md active:scale-[0.99]',
+        'cursor-pointer border py-2 px-2.5 shadow-sm transition-[box-shadow,border-color,ring-width,ring-color] duration-200 ease-out',
+        'hover:shadow-md active:scale-[0.99]',
+        selectionMode && selected
+          ? 'ring-2 ring-[#1E3A5F]/40 dark:ring-blue-400/45'
+          : 'hover:ring-1 hover:ring-black/[0.06] dark:hover:ring-white/[0.07]',
         CARD_SHELL[kind],
         className
       )}

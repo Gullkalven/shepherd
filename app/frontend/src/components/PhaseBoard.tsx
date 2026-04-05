@@ -76,7 +76,7 @@ export default function PhaseBoard({
         return (
           <div
             key={phase.key}
-            className="flex min-h-0 min-w-0 flex-shrink-0 flex-col snap-start w-[min(20rem,calc(100vw-2rem))] sm:w-[21rem] lg:w-[clamp(18rem,22vw,26rem)]"
+            className="flex min-h-0 min-w-0 flex-shrink-0 flex-col snap-start w-[min(20rem,calc(100vw-2rem))] sm:w-[21rem] lg:w-[clamp(18rem,22vw,26rem)] overflow-hidden rounded-lg border border-border/50 shadow-sm transition-[box-shadow,border-color] duration-200 ease-out hover:border-border hover:shadow-md"
             onDragOver={handleDragOver}
             onDrop={(e) => handleDrop(e, phase.key)}
           >

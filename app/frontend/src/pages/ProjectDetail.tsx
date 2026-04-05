@@ -339,7 +339,7 @@ export default function ProjectDetail() {
               return (
                 <Card
                   key={floor.id}
-                  className="p-4 cursor-pointer hover:shadow-md transition-shadow active:scale-[0.99]"
+                  className="p-4 shepherd-interactive-card"
                   onClick={() => editingFloorId !== floor.id && navigate(`/project/${projectId}/floor/${floor.id}`)}
                 >
                   <div className="flex items-center justify-between">

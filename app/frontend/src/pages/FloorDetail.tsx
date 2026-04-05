@@ -887,7 +887,11 @@ export default function FloorDetail() {
             <Button
               variant="ghost"
               size="sm"
-              className={`rounded-md h-8 px-3 ${viewMode === 'list' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''}`}
+              className={`rounded-md h-8 px-3 transition-[background-color,box-shadow] duration-200 ease-out ${
+                viewMode === 'list'
+                  ? 'bg-white dark:bg-slate-700 shadow-sm'
+                  : 'hover:bg-white/70 dark:hover:bg-slate-700/60'
+              }`}
               onClick={() => setViewMode('list')}
             >
               <LayoutGrid className="h-4 w-4 mr-1" />
@@ -896,7 +900,11 @@ export default function FloorDetail() {
             <Button
               variant="ghost"
               size="sm"
-              className={`rounded-md h-8 px-3 ${viewMode === 'kanban' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''}`}
+              className={`rounded-md h-8 px-3 transition-[background-color,box-shadow] duration-200 ease-out ${
+                viewMode === 'kanban'
+                  ? 'bg-white dark:bg-slate-700 shadow-sm'
+                  : 'hover:bg-white/70 dark:hover:bg-slate-700/60'
+              }`}
               onClick={() => setViewMode('kanban')}
             >
               <Columns3 className="h-4 w-4 mr-1" />

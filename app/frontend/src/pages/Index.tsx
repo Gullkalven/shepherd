@@ -318,7 +318,7 @@ function IndexContent({
             {projects.map((project) => (
               <Card
                 key={project.id}
-                className="p-4 cursor-pointer hover:shadow-md transition-shadow active:scale-[0.99]"
+                className="p-4 shepherd-interactive-card"
                 onClick={() => editingProjectId !== project.id && navigate(`/project/${project.id}`)}
               >
                 <div className="flex items-center justify-between">

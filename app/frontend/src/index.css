@@ -99,3 +99,15 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  /**
+   * Shared affordance for primary clickable cards (project list, floor list, etc.).
+   * Keeps hover subtle: border + shadow only; no layout shift.
+   */
+  .shepherd-interactive-card {
+    @apply cursor-pointer transition-[box-shadow,border-color,transform] duration-200 ease-out;
+    @apply hover:border-slate-300/90 hover:shadow-md dark:hover:border-slate-600;
+    @apply active:scale-[0.99];
+  }
+}

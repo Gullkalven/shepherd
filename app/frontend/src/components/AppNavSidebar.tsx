@@ -54,7 +54,7 @@ export default function AppNavSidebar({
           navigate('/');
           afterNav();
         }}
-        className="mb-3 flex items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-slate-200/80 dark:hover:bg-slate-800/80"
+        className="mb-3 flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left transition-[background-color,box-shadow] duration-200 ease-out hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90"
       >
         <HardHat className="h-5 w-5 shrink-0 text-amber-500" />
         <span className="text-sm font-black tracking-[0.12em] uppercase">
@@ -289,9 +289,9 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
                       afterNav();
                     }}
                     className={cn(
-                      'w-full rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-                      'hover:bg-slate-200/80 dark:hover:bg-slate-800/80',
-                      isActiveProject && 'bg-slate-200 dark:bg-slate-800 font-medium'
+                      'w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm transition-[background-color,box-shadow] duration-200 ease-out',
+                      !isActiveProject && 'hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90',
+                      isActiveProject && 'bg-slate-200 dark:bg-slate-800 font-medium shadow-sm'
                     )}
                   >
                     <span className="truncate">{p.name}</span>
@@ -326,9 +326,9 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
                             type="button"
                             onClick={() => toggleFloor(f.id)}
                             className={cn(
-                              'flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-                              'hover:bg-slate-200/80 dark:hover:bg-slate-800/80',
-                              isActiveFloor && 'bg-slate-200 dark:bg-slate-800 font-medium'
+                              'flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm transition-[background-color,box-shadow] duration-200 ease-out',
+                              !isActiveFloor && 'hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90',
+                              isActiveFloor && 'bg-slate-200 dark:bg-slate-800 font-medium shadow-sm'
                             )}
                             aria-expanded={expanded}
                           >
@@ -355,10 +355,10 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
                                         afterNav();
                                       }}
                                       className={cn(
-                                        'w-full rounded-md px-2 py-1 text-left text-sm transition-colors',
-                                        'hover:bg-slate-200/80 dark:hover:bg-slate-800/80',
+                                        'w-full cursor-pointer rounded-md px-2 py-1 text-left text-sm transition-[background-color,box-shadow] duration-200 ease-out',
+                                        !isActiveRoom && 'hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90',
                                         isActiveRoom
-                                          ? 'bg-[#1E3A5F]/15 text-[#1E3A5F] dark:bg-blue-950/50 dark:text-blue-200 font-medium'
+                                          ? 'bg-[#1E3A5F]/15 text-[#1E3A5F] shadow-sm dark:bg-blue-950/50 dark:text-blue-200 font-medium'
                                           : 'text-muted-foreground'
                                       )}
                                     >
@@ -401,9 +401,9 @@ function SidebarFooter({ afterNav }: { afterNav: () => void }) {
             afterNav();
           }}
           className={cn(
-            'mx-1 w-[calc(100%-0.5rem)] rounded-md px-2 py-2 text-left text-sm transition-colors',
-            'hover:bg-slate-200/80 dark:hover:bg-slate-800/80',
-            location.pathname.startsWith('/admin') && 'bg-slate-200 dark:bg-slate-800 font-medium'
+            'mx-1 w-[calc(100%-0.5rem)] cursor-pointer rounded-md px-2 py-2 text-left text-sm transition-[background-color,box-shadow] duration-200 ease-out',
+            !location.pathname.startsWith('/admin') && 'hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90',
+            location.pathname.startsWith('/admin') && 'bg-slate-200 dark:bg-slate-800 font-medium shadow-sm'
           )}
         >
           Admin settings
