@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
 import tailwindcssAnimate from 'tailwindcss-animate';
 import tailwindcssAspectRatio from '@tailwindcss/aspect-ratio';
 
@@ -94,5 +95,12 @@ export default {
       },
     },
   },
-  plugins: [tailwindcssAnimate, tailwindcssAspectRatio],
+  plugins: [
+    tailwindcssAnimate,
+    tailwindcssAspectRatio,
+    /** Hover-only utilities: coarse pointers / touch-first devices skip these (no sticky “hover” look). */
+    plugin(({ addVariant }) => {
+      addVariant('fine-hover', '@media (hover: hover) and (pointer: fine) { &:hover }');
+    }),
+  ],
 } satisfies Config;

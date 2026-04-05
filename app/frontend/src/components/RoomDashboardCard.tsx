@@ -23,6 +23,18 @@ const CARD_SHELL: Record<DashboardStatusKind, string> = {
     'border-l-[6px] border-l-emerald-600 bg-emerald-50/95 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800',
 };
 
+/** Desktop hover only: slightly lighter surface + clearer border, same hue family as status (phase look preserved). */
+const CARD_SHELL_FINE_HOVER: Record<DashboardStatusKind, string> = {
+  blocked:
+    'fine-hover:bg-red-100/90 dark:fine-hover:bg-red-950/45 fine-hover:border-red-300/90 dark:fine-hover:border-red-800',
+  not_started:
+    'fine-hover:bg-slate-50/95 dark:fine-hover:bg-slate-900/65 fine-hover:border-slate-300 dark:fine-hover:border-slate-600',
+  in_progress:
+    'fine-hover:bg-amber-50 dark:fine-hover:bg-amber-950/40 fine-hover:border-amber-300 dark:fine-hover:border-amber-700',
+  completed:
+    'fine-hover:bg-emerald-50 dark:fine-hover:bg-emerald-950/40 fine-hover:border-emerald-300 dark:fine-hover:border-emerald-800',
+};
+
 const PROGRESS_FILL: Record<DashboardStatusKind, string> = {
   blocked: 'bg-red-500',
   not_started: 'bg-slate-400',
@@ -100,11 +112,15 @@ export default function RoomDashboardCard({
   return (
     <Card
       className={cn(
-        'cursor-pointer border py-2 px-2.5 shadow-sm transition-[box-shadow,border-color,ring-width,ring-color] duration-200 ease-out',
-        'hover:shadow-md active:scale-[0.99]',
+        'cursor-pointer border py-2 px-2.5 shadow-sm transition-[background-color,border-color,box-shadow,transform,ring-width,ring-color] duration-200 ease-out',
+        'active:scale-[0.99]',
         selectionMode && selected
           ? 'ring-2 ring-[#1E3A5F]/40 dark:ring-blue-400/45'
-          : 'hover:ring-1 hover:ring-black/[0.06] dark:hover:ring-white/[0.07]',
+          : cn(
+              'fine-hover:-translate-y-px fine-hover:shadow-md',
+              'fine-hover:ring-1 fine-hover:ring-black/[0.05] dark:fine-hover:ring-white/[0.06]',
+              CARD_SHELL_FINE_HOVER[kind]
+            ),
         CARD_SHELL[kind],
         className
       )}
