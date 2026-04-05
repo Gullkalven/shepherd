@@ -831,7 +831,7 @@ export default function FloorDetail() {
     <div className="flex h-dvh flex-col overflow-hidden bg-slate-50 dark:bg-background">
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="shrink-0 space-y-4">
-          <div className="mx-auto w-full max-w-lg space-y-4 px-4 pb-4 pt-4 lg:max-w-none lg:px-6 xl:px-8">
+          <div className="mx-auto w-full max-w-lg space-y-4 px-4 pb-4 pt-4 lg:mx-0 lg:max-w-none lg:px-6 xl:px-8">
         {/* Floor Name (editable) */}
         <div className="flex items-center gap-2 group/flname">
           {editingFloorName ? (
@@ -1034,9 +1034,9 @@ export default function FloorDetail() {
         </div>
         </div>
 
-        {/* Room Views — list/empty stay narrow; kanban uses full width (Trello-style on desktop) */}
+        {/* Room Views — list grid expands on md+; kanban uses full width (horizontal columns) */}
         {rooms.length === 0 ? (
-          <div className="mx-auto w-full max-w-lg shrink-0 px-4 pb-4 lg:max-w-none lg:px-6 xl:px-8">
+          <div className="mx-auto w-full max-w-lg shrink-0 px-4 pb-4 lg:mx-0 lg:max-w-none lg:px-6 xl:px-8">
             <Card className="p-8 text-center">
               <DoorOpen className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
               <p className="text-muted-foreground mb-2">No rooms yet</p>
@@ -1066,57 +1066,59 @@ export default function FloorDetail() {
             />
           </div>
         ) : (
-          <div className="mx-auto min-h-0 w-full max-w-lg flex-1 space-y-2 overflow-y-auto px-4 pb-4 lg:max-w-none lg:px-6 xl:px-8">
-            {rooms.map((room) => {
-              const summary = checklistByRoomId[room.id];
-              const completed = summary?.completed ?? 0;
-              const total = summary?.total ?? 0;
-              const rp = normalizeRoomPhase(room.phase, phaseWorkflow);
-              return (
-                <RoomFloorCardContextMenu
-                  key={room.id}
-                  roomId={room.id}
-                  roomLabel={room.room_number}
-                  {...roomContextMenuProps}
-                >
-                  <RoomDashboardCard
-                    roomNumber={room.room_number}
-                    floorLabel={
-                      floor?.name ||
-                      (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
-                    }
-                    phaseLabel={phaseLabel(rp, phaseWorkflow)}
-                    phaseStrip={formatPhaseStrip(rp, phaseWorkflow)}
-                    completed={completed}
-                    total={total}
-                    blocked={room.status === 'blocked'}
-                    contentLocked={Boolean(room.is_locked)}
-                    blockedReason={room.blocked_reason}
-                    assignedWorker={room.assigned_worker}
-                    updatedAt={room.updated_at}
-                    onClick={() =>
-                      selectionMode
-                        ? toggleRoomSelection(room.id)
-                        : navigate(`/project/${projectId}/floor/${floorId}/room/${room.id}`)
-                    }
-                    selectionMode={selectionMode}
-                    selected={selectedRoomIds.includes(room.id)}
-                    trailing={
-                      canDeleteRoom ? (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
-                          onClick={(e) => handleDeleteRoom(e, room.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      ) : undefined
-                    }
-                  />
-                </RoomFloorCardContextMenu>
-              );
-            })}
+          <div className="mx-auto min-h-0 w-full max-w-lg flex-1 overflow-y-auto px-4 pb-4 lg:mx-0 lg:max-w-none lg:px-6 xl:px-8">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-3 lg:grid-cols-3 lg:gap-3 xl:grid-cols-4">
+              {rooms.map((room) => {
+                const summary = checklistByRoomId[room.id];
+                const completed = summary?.completed ?? 0;
+                const total = summary?.total ?? 0;
+                const rp = normalizeRoomPhase(room.phase, phaseWorkflow);
+                return (
+                  <RoomFloorCardContextMenu
+                    key={room.id}
+                    roomId={room.id}
+                    roomLabel={room.room_number}
+                    {...roomContextMenuProps}
+                  >
+                    <RoomDashboardCard
+                      roomNumber={room.room_number}
+                      floorLabel={
+                        floor?.name ||
+                        (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
+                      }
+                      phaseLabel={phaseLabel(rp, phaseWorkflow)}
+                      phaseStrip={formatPhaseStrip(rp, phaseWorkflow)}
+                      completed={completed}
+                      total={total}
+                      blocked={room.status === 'blocked'}
+                      contentLocked={Boolean(room.is_locked)}
+                      blockedReason={room.blocked_reason}
+                      assignedWorker={room.assigned_worker}
+                      updatedAt={room.updated_at}
+                      onClick={() =>
+                        selectionMode
+                          ? toggleRoomSelection(room.id)
+                          : navigate(`/project/${projectId}/floor/${floorId}/room/${room.id}`)
+                      }
+                      selectionMode={selectionMode}
+                      selected={selectedRoomIds.includes(room.id)}
+                      trailing={
+                        canDeleteRoom ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                            onClick={(e) => handleDeleteRoom(e, room.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  </RoomFloorCardContextMenu>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
