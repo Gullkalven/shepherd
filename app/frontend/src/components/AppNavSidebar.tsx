@@ -431,8 +431,7 @@ function SidebarFooter({ afterNav }: { afterNav: () => void }) {
           variant="ghost"
           className="h-9 w-full justify-start gap-2 px-2 text-muted-foreground"
           onClick={() => {
-            runAppLogout(navigate, endSession);
-            afterNav();
+            void runAppLogout(navigate, endSession).finally(() => afterNav());
           }}
         >
           <LogOut className="h-4 w-4" />

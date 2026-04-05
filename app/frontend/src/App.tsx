@@ -1,6 +1,7 @@
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from '@/lib/queryClient';
 import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@/lib/theme';
 import { DevPresentationSessionProvider } from '@/lib/devPresentationSession';
@@ -13,8 +14,6 @@ import FloorDetail from './pages/FloorDetail';
 import RoomDetail from './pages/RoomDetail';
 import AdminUsers from './pages/AdminUsers';
 import NotFound from './pages/NotFound';
-
-const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

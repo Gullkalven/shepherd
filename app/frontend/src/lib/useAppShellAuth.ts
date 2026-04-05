@@ -7,6 +7,10 @@ import {
   readDemoLocalStorageUser,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
+import {
+  getAuthMeEpoch,
+  isClientLogoutGateActive,
+} from '@/lib/appLogout';
 import { APP_LOGOUT_EVENT } from '@/lib/runAppLogout';
 
 /**
@@ -21,10 +25,14 @@ export function useAppShellAuth() {
     if (isDevRoleSwitcherHost()) {
       void (async () => {
         ensureDemoBearerToken();
+        const startEpoch = getAuthMeEpoch();
         try {
           const res = await client.auth.me();
+          if (startEpoch !== getAuthMeEpoch()) return;
+          if (isClientLogoutGateActive() && !readDemoLocalStorageUser()) return;
           setApiUser(res?.data ?? null);
         } catch {
+          if (startEpoch !== getAuthMeEpoch()) return;
           setApiUser(null);
         } finally {
           setChecking(false);
@@ -34,11 +42,18 @@ export function useAppShellAuth() {
     }
 
     ensureDemoBearerToken();
-    setApiUser(readDemoLocalStorageUser());
+    const demo = readDemoLocalStorageUser();
+    setApiUser(demo);
     setChecking(false);
+    const startEpoch = getAuthMeEpoch();
+    if (isClientLogoutGateActive() && !demo) {
+      return;
+    }
     void client.auth
       .me()
       .then((res) => {
+        if (startEpoch !== getAuthMeEpoch()) return;
+        if (isClientLogoutGateActive() && !readDemoLocalStorageUser()) return;
         if (res?.data) setApiUser(res.data);
       })
       .catch(() => {});

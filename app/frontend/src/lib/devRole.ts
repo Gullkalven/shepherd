@@ -1,3 +1,5 @@
+import { clearClientLogoutGate } from '@/lib/appLogout';
+
 /** Mirrors `AppRole` in permissions — kept local to avoid import cycles. */
 export type DevAppRole = 'admin' | 'worker';
 
@@ -23,6 +25,7 @@ const DEMO_USER_IDS = new Set([
 /** Writes demo user + role and notifies `PermissionProvider` (same pattern as dev role switcher). */
 export function persistDemoSignIn(role: DevAppRole): void {
   if (typeof window === 'undefined') return;
+  clearClientLogoutGate();
   const preset = DEMO_USER_PRESETS[role];
   localStorage.setItem(
     'user',
@@ -118,6 +121,7 @@ export function applyDevRole(role: DevAppRole): void {
   base.id = preset.id;
   base.role = role;
   base.name = preset.name;
+  clearClientLogoutGate();
   localStorage.setItem('user', JSON.stringify(base));
   window.dispatchEvent(new Event(DEV_ROLE_CHANGED_EVENT));
 }

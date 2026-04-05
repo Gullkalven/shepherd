@@ -22,6 +22,10 @@ import {
   type DevAppRole,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
+import {
+  getAuthMeEpoch,
+  isClientLogoutGateActive,
+} from '@/lib/appLogout';
 
 interface Project {
   id: number;
@@ -72,12 +76,23 @@ function IndexContent({
       return;
     }
 
-    // Deployed demo: do not wait on auth.me() for UI or project list; localStorage demo (or null) first.
-    setUser(readDemoLocalStorageUser());
+    // Deployed: demo user comes from localStorage. Do not call auth.me() after logout (gate) with no demo user,
+    // or a still-valid cookie will repopulate `user` while the shell stays logged out (no sidebar).
+    const demo = readDemoLocalStorageUser();
+    setUser(demo);
     setLoading(false);
-    void client.auth.me().then((res) => {
-      if (res?.data) setUser(res.data);
-    }).catch(() => {});
+    if (isClientLogoutGateActive() && !demo) {
+      return;
+    }
+    const startEpoch = getAuthMeEpoch();
+    void client.auth
+      .me()
+      .then((res) => {
+        if (startEpoch !== getAuthMeEpoch()) return;
+        if (isClientLogoutGateActive() && !readDemoLocalStorageUser()) return;
+        if (res?.data) setUser(res.data);
+      })
+      .catch(() => {});
   }, [sessionActive]);
 
   useEffect(() => {
