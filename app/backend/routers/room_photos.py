@@ -18,6 +18,7 @@ from dependencies.phase_edit import (
     ensure_room_phase_editable_for_worker,
     workflow_keys_for_room,
 )
+from dependencies.room_areas import norm_area_id, room_phase_for_area
 from dependencies.room_lock import ensure_room_mutable
 from dependencies.roles import get_current_app_role
 from schemas.auth import UserResponse
@@ -37,6 +38,7 @@ class Room_photosData(BaseModel):
     caption: str = None
     created_at: Optional[datetime] = None
     phase: Optional[str] = None
+    area_id: Optional[str] = None
 
 
 class Room_photosUpdateData(BaseModel):
@@ -47,6 +49,7 @@ class Room_photosUpdateData(BaseModel):
     caption: Optional[str] = None
     created_at: Optional[datetime] = None
     phase: Optional[str] = None
+    area_id: Optional[str] = None
 
 
 class Room_photosResponse(BaseModel):
@@ -59,6 +62,7 @@ class Room_photosResponse(BaseModel):
     caption: Optional[str] = None
     created_at: Optional[datetime] = None
     phase: Optional[str] = None
+    area_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -212,9 +216,11 @@ async def create_room_photos(
         room_obj = room_row.scalar_one_or_none()
         if room_obj:
             keys = await workflow_keys_for_room(db, room_obj)
-            eff = effective_media_phase(data.phase, getattr(room_obj, "phase", None), keys)
+            aid = norm_area_id(data.area_id)
+            area_rp = room_phase_for_area(room_obj, aid, keys)
+            eff = effective_media_phase(data.phase, area_rp, keys)
             await ensure_room_phase_editable_for_worker(
-                db, data.room_id, str(current_user.id), app_role, eff
+                db, data.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
@@ -252,9 +258,11 @@ async def create_room_photoss_batch(
             room_obj = room_row.scalar_one_or_none()
             if room_obj:
                 keys = await workflow_keys_for_room(db, room_obj)
-                eff = effective_media_phase(item_data.phase, getattr(room_obj, "phase", None), keys)
+                aid = norm_area_id(item_data.area_id)
+                area_rp = room_phase_for_area(room_obj, aid, keys)
+                eff = effective_media_phase(item_data.phase, area_rp, keys)
                 await ensure_room_phase_editable_for_worker(
-                    db, item_data.room_id, str(current_user.id), app_role, eff
+                    db, item_data.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
@@ -300,9 +308,11 @@ async def update_room_photoss_batch(
             if room_obj:
                 keys = await workflow_keys_for_room(db, room_obj)
                 merged_ph = update_dict.get("phase", getattr(row, "phase", None))
-                eff = effective_media_phase(merged_ph, getattr(room_obj, "phase", None), keys)
+                aid = norm_area_id(update_dict.get("area_id", getattr(row, "area_id", None)))
+                area_rp = room_phase_for_area(room_obj, aid, keys)
+                eff = effective_media_phase(merged_ph, area_rp, keys)
                 await ensure_room_phase_editable_for_worker(
-                    db, row.room_id, str(current_user.id), app_role, eff
+                    db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
             result = await service.update(item.id, update_dict, user_id=str(current_user.id))
             if result:
@@ -347,9 +357,11 @@ async def update_room_photos(
         if room_obj:
             keys = await workflow_keys_for_room(db, room_obj)
             merged_ph = update_dict.get("phase", getattr(row, "phase", None))
-            eff = effective_media_phase(merged_ph, getattr(room_obj, "phase", None), keys)
+            aid = norm_area_id(update_dict.get("area_id", getattr(row, "area_id", None)))
+            area_rp = room_phase_for_area(room_obj, aid, keys)
+            eff = effective_media_phase(merged_ph, area_rp, keys)
             await ensure_room_phase_editable_for_worker(
-                db, row.room_id, str(current_user.id), app_role, eff
+                db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
         result = await service.update(id, update_dict, user_id=str(current_user.id))
         if not result:
@@ -391,11 +403,13 @@ async def delete_room_photoss_batch(
             room_obj = room_row.scalar_one_or_none()
             if room_obj:
                 keys = await workflow_keys_for_room(db, room_obj)
+                aid = norm_area_id(getattr(row, "area_id", None))
+                area_rp = room_phase_for_area(room_obj, aid, keys)
                 eff = effective_media_phase(
-                    getattr(row, "phase", None), getattr(room_obj, "phase", None), keys
+                    getattr(row, "phase", None), area_rp, keys
                 )
                 await ensure_room_phase_editable_for_worker(
-                    db, row.room_id, str(current_user.id), app_role, eff
+                    db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
             success = await service.delete(item_id, user_id=str(current_user.id))
             if success:
@@ -433,11 +447,13 @@ async def delete_room_photos(
         room_obj = room_row.scalar_one_or_none()
         if room_obj:
             keys = await workflow_keys_for_room(db, room_obj)
+            aid = norm_area_id(getattr(row, "area_id", None))
+            area_rp = room_phase_for_area(room_obj, aid, keys)
             eff = effective_media_phase(
-                getattr(row, "phase", None), getattr(room_obj, "phase", None), keys
+                getattr(row, "phase", None), area_rp, keys
             )
             await ensure_room_phase_editable_for_worker(
-                db, row.room_id, str(current_user.id), app_role, eff
+                db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
         success = await service.delete(id, user_id=str(current_user.id))
         if not success:

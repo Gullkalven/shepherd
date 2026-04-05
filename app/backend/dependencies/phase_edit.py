@@ -12,6 +12,7 @@ from dependencies.roles import ROLE_ADMIN, ROLE_MANAGER
 from models.projects import Projects
 from models.rooms import Rooms
 from services.rooms import RoomsService
+from dependencies.room_areas import worker_phase_context_for_area
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,7 @@ async def ensure_room_phase_editable_for_worker(
     user_id: str,
     app_role: str,
     content_phase: str,
+    area_id: Optional[str] = None,
 ) -> None:
     if app_role in (ROLE_ADMIN, ROLE_MANAGER):
         return
@@ -133,10 +135,11 @@ async def ensure_room_phase_editable_for_worker(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     keys = await workflow_keys_for_room(db, room)
+    rn, ov = worker_phase_context_for_area(room, area_id, keys)
     if phase_tab_locked_for_worker(
-        getattr(room, "phase", None),
+        rn,
         content_phase,
         keys,
-        getattr(room, "phase_lock_overrides", None),
+        ov,
     ):
         raise HTTPException(status_code=403, detail=PHASE_WORKER_LOCKED_DETAIL)

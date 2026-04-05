@@ -9,6 +9,7 @@ class Room_photos(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
     user_id = Column(String, nullable=False)
     room_id = Column(Integer, nullable=False)
+    area_id = Column(String, nullable=True)
     object_key = Column(String, nullable=False)
     filename = Column(String, nullable=True)
     caption = Column(String, nullable=True)

@@ -21,5 +21,7 @@ class Rooms(Base):
     phase_lock_overrides = Column(JSON, nullable=True)
     # Structured deviations/notes per room (list of dicts); see frontend Room workflow
     workflow_deviations = Column(JSON, nullable=True)
+    # Optional list of { id, name, phase?, phase_lock_overrides? }; null = legacy single "Main" area
+    areas = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

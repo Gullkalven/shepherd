@@ -30,6 +30,13 @@ import {
   computePhaseChipUi,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
+import {
+  DEFAULT_AREA_ID,
+  hasPersistedAreas,
+  normalizeRoomAreas,
+  taskBelongsToArea,
+  type RoomArea,
+} from '@/lib/roomAreas';
 import { cn } from '@/lib/utils';
 
 const STATUS_OPTIONS = [
@@ -54,6 +61,7 @@ interface Task {
   is_template_managed?: boolean;
   is_overridden?: boolean;
   phase?: string | null;
+  area_id?: string | null;
 }
 
 interface Photo {
@@ -64,6 +72,7 @@ interface Photo {
   downloadUrl?: string;
   phase?: string | null;
   created_at?: string | null;
+  area_id?: string | null;
 }
 
 interface Room {
@@ -78,6 +87,8 @@ interface Room {
   /** Admin/BAS: per-phase worker lock overrides (true = locked for workers) */
   phase_lock_overrides?: Record<string, boolean> | null;
   workflow_deviations?: unknown;
+  /** When set: multiple areas with their own phase / locks; null/absent = legacy single area */
+  areas?: unknown;
   floor_id: number;
   project_id: number;
 }
@@ -89,6 +100,7 @@ type WorkflowDeviation = {
   status: 'open' | 'resolved';
   created_at: string;
   resolved_at?: string;
+  area_id?: string;
 };
 
 interface Visit {
@@ -98,6 +110,7 @@ interface Visit {
   action?: string;
   visited_at: string;
   phase?: string | null;
+  area_id?: string | null;
 }
 
 function coercePhaseLockOverrides(raw: unknown): Record<string, boolean> {
@@ -121,8 +134,9 @@ function coerceWorkflowDeviations(raw: unknown): WorkflowDeviation[] {
     const status = o.status === 'resolved' ? 'resolved' : 'open';
     const created_at = typeof o.created_at === 'string' ? o.created_at : '';
     const resolved_at = typeof o.resolved_at === 'string' ? o.resolved_at : undefined;
+    const area_id = typeof o.area_id === 'string' && o.area_id.trim() ? o.area_id.trim() : undefined;
     if (!id || !phase_key || !text || !created_at) continue;
-    out.push({ id, phase_key, text, status, created_at, resolved_at });
+    out.push({ id, phase_key, text, status, created_at, resolved_at, area_id });
   }
   return out;
 }
@@ -217,6 +231,9 @@ function RoomDetailContent() {
 
   const [phaseTab, setPhaseTab] = useState<string>('demontering');
   const [phaseWorkflow, setPhaseWorkflow] = useState<PhaseWorkflowEntry[]>(DEFAULT_PHASE_WORKFLOW);
+  const [activeAreaId, setActiveAreaId] = useState<string>(DEFAULT_AREA_ID);
+  const [showManageAreas, setShowManageAreas] = useState(false);
+  const [newAreaName, setNewAreaName] = useState('');
 
   const loadData = useCallback(async () => {
     if (!projectId || !floorId || !roomId) return;
@@ -281,13 +298,78 @@ function RoomDetailContent() {
     }
   }, [projectId, floorId, roomId]);
 
+  const areasList = useMemo(() => {
+    if (!room) return [];
+    return normalizeRoomAreas(
+      room.areas,
+      room.phase,
+      coercePhaseLockOverrides(room.phase_lock_overrides),
+      phaseWorkflow
+    );
+  }, [room, phaseWorkflow]);
+
+  const primaryAreaId = areasList[0]?.id ?? DEFAULT_AREA_ID;
+  const showAreaTabs = areasList.length > 1;
+
+  const activeArea = useMemo(
+    () => areasList.find((a) => a.id === activeAreaId) ?? areasList[0],
+    [areasList, activeAreaId]
+  );
+
+  const saveAreasToServer = useCallback(
+    async (next: RoomArea[]) => {
+      if (!room) return;
+      const primary = next[0];
+      if (!primary) return;
+      const phase0 = normalizeRoomPhase(primary.phase ?? room.phase, phaseWorkflow);
+      const lock0 = coercePhaseLockOverrides(primary.phase_lock_overrides);
+      const hadPersisted = hasPersistedAreas(room.areas);
+      const payload: Record<string, unknown> = {
+        phase: phase0,
+        phase_lock_overrides: Object.keys(lock0).length ? lock0 : {},
+      };
+      if (next.length > 1) {
+        payload.areas = next.map((a) => {
+          const o = coercePhaseLockOverrides(a.phase_lock_overrides);
+          return {
+            id: a.id,
+            name: a.name,
+            phase: normalizeRoomPhase(a.phase ?? null, phaseWorkflow),
+            ...(Object.keys(o).length ? { phase_lock_overrides: o } : {}),
+          };
+        });
+      } else if (hadPersisted) {
+        payload.areas = null;
+      }
+      await client.entities.rooms.update({
+        id: String(room.id),
+        data: payload as Record<string, unknown>,
+      });
+      await loadData();
+    },
+    [room, phaseWorkflow, loadData]
+  );
+
   useEffect(() => {
     loadData();
   }, [loadData]);
 
   useEffect(() => {
-    if (room) setPhaseTab(normalizeRoomPhase(room.phase, phaseWorkflow));
-  }, [room?.id, room?.phase, phaseWorkflow]);
+    if (!room) return;
+    const list = normalizeRoomAreas(
+      room.areas,
+      room.phase,
+      coercePhaseLockOverrides(room.phase_lock_overrides),
+      phaseWorkflow
+    );
+    const firstId = list[0]?.id ?? DEFAULT_AREA_ID;
+    setActiveAreaId((prev) => (list.some((a) => a.id === prev) ? prev : firstId));
+  }, [room?.id, room?.areas, room?.phase, room?.phase_lock_overrides, phaseWorkflow]);
+
+  useEffect(() => {
+    if (!room || !activeArea) return;
+    setPhaseTab(normalizeRoomPhase(activeArea.phase ?? room.phase, phaseWorkflow));
+  }, [room?.id, activeAreaId, activeArea?.phase, room?.phase, phaseWorkflow]);
 
   useEffect(() => {
     if (room) setDeviations(coerceWorkflowDeviations(room.workflow_deviations));
@@ -295,7 +377,7 @@ function RoomDetailContent() {
 
   useEffect(() => {
     setShowAddTask(false);
-  }, [phaseTab]);
+  }, [phaseTab, activeAreaId]);
 
   useEffect(() => {
     const saved = localStorage.getItem(WORKER_NAME_KEY);
@@ -414,7 +496,7 @@ function RoomDetailContent() {
     setAddingTask(true);
     try {
       const maxSort = tasks.length > 0 ? Math.max(...tasks.map((t) => t.sort_order)) : -1;
-      const res = await client.entities.tasks.create({
+      const res =       await client.entities.tasks.create({
         data: {
           room_id: room.id,
           name: newTaskName.trim(),
@@ -425,6 +507,7 @@ function RoomDetailContent() {
           is_template_managed: false,
           is_overridden: false,
           phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
+          ...taskPhotoVisitAreaPayload(),
         },
       });
       const newTask = res?.data;
@@ -469,6 +552,7 @@ function RoomDetailContent() {
                 is_template_managed: false,
                 is_overridden: false,
                 phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
+                ...taskPhotoVisitAreaPayload(),
               },
             })
           )
@@ -557,6 +641,12 @@ function RoomDetailContent() {
     }
   };
 
+  const taskPhotoVisitAreaPayload = () => {
+    if (!room) return {};
+    if (activeAreaId === DEFAULT_AREA_ID && !hasPersistedAreas(room.areas)) return {};
+    return { area_id: activeAreaId };
+  };
+
   const handleAddDeviation = async () => {
     if (!room) return;
     const text = newDeviationText.trim();
@@ -569,6 +659,7 @@ function RoomDetailContent() {
       text,
       status: 'open',
       created_at: stamp,
+      ...(showAreaTabs ? { area_id: activeAreaId } : {}),
     };
     await persistWorkflowDeviations([...deviations, item], 'Deviation added');
     setNewDeviationText('');
@@ -604,12 +695,9 @@ function RoomDetailContent() {
   const handleSetMainPhase = async (nextPhase: string) => {
     if (!room || !canMovePhase) return;
     const norm = normalizeRoomPhase(nextPhase, phaseWorkflow);
+    const next = areasList.map((a, i) => (i === 0 ? { ...a, phase: norm } : a));
     try {
-      await client.entities.rooms.update({
-        id: String(room.id),
-        data: { phase: norm },
-      });
-      setRoom({ ...room, phase: norm });
+      await saveAreasToServer(next);
       setPhaseTab(norm);
       toast.success(`Main phase: ${phaseLabel(norm, phaseWorkflow)}`);
     } catch {
@@ -617,29 +705,115 @@ function RoomDetailContent() {
     }
   };
 
+  const handleSetActiveAreaWorkflowPhase = async (nextPhase: string) => {
+    if (!room || !canMovePhase || !activeArea) return;
+    const norm = normalizeRoomPhase(nextPhase, phaseWorkflow);
+    const next = areasList.map((a) => (a.id === activeAreaId ? { ...a, phase: norm } : a));
+    try {
+      await saveAreasToServer(next);
+      setPhaseTab(norm);
+      toast.success(`Area phase: ${phaseLabel(norm, phaseWorkflow)}`);
+    } catch {
+      toast.error('Failed to set area phase');
+    }
+  };
+
   const handleTogglePhaseWorkerLock = async (phaseKey: string) => {
-    if (!room || !canEdit) return;
-    const rp = normalizeRoomPhase(room.phase, phaseWorkflow);
-    const overrides = coercePhaseLockOverrides(room.phase_lock_overrides);
+    if (!room || !canEdit || !activeArea) return;
+    const rp = normalizeRoomPhase(activeArea.phase ?? room.phase, phaseWorkflow);
+    const overrides = coercePhaseLockOverrides(
+      showAreaTabs || hasPersistedAreas(room.areas)
+        ? activeArea.phase_lock_overrides
+        : room.phase_lock_overrides
+    );
     const workerLocked = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, overrides);
-    const next: Record<string, boolean> = { ...overrides };
+    const nextOv: Record<string, boolean> = { ...overrides };
     if (workerLocked) {
       const defaultLocked = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, {});
-      if (defaultLocked) next[phaseKey] = false;
-      else delete next[phaseKey];
+      if (defaultLocked) nextOv[phaseKey] = false;
+      else delete nextOv[phaseKey];
     } else {
-      next[phaseKey] = true;
+      nextOv[phaseKey] = true;
     }
+    const nextAreas = areasList.map((a) =>
+      a.id === activeAreaId ? { ...a, phase_lock_overrides: nextOv } : a
+    );
     try {
-      await client.entities.rooms.update({
-        id: String(room.id),
-        data: { phase_lock_overrides: next },
-      });
-      setRoom({ ...room, phase_lock_overrides: next });
-      const after = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, next);
+      await saveAreasToServer(nextAreas);
+      const after = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, nextOv);
       toast.success(after ? 'Phase locked for workers' : 'Phase open for workers');
     } catch {
       toast.error('Failed to update phase lock');
+    }
+  };
+
+  const handleAddArea = async () => {
+    const name = newAreaName.trim();
+    if (!name || !room) return;
+    const nid =
+      typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `a-${Date.now()}`;
+    const firstKey = phaseWorkflow[0]?.key ?? 'demontering';
+    const next: RoomArea[] =
+      showAreaTabs || hasPersistedAreas(room.areas)
+        ? [...areasList, { id: nid, name, phase: firstKey, phase_lock_overrides: {} }]
+        : [
+            { ...areasList[0], id: DEFAULT_AREA_ID, name: areasList[0]?.name || 'Main' },
+            { id: nid, name, phase: firstKey, phase_lock_overrides: {} },
+          ];
+    try {
+      await saveAreasToServer(next);
+      setNewAreaName('');
+      setShowManageAreas(false);
+      setActiveAreaId(nid);
+      toast.success('Area added');
+    } catch {
+      toast.error('Failed to add area');
+    }
+  };
+
+  const commitRenameArea = async (id: string, name: string) => {
+    const n = name.trim();
+    if (!n || !room) return;
+    const next = areasList.map((a) => (a.id === id ? { ...a, name: n } : a));
+    try {
+      await saveAreasToServer(next);
+      toast.success('Area renamed');
+    } catch {
+      toast.error('Failed to rename area');
+    }
+  };
+
+  const handleDeleteArea = async (delId: string) => {
+    if (delId === primaryAreaId) {
+      toast.error('Cannot remove the primary area');
+      return;
+    }
+    if (!room) return;
+    const next = areasList.filter((a) => a.id !== delId);
+    try {
+      const relTasks = tasks.filter((t) => String(t.area_id || '').trim() === delId);
+      await Promise.all(
+        relTasks.map((t) =>
+          client.entities.tasks.update({ id: String(t.id), data: { area_id: null } })
+        )
+      );
+      const relPh = photos.filter((p) => String(p.area_id || '').trim() === delId);
+      await Promise.all(
+        relPh.map((p) =>
+          client.entities.room_photos.update({ id: String(p.id), data: { area_id: null } })
+        )
+      );
+      const relV = visits.filter((v) => String(v.area_id || '').trim() === delId);
+      await Promise.all(
+        relV.map((v) =>
+          client.entities.room_visits.update({ id: String(v.id), data: { area_id: null } })
+        )
+      );
+      await saveAreasToServer(next);
+      if (activeAreaId === delId) setActiveAreaId(primaryAreaId);
+      toast.success('Area removed');
+    } catch {
+      toast.error('Failed to remove area');
     }
   };
 
@@ -669,6 +843,7 @@ function RoomDetailContent() {
           filename: file.name,
           caption: '',
           phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
+          ...taskPhotoVisitAreaPayload(),
         },
       });
       toast.success('Photo uploaded');
@@ -708,15 +883,18 @@ function RoomDetailContent() {
 
   const activityEntries = useMemo(() => {
     if (!room) return [];
+    const primary = areasList[0]?.id ?? DEFAULT_AREA_ID;
     const sel = normalizeRoomPhase(phaseTab, phaseWorkflow);
     const rows: { t: number; msg: string }[] = [];
     for (const v of visits) {
+      if (!taskBelongsToArea(v.area_id, activeAreaId, primary)) continue;
       if (!visitMatchesPhase(v.phase, sel, phaseWorkflow)) continue;
       const t = parseActivityTime(v.visited_at);
       const tail = v.action?.trim() ? `: ${v.action.trim()}` : ' visited the room';
       rows.push({ t, msg: `${v.worker_name}${tail}` });
     }
     for (const p of photos) {
+      if (!taskBelongsToArea(p.area_id, activeAreaId, primary)) continue;
       if (!photoMatchesPhase(p.phase, sel, phaseWorkflow)) continue;
       const t = parseActivityTime(p.created_at ?? null);
       rows.push({
@@ -725,6 +903,7 @@ function RoomDetailContent() {
       });
     }
     for (const task of tasks) {
+      if (!taskBelongsToArea(task.area_id, activeAreaId, primary)) continue;
       if (storedChecklistPhase(task.phase, phaseWorkflow) !== sel) continue;
       if (task.is_completed && task.checked_at && task.checked_by) {
         rows.push({
@@ -735,12 +914,17 @@ function RoomDetailContent() {
     }
     rows.sort((a, b) => b.t - a.t);
     return rows.filter((r) => r.t > 0).slice(0, 100);
-  }, [room, visits, photos, tasks, phaseTab, phaseWorkflow]);
+  }, [room, visits, photos, tasks, phaseTab, phaseWorkflow, activeAreaId, areasList]);
 
   const deviationsForPhase = useMemo(() => {
     const sel = normalizeRoomPhase(phaseTab, phaseWorkflow);
-    return deviations.filter((d) => normalizeRoomPhase(d.phase_key, phaseWorkflow) === sel);
-  }, [deviations, phaseTab, phaseWorkflow]);
+    return deviations.filter((d) => {
+      const dArea = d.area_id?.trim() || DEFAULT_AREA_ID;
+      return (
+        dArea === activeAreaId && normalizeRoomPhase(d.phase_key, phaseWorkflow) === sel
+      );
+    });
+  }, [deviations, phaseTab, phaseWorkflow, activeAreaId]);
 
   if (loading) {
     return (
@@ -762,20 +946,28 @@ function RoomDetailContent() {
   const uniqueWorkers = [...new Set(visits.map((v) => v.worker_name))];
   const savedWorkerName = localStorage.getItem(WORKER_NAME_KEY);
   const editsBlocked = Boolean(room.is_locked) && !canEdit;
-  const roomPhaseNorm = normalizeRoomPhase(room.phase, phaseWorkflow);
+  const boardPhaseNorm = normalizeRoomPhase(areasList[0]?.phase ?? room.phase, phaseWorkflow);
+  const areaMainPhaseNorm = normalizeRoomPhase(activeArea?.phase ?? room.phase, phaseWorkflow);
   const workflowPhaseKeys = phaseKeys(phaseWorkflow);
-  const lockOv = coercePhaseLockOverrides(room.phase_lock_overrides);
+  const lockOv = coercePhaseLockOverrides(
+    activeArea?.phase_lock_overrides ?? room.phase_lock_overrides
+  );
   const selPhase = normalizeRoomPhase(phaseTab, phaseWorkflow);
-  const phaseWorkerLocked = phaseTabReadOnlyForWorker(roomPhaseNorm, selPhase, phaseWorkflow, lockOv);
+  const phaseWorkerLocked = phaseTabReadOnlyForWorker(areaMainPhaseNorm, selPhase, phaseWorkflow, lockOv);
   const phaseReadOnly = !canEdit && phaseWorkerLocked;
-  const tasksForPhase = tasks.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === selPhase);
-  const photosForPhase = photos.filter((p) => photoMatchesPhase(p.phase, selPhase, phaseWorkflow));
+  const tasksInArea = tasks.filter((t) => taskBelongsToArea(t.area_id, activeAreaId, primaryAreaId));
+  const tasksForPhase = tasksInArea.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === selPhase);
+  const photosForPhase = photos.filter(
+    (p) =>
+      taskBelongsToArea(p.area_id, activeAreaId, primaryAreaId) &&
+      photoMatchesPhase(p.phase, selPhase, phaseWorkflow)
+  );
   const completedForPhase = tasksForPhase.filter((t) => t.is_completed).length;
   const totalForPhase = tasksForPhase.length;
   const canInteractChecklist = canCheckItem && !editsBlocked && !phaseReadOnly;
   const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
   const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
-  const chipUiSel = computePhaseChipUi(selPhase, roomPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
+  const chipUiSel = computePhaseChipUi(selPhase, areaMainPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-background pb-8">
@@ -797,7 +989,15 @@ function RoomDetailContent() {
             <p className="mt-2 text-xs text-muted-foreground/85 leading-snug">
               <span>{floor?.name || '—'}</span>
               <span className="text-muted-foreground/35 mx-1.5">·</span>
-              <span>{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>
+              {showAreaTabs ? (
+                <>
+                  <span>{activeArea?.name ?? '—'}</span>
+                  <span className="text-muted-foreground/35 mx-1.5">·</span>
+                  <span>{phaseLabel(areaMainPhaseNorm, phaseWorkflow)}</span>
+                </>
+              ) : (
+                <span>{phaseLabel(boardPhaseNorm, phaseWorkflow)}</span>
+              )}
             </p>
           </div>
 
@@ -874,20 +1074,58 @@ function RoomDetailContent() {
           </div>
 
           {canMovePhase ? (
-            <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2 border-t border-border/25 pt-2">
-              <label className="text-[10px] text-muted-foreground/70 shrink-0">Main phase (board)</label>
-              <Select value={roomPhaseNorm} onValueChange={handleSetMainPhase} disabled={editsBlocked}>
-                <SelectTrigger className="h-6 text-[11px] border-border/40 bg-muted/15 text-foreground/90">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {workflowPhaseKeys.map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {phaseLabel(k, phaseWorkflow)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="mt-2 space-y-2 border-t border-border/25 pt-2">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                <label className="text-[10px] text-muted-foreground/70 shrink-0">Main phase (board)</label>
+                <Select value={boardPhaseNorm} onValueChange={handleSetMainPhase} disabled={editsBlocked}>
+                  <SelectTrigger className="h-6 text-[11px] border-border/40 bg-muted/15 text-foreground/90">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workflowPhaseKeys.map((k) => (
+                      <SelectItem key={k} value={k}>
+                        {phaseLabel(k, phaseWorkflow)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {showAreaTabs && activeAreaId !== primaryAreaId ? (
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                  <label className="text-[10px] text-muted-foreground/70 shrink-0">Area phase</label>
+                  <Select
+                    value={areaMainPhaseNorm}
+                    onValueChange={handleSetActiveAreaWorkflowPhase}
+                    disabled={editsBlocked}
+                  >
+                    <SelectTrigger className="h-6 text-[11px] border-border/40 bg-muted/15 text-foreground/90">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workflowPhaseKeys.map((k) => (
+                        <SelectItem key={k} value={k}>
+                          {phaseLabel(k, phaseWorkflow)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {canEdit ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border/25 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-[10px]"
+                disabled={editsBlocked}
+                onClick={() => setShowManageAreas(true)}
+              >
+                Areas…
+              </Button>
             </div>
           ) : null}
 
@@ -933,12 +1171,35 @@ function RoomDetailContent() {
               onChange={handlePhotoUpload}
             />
 
+            {showAreaTabs ? (
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto py-2 px-1 snap-x snap-mandatory">
+                {areasList.map((a) => {
+                  const isSel = a.id === activeAreaId;
+                  return (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setActiveAreaId(a.id)}
+                      className={cn(
+                        'snap-start shrink-0 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors',
+                        isSel
+                          ? 'border-[#1E3A5F] bg-[#1E3A5F]/10 text-foreground dark:border-blue-400 dark:bg-blue-950/40'
+                          : 'border-border/50 bg-muted/20 text-muted-foreground hover:bg-muted/40'
+                      )}
+                    >
+                      {a.name}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
             <div className="-mx-1 flex gap-2.5 overflow-x-auto py-3 px-1 snap-x snap-mandatory sm:py-3.5">
               {workflowPhaseKeys.map((key) => {
-                const tks = tasks.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === key);
+                const tks = tasksInArea.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === key);
                 const done = tks.filter((x) => x.is_completed).length;
                 const tot = tks.length;
-                const ui = computePhaseChipUi(key, roomPhaseNorm, phaseWorkflow, lockOv, tot, done);
+                const ui = computePhaseChipUi(key, areaMainPhaseNorm, phaseWorkflow, lockOv, tot, done);
                 const isSel = key === selPhase;
                 return (
                   <button
@@ -983,25 +1244,25 @@ function RoomDetailContent() {
               })}
             </div>
 
-            {selPhase !== roomPhaseNorm ? (
+            {selPhase !== areaMainPhaseNorm ? (
               <div className="flex flex-col gap-1.5 rounded-md border border-amber-200/70 bg-amber-50/70 px-2.5 py-2 dark:border-amber-900/45 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-amber-950 dark:text-amber-100 leading-snug">
                   Viewing <span className="font-medium">{phaseLabel(selPhase, phaseWorkflow)}</span> — main is{' '}
-                  <span className="font-medium">{phaseLabel(roomPhaseNorm, phaseWorkflow)}</span>.
+                  <span className="font-medium">{phaseLabel(areaMainPhaseNorm, phaseWorkflow)}</span>.
                 </p>
                 <Button
                   type="button"
                   variant="secondary"
                   size="sm"
                   className="h-8 shrink-0 text-xs border-amber-200/80 bg-white/90 hover:bg-amber-100/80 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
-                  onClick={() => setPhaseTab(roomPhaseNorm)}
+                  onClick={() => setPhaseTab(areaMainPhaseNorm)}
                 >
                   Main phase
                 </Button>
               </div>
             ) : null}
 
-            {selPhase !== roomPhaseNorm && !phaseReadOnly ? (
+            {selPhase !== areaMainPhaseNorm && !phaseReadOnly ? (
               <p className="text-[11px] text-muted-foreground rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5 leading-snug">
                 Not the main phase, but still open for editing.
               </p>
@@ -1485,6 +1746,70 @@ function RoomDetailContent() {
         )}
 
       </div>
+
+      <Dialog open={showManageAreas} onOpenChange={setShowManageAreas}>
+        <DialogContent className="max-w-md mx-4">
+          <DialogHeader>
+            <DialogTitle>Room areas</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground mb-2 leading-snug">
+            Each area has its own phases and checklist. The first area matches the floor board “main phase”.
+          </p>
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {areasList.map((a) => (
+              <div key={a.id} className="flex items-center gap-2 border border-border/50 rounded-md p-2">
+                <Input
+                  defaultValue={a.name}
+                  key={`${a.id}-${a.name}`}
+                  className="h-8 text-sm flex-1"
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== a.name) void commitRenameArea(a.id, v);
+                  }}
+                />
+                {a.id === primaryAreaId ? (
+                  <span className="text-[10px] text-muted-foreground shrink-0 w-14">Primary</span>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-destructive shrink-0 px-2"
+                    onClick={() => void handleDeleteArea(a.id)}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3 pt-2 border-t border-border/40">
+            <Input
+              placeholder="New area name"
+              value={newAreaName}
+              onChange={(e) => setNewAreaName(e.target.value)}
+              className="h-9 text-sm flex-1"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleAddArea();
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 shrink-0"
+              onClick={() => void handleAddArea()}
+              disabled={!newAreaName.trim()}
+            >
+              Add
+            </Button>
+          </div>
+          <DialogFooter className="mt-2">
+            <Button type="button" variant="secondary" className="w-full" onClick={() => setShowManageAreas(false)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Block Dialog */}
       <Dialog open={showBlockDialog} onOpenChange={setShowBlockDialog}>

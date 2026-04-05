@@ -16,6 +16,7 @@ import {
   type FloorPhaseProgressEntry,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
+import { taskCountsForFloorBoard } from '@/lib/roomAreas';
 
 /** Compact labels for default phases; other keys use first letter */
 function phaseProgressLetter(key: string): string {
@@ -39,12 +40,14 @@ interface Room {
   status: string;
   floor_id: number;
   phase?: string;
+  areas?: unknown;
 }
 
 interface ProjectTaskRow {
   room_id: number;
   phase?: string | null;
   is_completed?: boolean | null;
+  area_id?: string | null;
 }
 
 interface Project {
@@ -164,10 +167,15 @@ function ProjectDetailContent() {
     const map = new Map<number, FloorPhaseProgressEntry[]>();
     const projectRoomIds = new Set(allRooms.map((r) => r.id));
     const tasksInProject = projectTasks.filter((t) => projectRoomIds.has(Number(t.room_id)));
+    const tasksForBoard = tasksInProject.filter((t) => {
+      const roomRow = allRooms.find((r) => r.id === Number(t.room_id));
+      if (!roomRow) return false;
+      return taskCountsForFloorBoard(t.area_id, roomRow.areas);
+    });
     for (const floor of floors) {
       const floorRooms = allRooms.filter((r) => r.floor_id === floor.id);
       const floorRoomIds = new Set(floorRooms.map((r) => r.id));
-      const floorTasks = tasksInProject.filter((t) => floorRoomIds.has(Number(t.room_id)));
+      const floorTasks = tasksForBoard.filter((t) => floorRoomIds.has(Number(t.room_id)));
       map.set(floor.id, computeFloorPhaseProgress(floorRooms, floorTasks, phaseWorkflow));
     }
     return map;

@@ -2,7 +2,6 @@ import json
 import logging
 from typing import List, Optional
 
-
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -17,6 +16,7 @@ from dependencies.phase_edit import (
     ensure_room_phase_editable_for_worker,
     workflow_keys_for_room,
 )
+from dependencies.room_areas import norm_area_id, room_phase_for_area
 from dependencies.room_lock import ensure_room_mutable
 from dependencies.roles import get_current_app_role
 from schemas.auth import UserResponse
@@ -41,6 +41,7 @@ class TasksData(BaseModel):
     is_template_managed: Optional[bool] = None
     is_overridden: Optional[bool] = None
     phase: Optional[str] = None
+    area_id: Optional[str] = None
 
 
 class TasksUpdateData(BaseModel):
@@ -56,6 +57,7 @@ class TasksUpdateData(BaseModel):
     is_template_managed: Optional[bool] = None
     is_overridden: Optional[bool] = None
     phase: Optional[str] = None
+    area_id: Optional[str] = None
 
 
 class TasksResponse(BaseModel):
@@ -73,6 +75,7 @@ class TasksResponse(BaseModel):
     is_template_managed: Optional[bool] = None
     is_overridden: Optional[bool] = None
     phase: Optional[str] = None
+    area_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -228,11 +231,13 @@ async def create_tasks(
             raise HTTPException(status_code=404, detail="Room not found")
         keys = await workflow_keys_for_room(db, room_obj)
         payload = data.model_dump()
+        aid = norm_area_id(payload.get("area_id"))
+        area_rp = room_phase_for_area(room_obj, aid, keys)
         if payload.get("phase") is None or str(payload.get("phase") or "").strip() == "":
-            payload["phase"] = effective_task_phase(None, getattr(room_obj, "phase", None), keys)
-        eff = effective_task_phase(payload.get("phase"), getattr(room_obj, "phase", None), keys)
+            payload["phase"] = effective_task_phase(None, area_rp, keys)
+        eff = effective_task_phase(payload.get("phase"), area_rp, keys)
         await ensure_room_phase_editable_for_worker(
-            db, data.room_id, str(current_user.id), app_role, eff
+            db, data.room_id, str(current_user.id), app_role, eff, area_id=aid
         )
         result = await service.create(payload, user_id=str(current_user.id))
         if not result:
@@ -272,11 +277,13 @@ async def create_taskss_batch(
                 continue
             keys = await workflow_keys_for_room(db, room_obj)
             payload = item_data.model_dump()
+            aid = norm_area_id(payload.get("area_id"))
+            area_rp = room_phase_for_area(room_obj, aid, keys)
             if payload.get("phase") is None or str(payload.get("phase") or "").strip() == "":
-                payload["phase"] = effective_task_phase(None, getattr(room_obj, "phase", None), keys)
-            eff = effective_task_phase(payload.get("phase"), getattr(room_obj, "phase", None), keys)
+                payload["phase"] = effective_task_phase(None, area_rp, keys)
+            eff = effective_task_phase(payload.get("phase"), area_rp, keys)
             await ensure_room_phase_editable_for_worker(
-                db, item_data.room_id, str(current_user.id), app_role, eff
+                db, item_data.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
             result = await service.create(payload, user_id=str(current_user.id))
             if result:
@@ -322,9 +329,11 @@ async def update_taskss_batch(
             if room_obj:
                 keys = await workflow_keys_for_room(db, room_obj)
                 merged_phase = update_dict.get("phase", getattr(task, "phase", None))
-                eff = effective_task_phase(merged_phase, getattr(room_obj, "phase", None), keys)
+                aid = norm_area_id(update_dict.get("area_id", getattr(task, "area_id", None)))
+                area_rp = room_phase_for_area(room_obj, aid, keys)
+                eff = effective_task_phase(merged_phase, area_rp, keys)
                 await ensure_room_phase_editable_for_worker(
-                    db, task.room_id, str(current_user.id), app_role, eff
+                    db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
             result = await service.update(item.id, update_dict, user_id=str(current_user.id))
             if result:
@@ -369,9 +378,11 @@ async def update_tasks(
         if room_obj:
             keys = await workflow_keys_for_room(db, room_obj)
             merged_phase = update_dict.get("phase", getattr(task, "phase", None))
-            eff = effective_task_phase(merged_phase, getattr(room_obj, "phase", None), keys)
+            aid = norm_area_id(update_dict.get("area_id", getattr(task, "area_id", None)))
+            area_rp = room_phase_for_area(room_obj, aid, keys)
+            eff = effective_task_phase(merged_phase, area_rp, keys)
             await ensure_room_phase_editable_for_worker(
-                db, task.room_id, str(current_user.id), app_role, eff
+                db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
         result = await service.update(id, update_dict, user_id=str(current_user.id))
         if not result:
@@ -413,11 +424,13 @@ async def delete_taskss_batch(
             room_obj = room_row.scalar_one_or_none()
             if room_obj:
                 keys = await workflow_keys_for_room(db, room_obj)
+                aid = norm_area_id(getattr(task, "area_id", None))
+                area_rp = room_phase_for_area(room_obj, aid, keys)
                 eff = effective_task_phase(
-                    getattr(task, "phase", None), getattr(room_obj, "phase", None), keys
+                    getattr(task, "phase", None), area_rp, keys
                 )
                 await ensure_room_phase_editable_for_worker(
-                    db, task.room_id, str(current_user.id), app_role, eff
+                    db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
             success = await service.delete(item_id, user_id=str(current_user.id))
             if success:
@@ -455,11 +468,13 @@ async def delete_tasks(
         room_obj = room_row.scalar_one_or_none()
         if room_obj:
             keys = await workflow_keys_for_room(db, room_obj)
+            aid = norm_area_id(getattr(task, "area_id", None))
+            area_rp = room_phase_for_area(room_obj, aid, keys)
             eff = effective_task_phase(
-                getattr(task, "phase", None), getattr(room_obj, "phase", None), keys
+                getattr(task, "phase", None), area_rp, keys
             )
             await ensure_room_phase_editable_for_worker(
-                db, task.room_id, str(current_user.id), app_role, eff
+                db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
         success = await service.delete(id, user_id=str(current_user.id))
         if not success:

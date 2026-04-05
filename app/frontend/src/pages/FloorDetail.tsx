@@ -15,6 +15,7 @@ import {
   type FloorPhaseProgressEntry,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
+import { taskCountsForFloorBoard } from '@/lib/roomAreas';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -46,6 +47,7 @@ interface Room {
   blocked_reason?: string;
   updated_at?: string;
   is_locked?: boolean;
+  areas?: unknown;
 }
 
 interface ChecklistTemplate {
@@ -142,13 +144,22 @@ function FloorDetailContent() {
       for (const id of roomIds) {
         summary[id] = { completed: 0, total: 0 };
       }
+      let taskItems: { room_id: number; phase?: string | null; is_completed?: boolean; area_id?: string | null }[] =
+        [];
       if (roomIds.size > 0) {
         // Backend caps task list limit at 2000 (see routers/tasks.py); higher values return 422.
         const tasksRes = await client.entities.tasks.query({ limit: 2000, sort: 'room_id' });
-        const taskItems = tasksRes?.data?.items || [];
+        const rawTasks = tasksRes?.data?.items || [];
+        taskItems = rawTasks.filter((t: { room_id: number; area_id?: string | null }) => {
+          const rid = t.room_id as number;
+          if (!roomIds.has(rid)) return false;
+          const roomRow = roomItems.find((r) => r.id === rid);
+          if (!roomRow) return false;
+          return taskCountsForFloorBoard(t.area_id, roomRow.areas);
+        });
         for (const t of taskItems) {
           const rid = t.room_id as number;
-          if (!roomIds.has(rid) || !summary[rid]) continue;
+          if (!summary[rid]) continue;
           const roomRow = roomItems.find((r) => r.id === rid);
           const roomPhase = normalizeRoomPhase(roomRow?.phase, summaryWorkflow);
           const taskPhase = storedChecklistPhase(t.phase as string | null | undefined, summaryWorkflow);

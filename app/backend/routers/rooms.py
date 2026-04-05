@@ -1,5 +1,6 @@
 import json
 import logging
+from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
 from datetime import datetime, date
@@ -20,6 +21,7 @@ from dependencies.roles import (
     require_room_collaborator,
 )
 from schemas.auth import UserResponse
+from dependencies.room_areas import parse_areas_list, sanitize_areas_payload
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -46,6 +48,7 @@ class RoomsData(BaseModel):
     is_locked: bool = False
     phase_lock_overrides: Optional[Dict[str, bool]] = None
     workflow_deviations: Optional[List[Dict[str, Any]]] = None
+    areas: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -63,6 +66,7 @@ class RoomsUpdateData(BaseModel):
     is_locked: Optional[bool] = None
     phase_lock_overrides: Optional[Dict[str, bool]] = None
     workflow_deviations: Optional[List[Dict[str, Any]]] = None
+    areas: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -82,6 +86,7 @@ class RoomsResponse(BaseModel):
     is_locked: bool = False
     phase_lock_overrides: Optional[Dict[str, Any]] = None
     workflow_deviations: Optional[List[Dict[str, Any]]] = None
+    areas: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -116,6 +121,35 @@ class RoomsBatchUpdateRequest(BaseModel):
 class RoomsBatchDeleteRequest(BaseModel):
     """Batch delete request"""
     ids: List[int]
+
+
+def _prepare_room_update_dict(existing: Any, update_dict: Dict[str, Any], app_role: str) -> None:
+    """Keep room.phase / areas[0] in sync for multi-area rooms (mutates update_dict)."""
+    if app_role not in (ROLE_ADMIN, ROLE_MANAGER):
+        update_dict.pop("areas", None)
+        return
+    if "areas" in update_dict:
+        try:
+            update_dict["areas"] = sanitize_areas_payload(update_dict["areas"])
+        except ValueError as e:
+            raise ValueError(str(e)) from e
+        ar = update_dict["areas"]
+        if ar and len(ar) > 0:
+            if ar[0].get("phase") is not None:
+                update_dict["phase"] = ar[0]["phase"]
+            o0 = ar[0].get("phase_lock_overrides")
+            if isinstance(o0, dict):
+                update_dict["phase_lock_overrides"] = o0
+        return
+    if "phase" in update_dict or "phase_lock_overrides" in update_dict:
+        parsed = parse_areas_list(getattr(existing, "areas", None))
+        if parsed and len(parsed) > 0:
+            new_areas = deepcopy(parsed)
+            if "phase" in update_dict:
+                new_areas[0]["phase"] = update_dict["phase"]
+            if "phase_lock_overrides" in update_dict:
+                new_areas[0]["phase_lock_overrides"] = update_dict["phase_lock_overrides"]
+            update_dict["areas"] = new_areas
 
 
 # ---------- Routes ----------
@@ -233,7 +267,13 @@ async def create_rooms(
     service = RoomsService(db)
     try:
         validate_blocked_reason(data.status, data.blocked_reason)
-        result = await service.create(data.model_dump(), user_id=str(current_user.id))
+        dump = data.model_dump()
+        if dump.get("areas") is not None:
+            try:
+                dump["areas"] = sanitize_areas_payload(dump["areas"])
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e)) from e
+        result = await service.create(dump, user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create rooms")
         
@@ -263,7 +303,14 @@ async def create_roomss_batch(
     try:
         for item_data in request.items:
             validate_blocked_reason(item_data.status, item_data.blocked_reason)
-            result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
+            dump_b = item_data.model_dump()
+            if dump_b.get("areas") is not None:
+                try:
+                    dump_b["areas"] = sanitize_areas_payload(dump_b["areas"])
+                except ValueError as e:
+                    await db.rollback()
+                    raise HTTPException(status_code=400, detail=str(e)) from e
+            result = await service.create(dump_b, user_id=str(current_user.id))
             if result:
                 results.append(result)
         
@@ -280,6 +327,7 @@ async def update_roomss_batch(
     request: RoomsBatchUpdateRequest,
     current_user: UserResponse = Depends(get_current_user),
     _role: str = Depends(require_admin_or_manager),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Update multiple roomss in a single request (requires ownership)"""
@@ -293,6 +341,9 @@ async def update_roomss_batch(
             validate_blocked_reason(item.updates.status, item.updates.blocked_reason)
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
+            existing_b = await service.get_by_id(item.id, user_id=str(current_user.id))
+            if existing_b:
+                _prepare_room_update_dict(existing_b, update_dict, app_role)
             result = await service.update(item.id, update_dict, user_id=str(current_user.id))
             if result:
                 results.append(result)
@@ -330,8 +381,13 @@ async def update_rooms(
             update_dict.pop("is_locked", None)
             update_dict.pop("phase_lock_overrides", None)
             update_dict.pop("phase", None)
+            update_dict.pop("areas", None)
             if getattr(existing, "is_locked", False):
                 raise HTTPException(status_code=403, detail=ROOM_LOCKED_DETAIL)
+        try:
+            _prepare_room_update_dict(existing, update_dict, app_role)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         result = await service.update(id, update_dict, user_id=str(current_user.id))
         if not result:
             logger.warning(f"Rooms with id {id} not found for update")

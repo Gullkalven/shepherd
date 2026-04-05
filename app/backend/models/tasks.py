@@ -8,6 +8,7 @@ class Tasks(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
     room_id = Column(Integer, nullable=False)
+    area_id = Column(String, nullable=True)
     name = Column(String, nullable=False)
     is_completed = Column(Boolean, nullable=True)
     sort_order = Column(Integer, nullable=True)
