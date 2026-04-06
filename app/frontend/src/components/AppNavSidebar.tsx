@@ -362,7 +362,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
                                           : 'text-muted-foreground'
                                       )}
                                     >
-                                      Room {r.room_number}
+                                      {r.room_number}
                                     </button>
                                   </li>
                                 );

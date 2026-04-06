@@ -48,6 +48,7 @@ interface Room {
   updated_at?: string;
   is_locked?: boolean;
   areas?: unknown;
+  deadline_at?: string | null;
 }
 
 interface ChecklistTemplate {
@@ -1103,6 +1104,7 @@ export default function FloorDetail() {
                       blockedReason={room.blocked_reason}
                       assignedWorker={room.assigned_worker}
                       updatedAt={room.updated_at}
+                      deadlineAt={room.deadline_at}
                       onClick={() =>
                         selectionMode
                           ? toggleRoomSelection(room.id)

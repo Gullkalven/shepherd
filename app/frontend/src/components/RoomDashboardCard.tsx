@@ -1,6 +1,6 @@
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { User, AlertTriangle, Clock, Lock } from 'lucide-react';
+import { User, AlertTriangle, Clock, Lock, Calendar } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { deriveRoomDashboardStatus, type DashboardStatusKind } from '@/lib/roomDashboardDerived';
@@ -58,6 +58,32 @@ function formatUpdatedAt(iso?: string | null): string | null {
   }
 }
 
+function formatDueShort(iso?: string | null): string | null {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return null;
+  }
+}
+
+function isDuePast(iso?: string | null): boolean {
+  if (!iso) return false;
+  try {
+    const end = new Date(iso);
+    if (Number.isNaN(end.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const e = new Date(end);
+    e.setHours(0, 0, 0, 0);
+    return e < today;
+  } catch {
+    return false;
+  }
+}
+
 interface RoomDashboardCardProps {
   roomNumber: string;
   floorLabel?: string;
@@ -73,6 +99,8 @@ interface RoomDashboardCardProps {
   blockedReason?: string;
   assignedWorker?: string;
   updatedAt?: string | null;
+  /** Optional target date shown on the card */
+  deadlineAt?: string | null;
   onClick: () => void;
   selectionMode?: boolean;
   selected?: boolean;
@@ -95,6 +123,7 @@ export default function RoomDashboardCard({
   blockedReason,
   assignedWorker,
   updatedAt,
+  deadlineAt,
   onClick,
   selectionMode = false,
   selected = false,
@@ -108,6 +137,8 @@ export default function RoomDashboardCard({
   const remaining = total > 0 ? Math.max(0, total - completed) : 0;
   const progressLine = total > 0 ? `${completed} / ${total}` : '—';
   const updatedLabel = formatUpdatedAt(updatedAt);
+  const dueShort = formatDueShort(deadlineAt);
+  const duePast = isDuePast(deadlineAt);
 
   return (
     <Card
@@ -154,6 +185,17 @@ export default function RoomDashboardCard({
               {phaseStrip ? (
                 <div className="mt-0.5 text-[9px] leading-tight text-muted-foreground tabular-nums tracking-tight">
                   {phaseStrip}
+                </div>
+              ) : null}
+              {dueShort ? (
+                <div
+                  className={cn(
+                    'mt-1 flex items-center gap-1 text-[10px] font-semibold',
+                    duePast ? 'text-red-700 dark:text-red-400' : 'text-slate-700 dark:text-slate-300'
+                  )}
+                >
+                  <Calendar className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
+                  <span>Due {dueShort}</span>
                 </div>
               ) : null}
             </div>

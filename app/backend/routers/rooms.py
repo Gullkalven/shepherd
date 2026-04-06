@@ -27,6 +27,27 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/rooms", tags=["rooms"])
 
+DEFAULT_CHECKLIST_SECTION = "Checklist"
+
+
+def sanitize_checklist_labels(raw: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
+    """Keep optional phase → title map small and string-safe."""
+    if raw is None:
+        return None
+    out: Dict[str, str] = {}
+    for k, v in raw.items():
+        if not isinstance(k, str) or len(k) > 80:
+            continue
+        if not isinstance(v, str):
+            continue
+        t = v.strip()
+        if not t or len(t) > 120:
+            continue
+        if t == DEFAULT_CHECKLIST_SECTION:
+            continue
+        out[k] = t
+    return out or None
+
 
 def validate_blocked_reason(status: Optional[str], blocked_reason: Optional[str]) -> None:
     if status == "blocked" and not (blocked_reason or "").strip():
@@ -48,6 +69,8 @@ class RoomsData(BaseModel):
     phase_lock_overrides: Optional[Dict[str, bool]] = None
     workflow_deviations: Optional[List[Dict[str, Any]]] = None
     areas: Optional[List[Dict[str, Any]]] = None
+    deadline_at: Optional[datetime] = None
+    checklist_labels: Optional[Dict[str, str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -66,6 +89,8 @@ class RoomsUpdateData(BaseModel):
     phase_lock_overrides: Optional[Dict[str, bool]] = None
     workflow_deviations: Optional[List[Dict[str, Any]]] = None
     areas: Optional[List[Dict[str, Any]]] = None
+    deadline_at: Optional[datetime] = None
+    checklist_labels: Optional[Dict[str, str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -86,6 +111,8 @@ class RoomsResponse(BaseModel):
     phase_lock_overrides: Optional[Dict[str, Any]] = None
     workflow_deviations: Optional[List[Dict[str, Any]]] = None
     areas: Optional[List[Dict[str, Any]]] = None
+    deadline_at: Optional[datetime] = None
+    checklist_labels: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -370,8 +397,13 @@ async def update_rooms(
     service = RoomsService(db)
     try:
         validate_blocked_reason(data.status, data.blocked_reason)
-        # Only include non-None values for partial updates
-        update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
+        raw_dump = data.model_dump(exclude_unset=True)
+        update_dict: Dict[str, Any] = {}
+        for k, v in raw_dump.items():
+            if v is not None:
+                update_dict[k] = v
+            elif k in ("deadline_at", "checklist_labels"):
+                update_dict[k] = None
         existing = await service.get_by_id(id, user_id=str(current_user.id))
         if not existing:
             logger.warning(f"Rooms with id {id} not found for update")
@@ -381,8 +413,12 @@ async def update_rooms(
             update_dict.pop("phase_lock_overrides", None)
             update_dict.pop("phase", None)
             update_dict.pop("areas", None)
+            update_dict.pop("deadline_at", None)
+            update_dict.pop("checklist_labels", None)
             if getattr(existing, "is_locked", False):
                 raise HTTPException(status_code=403, detail=ROOM_LOCKED_DETAIL)
+        if "checklist_labels" in update_dict and update_dict["checklist_labels"] is not None:
+            update_dict["checklist_labels"] = sanitize_checklist_labels(update_dict["checklist_labels"])
         try:
             _prepare_room_update_dict(existing, update_dict, app_role)
         except ValueError as e:

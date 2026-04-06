@@ -14,7 +14,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   Camera, Trash2, User, Ban, CheckCircle2,
   Image as ImageIcon, X, Plus, Clock, ListPlus, Pencil, Check,
-  Lock, Unlock, ChevronDown, AlertTriangle, History,
+  Lock, Unlock, ChevronDown, AlertTriangle, History, Calendar,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -47,6 +47,7 @@ const STATUS_OPTIONS = [
 ];
 
 const WORKER_NAME_KEY = 'trello_v2_worker_name';
+const DEFAULT_CHECKLIST_SECTION = 'Checklist';
 
 interface Task {
   id: number;
@@ -88,6 +89,9 @@ interface Room {
   workflow_deviations?: unknown;
   /** When set: multiple areas with their own phase / locks; null/absent = legacy single area */
   areas?: unknown;
+  deadline_at?: string | null;
+  /** Admin: optional checklist card title per workflow phase key */
+  checklist_labels?: unknown;
   floor_id: number;
   project_id: number;
 }
@@ -110,6 +114,17 @@ interface Visit {
   visited_at: string;
   phase?: string | null;
   area_id?: string | null;
+}
+
+function coerceChecklistLabels(raw: unknown): Record<string, string> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof k !== 'string' || !k.trim()) continue;
+    if (typeof v !== 'string' || !v.trim()) continue;
+    out[k.trim()] = v.trim();
+  }
+  return out;
 }
 
 function coercePhaseLockOverrides(raw: unknown): Record<string, boolean> {
@@ -154,6 +169,32 @@ function formatActivityWhen(ts: number): string {
     return formatVisitDate(localLike);
   } catch {
     return '—';
+  }
+}
+
+function formatDeadlineDisplay(iso?: string | null): string | null {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return null;
+  }
+}
+
+function isDeadlinePast(iso?: string | null): boolean {
+  if (!iso) return false;
+  try {
+    const end = new Date(iso);
+    if (Number.isNaN(end.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const e = new Date(end);
+    e.setHours(0, 0, 0, 0);
+    return e < today;
+  } catch {
+    return false;
   }
 }
 
@@ -233,6 +274,11 @@ export default function RoomDetail() {
   const [activeAreaId, setActiveAreaId] = useState<string>(DEFAULT_AREA_ID);
   const [showManageAreas, setShowManageAreas] = useState(false);
   const [newAreaName, setNewAreaName] = useState('');
+  const [deadlineDraft, setDeadlineDraft] = useState('');
+  const [savingDeadline, setSavingDeadline] = useState(false);
+  const [editingChecklistTitle, setEditingChecklistTitle] = useState(false);
+  const [checklistTitleDraft, setChecklistTitleDraft] = useState('');
+  const [savingChecklistTitle, setSavingChecklistTitle] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!projectId || !floorId || !roomId) return;
@@ -291,7 +337,7 @@ export default function RoomDetail() {
       );
       setPhotos(photosWithUrls);
     } catch {
-      toast.error('Failed to load room');
+      toast.error('Failed to load');
     } finally {
       setLoading(false);
     }
@@ -308,7 +354,10 @@ export default function RoomDetail() {
   }, [room, phaseWorkflow]);
 
   const primaryAreaId = areasList[0]?.id ?? DEFAULT_AREA_ID;
-  const showAreaTabs = areasList.length > 1;
+  const persistedAreas = Boolean(room && hasPersistedAreas(room.areas));
+  /** Custom areas are in use (any non-empty `areas` JSON) */
+  const showAreasNav = persistedAreas;
+  const multiArea = areasList.length > 1;
 
   const activeArea = useMemo(
     () => areasList.find((a) => a.id === activeAreaId) ?? areasList[0],
@@ -379,6 +428,27 @@ export default function RoomDetail() {
   }, [phaseTab, activeAreaId]);
 
   useEffect(() => {
+    setEditingChecklistTitle(false);
+  }, [phaseTab]);
+
+  useEffect(() => {
+    if (!room?.deadline_at) {
+      setDeadlineDraft('');
+      return;
+    }
+    try {
+      const d = new Date(room.deadline_at);
+      if (Number.isNaN(d.getTime())) {
+        setDeadlineDraft('');
+        return;
+      }
+      setDeadlineDraft(d.toISOString().slice(0, 10));
+    } catch {
+      setDeadlineDraft('');
+    }
+  }, [room?.deadline_at]);
+
+  useEffect(() => {
     const saved = localStorage.getItem(WORKER_NAME_KEY);
     if (saved) setCheckWorkerName(saved);
   }, []);
@@ -392,7 +462,7 @@ export default function RoomDetail() {
         data: { is_locked: next },
       });
       setRoom({ ...room, is_locked: next });
-      toast.success(next ? 'Room locked for workers' : 'Room unlocked');
+      toast.success(next ? 'Locked for workers' : 'Unlocked');
     } catch {
       toast.error('Failed to update lock');
     }
@@ -658,7 +728,7 @@ export default function RoomDetail() {
       text,
       status: 'open',
       created_at: stamp,
-      ...(showAreaTabs ? { area_id: activeAreaId } : {}),
+      ...(showAreasNav ? { area_id: activeAreaId } : {}),
     };
     await persistWorkflowDeviations([...deviations, item], 'Deviation added');
     setNewDeviationText('');
@@ -721,9 +791,7 @@ export default function RoomDetail() {
     if (!room || !canEdit || !activeArea) return;
     const rp = normalizeRoomPhase(activeArea.phase ?? room.phase, phaseWorkflow);
     const overrides = coercePhaseLockOverrides(
-      showAreaTabs || hasPersistedAreas(room.areas)
-        ? activeArea.phase_lock_overrides
-        : room.phase_lock_overrides
+      persistedAreas ? activeArea.phase_lock_overrides : room.phase_lock_overrides
     );
     const workerLocked = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, overrides);
     const nextOv: Record<string, boolean> = { ...overrides };
@@ -753,7 +821,7 @@ export default function RoomDetail() {
       typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `a-${Date.now()}`;
     const firstKey = phaseWorkflow[0]?.key ?? 'demontering';
     const next: RoomArea[] =
-      showAreaTabs || hasPersistedAreas(room.areas)
+      persistedAreas
         ? [...areasList, { id: nid, name, phase: firstKey, phase_lock_overrides: {} }]
         : [
             { ...areasList[0], id: DEFAULT_AREA_ID, name: areasList[0]?.name || 'Main' },
@@ -870,15 +938,83 @@ export default function RoomDetail() {
     setDeletingRoom(true);
     try {
       await client.entities.rooms.delete({ id: String(room.id) });
-      toast.success('Room deleted');
+      toast.success('Deleted');
       navigate(`/project/${projectId}/floor/${floorId}`);
     } catch {
-      toast.error('Failed to delete room');
+      toast.error('Failed to delete');
     } finally {
       setDeletingRoom(false);
       setShowDeleteRoomDialog(false);
     }
   };
+
+  const handleSaveDeadline = async () => {
+    if (!room || !canEdit) return;
+    setSavingDeadline(true);
+    try {
+      const d = deadlineDraft.trim();
+      const iso = d === '' ? null : `${d}T12:00:00.000Z`;
+      await client.entities.rooms.update({
+        id: String(room.id),
+        data: { deadline_at: iso } as Record<string, unknown>,
+      });
+      setRoom({ ...room, deadline_at: iso });
+      toast.success(iso ? 'Deadline saved' : 'Deadline cleared');
+    } catch {
+      toast.error('Failed to save deadline');
+    } finally {
+      setSavingDeadline(false);
+    }
+  };
+
+  const handleClearDeadline = async () => {
+    if (!room || !canEdit) return;
+    setSavingDeadline(true);
+    try {
+      await client.entities.rooms.update({
+        id: String(room.id),
+        data: { deadline_at: null } as Record<string, unknown>,
+      });
+      setDeadlineDraft('');
+      setRoom({ ...room, deadline_at: null });
+      toast.success('Deadline cleared');
+    } catch {
+      toast.error('Failed to clear deadline');
+    } finally {
+      setSavingDeadline(false);
+    }
+  };
+
+  const commitChecklistSectionTitle = useCallback(async () => {
+    if (!room || !canEdit) return;
+    const phaseKey = normalizeRoomPhase(phaseTab, phaseWorkflow);
+    const prev = coerceChecklistLabels(room.checklist_labels);
+    const displayed = prev[phaseKey]?.trim() || DEFAULT_CHECKLIST_SECTION;
+    const t = checklistTitleDraft.trim();
+    if (t === displayed) {
+      setEditingChecklistTitle(false);
+      return;
+    }
+    const next = { ...prev };
+    if (!t || t === DEFAULT_CHECKLIST_SECTION) delete next[phaseKey];
+    else next[phaseKey] = t;
+    setSavingChecklistTitle(true);
+    try {
+      await client.entities.rooms.update({
+        id: String(room.id),
+        data: {
+          checklist_labels: Object.keys(next).length > 0 ? next : null,
+        } as Record<string, unknown>,
+      });
+      setRoom({ ...room, checklist_labels: next });
+      toast.success('Title updated');
+    } catch {
+      toast.error('Failed to save title');
+    } finally {
+      setSavingChecklistTitle(false);
+      setEditingChecklistTitle(false);
+    }
+  }, [room, canEdit, checklistTitleDraft, phaseTab, phaseWorkflow]);
 
   const activityEntries = useMemo(() => {
     if (!room) return [];
@@ -936,7 +1072,7 @@ export default function RoomDetail() {
   if (!room) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Room not found</p>
+        <p className="text-muted-foreground">Not found</p>
       </div>
     );
   }
@@ -967,20 +1103,24 @@ export default function RoomDetail() {
   const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
   const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
   const chipUiSel = computePhaseChipUi(selPhase, areaMainPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
+  const checklistLabelsMap = coerceChecklistLabels(room.checklist_labels);
+  const checklistSectionTitle =
+    checklistLabelsMap[selPhase]?.trim() || DEFAULT_CHECKLIST_SECTION;
+  const dueLine = formatDeadlineDisplay(room.deadline_at ?? null);
+  const duePast = isDeadlinePast(room.deadline_at ?? null);
 
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-3 sm:px-4 sm:py-4 lg:max-w-none lg:mx-0 lg:px-6 xl:px-8">
-        {/* Room header — clear anchor; admin controls stay quiet */}
         <Card className="border-border/45 bg-background/70 shadow-none p-2.5 sm:p-3">
           <div className="min-w-0">
             <h2 className="text-xl font-semibold text-foreground tracking-tight leading-tight sm:text-[1.35rem]">
-              Room {room.room_number}
+              {room.room_number}
             </h2>
             <p className="mt-2 text-xs text-muted-foreground/85 leading-snug">
               <span>{floor?.name || '—'}</span>
               <span className="text-muted-foreground/35 mx-1.5">·</span>
-              {showAreaTabs ? (
+              {showAreasNav ? (
                 <>
                   <span>{activeArea?.name ?? '—'}</span>
                   <span className="text-muted-foreground/35 mx-1.5">·</span>
@@ -990,6 +1130,20 @@ export default function RoomDetail() {
                 <span>{phaseLabel(boardPhaseNorm, phaseWorkflow)}</span>
               )}
             </p>
+            {dueLine ? (
+              <p
+                className={cn(
+                  'mt-1.5 flex items-center gap-1 text-[11px] font-medium',
+                  duePast ? 'text-red-700 dark:text-red-400' : 'text-slate-700 dark:text-slate-200'
+                )}
+              >
+                <Calendar className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                <span>Due {dueLine}</span>
+                {duePast ? (
+                  <span className="text-[10px] font-normal opacity-90">(overdue)</span>
+                ) : null}
+              </p>
+            ) : null}
           </div>
 
           <div className="mt-3 flex flex-wrap items-end justify-between gap-x-3 gap-y-2 border-t border-border/25 pt-2.5">
@@ -1064,59 +1218,39 @@ export default function RoomDetail() {
             </div>
           </div>
 
-          {canMovePhase ? (
-            <div className="mt-2 space-y-2 border-t border-border/25 pt-2">
-              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-                <label className="text-[10px] text-muted-foreground/70 shrink-0">Main phase (board)</label>
-                <Select value={boardPhaseNorm} onValueChange={handleSetMainPhase} disabled={editsBlocked}>
-                  <SelectTrigger className="h-6 text-[11px] border-border/40 bg-muted/15 text-foreground/90">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {workflowPhaseKeys.map((k) => (
-                      <SelectItem key={k} value={k}>
-                        {phaseLabel(k, phaseWorkflow)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {showAreaTabs && activeAreaId !== primaryAreaId ? (
-                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
-                  <label className="text-[10px] text-muted-foreground/70 shrink-0">Area phase</label>
-                  <Select
-                    value={areaMainPhaseNorm}
-                    onValueChange={handleSetActiveAreaWorkflowPhase}
-                    disabled={editsBlocked}
+          {canEdit && !editsBlocked ? (
+            <div className="mt-3 border-t border-border/25 pt-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] text-muted-foreground/80 shrink-0">Deadline</span>
+                <Input
+                  type="date"
+                  value={deadlineDraft}
+                  onChange={(e) => setDeadlineDraft(e.target.value)}
+                  className="h-7 max-w-[11rem] text-[11px] border-border/40 bg-muted/15"
+                />
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="h-7 text-[10px]"
+                  disabled={savingDeadline}
+                  onClick={() => void handleSaveDeadline()}
+                >
+                  {savingDeadline ? '…' : 'Apply'}
+                </Button>
+                {room.deadline_at ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[10px] text-muted-foreground"
+                    disabled={savingDeadline}
+                    onClick={() => void handleClearDeadline()}
                   >
-                    <SelectTrigger className="h-6 text-[11px] border-border/40 bg-muted/15 text-foreground/90">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {workflowPhaseKeys.map((k) => (
-                        <SelectItem key={k} value={k}>
-                          {phaseLabel(k, phaseWorkflow)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {canEdit ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border/25 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 text-[10px]"
-                disabled={editsBlocked}
-                onClick={() => setShowManageAreas(true)}
-              >
-                Areas…
-              </Button>
+                    Clear
+                  </Button>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -1124,7 +1258,7 @@ export default function RoomDetail() {
             <div className="mt-2 rounded-md border-l-2 border-muted-foreground/25 bg-muted/15 pl-2 pr-2 py-1 flex items-start gap-1.5">
               <Lock className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
               <p className="text-[10px] text-muted-foreground leading-snug">
-                Room locked — view only unless you are an admin.
+                Locked — view only unless you are an admin.
               </p>
             </div>
           ) : null}
@@ -1140,14 +1274,16 @@ export default function RoomDetail() {
           ) : null}
 
           {canDeleteRoom ? (
-            <Button
-              variant="ghost"
-              className="mt-2 h-6 w-full text-[10px] text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5"
-              onClick={() => setShowDeleteRoomDialog(true)}
-            >
-              <Trash2 className="h-3 w-3 mr-1 opacity-70" />
-              Delete room
-            </Button>
+            <div className="mt-3 border-t border-border/30 pt-3">
+              <Button
+                variant="ghost"
+                className="h-7 w-full text-[10px] text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5"
+                onClick={() => setShowDeleteRoomDialog(true)}
+              >
+                <Trash2 className="h-3 w-3 mr-1 opacity-70" />
+                Delete item
+              </Button>
+            </div>
           ) : null}
         </Card>
 
@@ -1162,26 +1298,106 @@ export default function RoomDetail() {
               onChange={handlePhotoUpload}
             />
 
-            {showAreaTabs ? (
-              <div className="-mx-1 flex gap-1.5 overflow-x-auto py-2 px-1 snap-x snap-mandatory">
-                {areasList.map((a) => {
-                  const isSel = a.id === activeAreaId;
-                  return (
-                    <button
-                      key={a.id}
-                      type="button"
-                      onClick={() => setActiveAreaId(a.id)}
-                      className={cn(
-                        'snap-start shrink-0 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition-colors',
-                        isSel
-                          ? 'border-[#1E3A5F] bg-[#1E3A5F]/10 text-foreground dark:border-blue-400 dark:bg-blue-950/40'
-                          : 'border-border/50 bg-muted/20 text-muted-foreground hover:bg-muted/40'
-                      )}
+            {canMovePhase ? (
+              <div className="rounded-lg border border-border/55 bg-muted/12 px-2.5 py-2.5 space-y-2.5 dark:bg-muted/10">
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  The <span className="font-medium text-foreground/85">amber</span> tab matches the floor board. Phase
+                  tabs below stay in workflow order — you are selecting which phase to work in.
+                </p>
+                <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center">
+                  <span className="text-[10px] font-medium text-muted-foreground/85 shrink-0 sm:min-w-[5.5rem]">
+                    Board phase
+                  </span>
+                  <Select value={boardPhaseNorm} onValueChange={handleSetMainPhase} disabled={editsBlocked}>
+                    <SelectTrigger className="h-7 flex-1 min-w-[8rem] max-w-xs text-[11px] border-border/45 bg-background/80 text-foreground/90">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workflowPhaseKeys.map((k) => (
+                        <SelectItem key={k} value={k}>
+                          {phaseLabel(k, phaseWorkflow)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {multiArea && activeAreaId !== primaryAreaId ? (
+                  <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center">
+                    <span className="text-[10px] font-medium text-muted-foreground/85 shrink-0 sm:min-w-[5.5rem]">
+                      Area phase
+                    </span>
+                    <Select
+                      value={areaMainPhaseNorm}
+                      onValueChange={handleSetActiveAreaWorkflowPhase}
+                      disabled={editsBlocked}
                     >
-                      {a.name}
+                      <SelectTrigger className="h-7 flex-1 min-w-[8rem] max-w-xs text-[11px] border-border/45 bg-background/80 text-foreground/90">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {workflowPhaseKeys.map((k) => (
+                          <SelectItem key={k} value={k}>
+                            {phaseLabel(k, phaseWorkflow)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                {canEdit && !persistedAreas ? (
+                  <div className="pt-1 border-t border-border/35">
+                    <button
+                      type="button"
+                      className="text-[10px] text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                      disabled={editsBlocked}
+                      onClick={() => setShowManageAreas(true)}
+                    >
+                      Use multiple areas
                     </button>
-                  );
-                })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {showAreasNav ? (
+              <div className="space-y-1.5">
+                <div className="flex items-baseline justify-between gap-2 px-0.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/90">Areas</span>
+                </div>
+                <div className="-mx-1 flex flex-wrap items-stretch gap-2 px-1 py-0.5">
+                  <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto snap-x snap-mandatory pb-0.5">
+                    {areasList.map((a) => {
+                      const isSel = a.id === activeAreaId;
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => setActiveAreaId(a.id)}
+                          className={cn(
+                            'snap-start shrink-0 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors',
+                            isSel
+                              ? 'border-[#1E3A5F] bg-[#1E3A5F]/8 text-foreground shadow-sm dark:border-blue-400 dark:bg-blue-950/35'
+                              : 'border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted/40'
+                          )}
+                        >
+                          {a.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {canEdit ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 shrink-0 self-center text-[10px] border-dashed border-border/60"
+                      disabled={editsBlocked}
+                      onClick={() => setShowManageAreas(true)}
+                    >
+                      Manage
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             ) : null}
 
@@ -1192,45 +1408,89 @@ export default function RoomDetail() {
                 const tot = tks.length;
                 const ui = computePhaseChipUi(key, areaMainPhaseNorm, phaseWorkflow, lockOv, tot, done);
                 const isSel = key === selPhase;
+                const tabLockedForWorkers = phaseTabReadOnlyForWorker(
+                  areaMainPhaseNorm,
+                  key,
+                  phaseWorkflow,
+                  lockOv
+                );
                 return (
-                  <button
+                  <div
                     key={key}
-                    type="button"
-                    onClick={() => setPhaseTab(key)}
                     className={cn(
-                      'snap-start flex min-w-[7.75rem] max-w-[10rem] flex-col rounded-lg border px-2 py-2 text-left text-xs transition-shadow sm:min-w-[8.75rem]',
+                      'snap-start relative min-w-[7.75rem] max-w-[10rem] sm:min-w-[8.75rem]',
                       isSel &&
-                        'ring-2 ring-[#1E3A5F] ring-offset-2 ring-offset-slate-50 shadow-sm dark:ring-blue-400 dark:ring-offset-background',
-                      ui.isMain &&
-                        'border-amber-400/80 bg-amber-50/95 dark:border-amber-600 dark:bg-amber-950/50',
-                      !ui.isMain && ui.status === 'Completed' &&
-                        'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30',
-                      !ui.isMain && ui.status === 'Locked' &&
-                        'border-slate-300 bg-slate-100/80 dark:border-slate-600 dark:bg-slate-900/50',
-                      !ui.isMain && ui.status === 'Not started' &&
-                        'border-dashed border-slate-200 bg-muted/30 dark:border-slate-700',
-                      !ui.isMain && ui.status === 'Open' &&
-                        'border-slate-200 bg-background dark:border-slate-700'
+                        'rounded-lg ring-2 ring-[#1E3A5F] ring-offset-2 ring-offset-slate-50 shadow-sm dark:ring-blue-400 dark:ring-offset-background'
                     )}
                   >
-                    <span className="font-semibold leading-tight text-slate-800 dark:text-foreground line-clamp-2">
-                      {phaseLabel(key, phaseWorkflow)}
-                    </span>
-                    <span className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-muted-foreground">
-                      <span
-                        className={cn(
-                          'font-medium',
-                          ui.status === 'Active' && 'text-amber-900 dark:text-amber-200',
-                          ui.status === 'Completed' && 'text-emerald-800 dark:text-emerald-300',
-                          ui.status === 'Locked' && 'text-slate-600 dark:text-slate-400'
-                        )}
-                      >
-                        {ui.status}
+                    <button
+                      type="button"
+                      onClick={() => setPhaseTab(key)}
+                      className={cn(
+                        'flex h-full w-full flex-col rounded-lg border px-2 py-2 pr-7 text-left text-xs transition-shadow',
+                        ui.isMain &&
+                          'border-amber-400/80 bg-amber-50/95 dark:border-amber-600 dark:bg-amber-950/50',
+                        !ui.isMain && ui.status === 'Completed' &&
+                          'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30',
+                        !ui.isMain && ui.status === 'Locked' &&
+                          'border-slate-300 bg-slate-100/80 dark:border-slate-600 dark:bg-slate-900/50',
+                        !ui.isMain && ui.status === 'Not started' &&
+                          'border-dashed border-slate-200 bg-muted/30 dark:border-slate-700',
+                        !ui.isMain && ui.status === 'Open' &&
+                          'border-slate-200 bg-background dark:border-slate-700'
+                      )}
+                    >
+                      <span className="font-semibold leading-tight text-slate-800 dark:text-foreground line-clamp-2">
+                        {phaseLabel(key, phaseWorkflow)}
                       </span>
-                      {ui.workerLocked ? <Lock className="h-3 w-3 shrink-0 text-slate-500" aria-hidden /> : null}
-                      {ui.progress ? <span className="text-slate-600 dark:text-slate-400">· {ui.progress}</span> : null}
-                    </span>
-                  </button>
+                      <span className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[10px] text-muted-foreground">
+                        <span
+                          className={cn(
+                            'font-medium',
+                            ui.status === 'Active' && 'text-amber-900 dark:text-amber-200',
+                            ui.status === 'Completed' && 'text-emerald-800 dark:text-emerald-300',
+                            ui.status === 'Locked' && 'text-slate-600 dark:text-slate-400'
+                          )}
+                        >
+                          {ui.status}
+                        </span>
+                        {ui.workerLocked ? <Lock className="h-3 w-3 shrink-0 text-slate-500" aria-hidden /> : null}
+                        {ui.progress ? <span className="text-slate-600 dark:text-slate-400">· {ui.progress}</span> : null}
+                      </span>
+                    </button>
+                    {canEdit && !editsBlocked ? (
+                      <button
+                        type="button"
+                        className={cn(
+                          'absolute top-1 right-1 z-10 rounded-md border p-1 shadow-sm transition-colors',
+                          tabLockedForWorkers
+                            ? 'border-amber-200/80 bg-amber-50/95 hover:bg-amber-100/90 dark:border-amber-800 dark:bg-amber-950/60'
+                            : 'border-border/50 bg-background/95 hover:bg-muted/70 dark:bg-background/90'
+                        )}
+                        title={
+                          tabLockedForWorkers
+                            ? `${phaseLabel(key, phaseWorkflow)}: workers read-only — click to open`
+                            : `${phaseLabel(key, phaseWorkflow)}: click to lock for workers`
+                        }
+                        aria-label={
+                          tabLockedForWorkers
+                            ? `Open ${phaseLabel(key, phaseWorkflow)} for workers`
+                            : `Lock ${phaseLabel(key, phaseWorkflow)} for workers`
+                        }
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void handleTogglePhaseWorkerLock(key);
+                        }}
+                      >
+                        {tabLockedForWorkers ? (
+                          <Unlock className="h-3 w-3 text-amber-900 dark:text-amber-200" />
+                        ) : (
+                          <Lock className="h-3 w-3 text-muted-foreground" />
+                        )}
+                      </button>
+                    ) : null}
+                  </div>
                 );
               })}
             </div>
@@ -1238,7 +1498,7 @@ export default function RoomDetail() {
             {selPhase !== areaMainPhaseNorm ? (
               <div className="flex flex-col gap-1.5 rounded-md border border-amber-200/70 bg-amber-50/70 px-2.5 py-2 dark:border-amber-900/45 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-amber-950 dark:text-amber-100 leading-snug">
-                  Viewing <span className="font-medium">{phaseLabel(selPhase, phaseWorkflow)}</span> — main is{' '}
+                  Viewing <span className="font-medium">{phaseLabel(selPhase, phaseWorkflow)}</span> — board phase is{' '}
                   <span className="font-medium">{phaseLabel(areaMainPhaseNorm, phaseWorkflow)}</span>.
                 </p>
                 <Button
@@ -1248,14 +1508,14 @@ export default function RoomDetail() {
                   className="h-8 shrink-0 text-xs border-amber-200/80 bg-white/90 hover:bg-amber-100/80 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
                   onClick={() => setPhaseTab(areaMainPhaseNorm)}
                 >
-                  Main phase
+                  Go to board phase
                 </Button>
               </div>
             ) : null}
 
             {selPhase !== areaMainPhaseNorm && !phaseReadOnly ? (
               <p className="text-[11px] text-muted-foreground rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5 leading-snug">
-                Not the main phase, but still open for editing.
+                Not the board phase tab, but still open for editing if your role allows it.
               </p>
             ) : null}
 
@@ -1267,39 +1527,60 @@ export default function RoomDetail() {
               </div>
             ) : null}
 
-            {canEdit ? (
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                  onClick={() => handleTogglePhaseWorkerLock(selPhase)}
-                >
-                  {phaseWorkerLocked ? (
-                    <>
-                      <Unlock className="h-3 w-3" />
-                      Open phase for workers
-                    </>
-                  ) : (
-                    <>
-                      <Lock className="h-3 w-3" />
-                      Lock phase for workers
-                    </>
-                  )}
-                </Button>
-              </div>
-            ) : null}
-
             <div className="space-y-4">
                   {sectionVisibility.checklist && (
                     <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
                       <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-1.5 sm:px-2.5 sm:py-2">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 pt-0.5">
-                            <h3 className="text-[15px] font-semibold tracking-tight text-foreground flex items-center gap-1.5">
+                            <h3 className="text-[15px] font-semibold tracking-tight text-foreground flex flex-wrap items-center gap-1.5">
                               <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400 opacity-85" />
-                              Checklist
+                              {editingChecklistTitle ? (
+                                <div
+                                  className="flex flex-1 min-w-0 items-center gap-1"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Input
+                                    value={checklistTitleDraft}
+                                    onChange={(e) => setChecklistTitleDraft(e.target.value)}
+                                    className="h-8 text-sm flex-1 min-w-0"
+                                    autoFocus
+                                    disabled={savingChecklistTitle}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') void commitChecklistSectionTitle();
+                                      if (e.key === 'Escape') setEditingChecklistTitle(false);
+                                    }}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 shrink-0"
+                                    disabled={savingChecklistTitle}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => void commitChecklistSectionTitle()}
+                                  >
+                                    <Check className="h-4 w-4 text-emerald-600" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <>
+                                  <span className="min-w-0">{checklistSectionTitle}</span>
+                                  {canEdit && !editsBlocked ? (
+                                    <button
+                                      type="button"
+                                      className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                                      aria-label="Rename checklist section"
+                                      onClick={() => {
+                                        setChecklistTitleDraft(checklistSectionTitle);
+                                        setEditingChecklistTitle(true);
+                                      }}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                  ) : null}
+                                </>
+                              )}
                             </h3>
                             <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground/75">
                               <span className="text-muted-foreground">{phaseLabel(selPhase, phaseWorkflow)}</span>
@@ -1741,10 +2022,10 @@ export default function RoomDetail() {
       <Dialog open={showManageAreas} onOpenChange={setShowManageAreas}>
         <DialogContent className="max-w-md mx-4">
           <DialogHeader>
-            <DialogTitle>Room areas</DialogTitle>
+            <DialogTitle>Areas</DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground mb-2 leading-snug">
-            Each area has its own phases and checklist. The first area matches the floor board “main phase”.
+            Each area has its own phases and checklist. The first area sets the board phase for this item.
           </p>
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {areasList.map((a) => (
@@ -1809,7 +2090,7 @@ export default function RoomDetail() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Ban className="h-5 w-5 text-red-500" />
-              Block Room
+              Block
             </DialogTitle>
           </DialogHeader>
           <Input
@@ -1836,10 +2117,10 @@ export default function RoomDetail() {
         <DialogContent className="max-w-sm mx-4">
           <DialogForm onSubmit={(e) => { e.preventDefault(); handleDeleteRoom(); }}>
           <DialogHeader>
-            <DialogTitle>Delete room?</DialogTitle>
+            <DialogTitle>Delete this item?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            This will permanently delete this room and its checklist items, photos, visits, and deviations.
+            This will permanently delete this item and its checklist, photos, visits, and notes.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteRoomDialog(false)} disabled={deletingRoom}>
@@ -1850,7 +2131,7 @@ export default function RoomDetail() {
               disabled={deletingRoom}
               className="bg-red-500 hover:bg-red-600 text-white"
             >
-              {deletingRoom ? 'Deleting...' : 'Delete room'}
+              {deletingRoom ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
           </DialogForm>

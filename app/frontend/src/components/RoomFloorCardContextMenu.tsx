@@ -51,7 +51,7 @@ export default function RoomFloorCardContextMenu({
 }: RoomFloorCardContextMenuProps) {
   const ids = targetRoomIds(roomId, selectedRoomIds);
   const count = ids.length;
-  const scopeLabel = count === 1 ? `Room ${roomLabel}` : `${count} rooms`;
+  const scopeLabel = count === 1 ? roomLabel : `${count} items`;
 
   return (
     <ContextMenu>
@@ -62,7 +62,7 @@ export default function RoomFloorCardContextMenu({
         <ContextMenuLabel className="text-xs font-normal text-muted-foreground">{scopeLabel}</ContextMenuLabel>
         <ContextMenuSeparator />
         <ContextMenuItem onSelect={() => onOpenRoom(roomId)}>
-          {count > 1 ? 'Open this room' : 'Open room'}
+          {count > 1 ? 'Open selected' : 'Open'}
         </ContextMenuItem>
         {canChangePhase ? (
           <ContextMenuSub>

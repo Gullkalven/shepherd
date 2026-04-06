@@ -23,5 +23,9 @@ class Rooms(Base):
     workflow_deviations = Column(JSON, nullable=True)
     # Optional list of { id, name, phase?, phase_lock_overrides? }; null = legacy single "Main" area
     areas = Column(JSON, nullable=True)
+    # Optional target date for the work unit (UI + future lock rules)
+    deadline_at = Column(DateTime(timezone=True), nullable=True)
+    # Optional per-workflow-phase checklist section titles: { phase_key: label }
+    checklist_labels = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

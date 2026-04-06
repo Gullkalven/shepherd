@@ -54,6 +54,19 @@
             "type": "array",
             "description": "Structured deviations/notes for the room workflow (JSON array of { id, phase_key, text, status, created_at, resolved_at? })."
         },
+        "areas": {
+            "type": "array",
+            "description": "Optional multi-area config (JSON array of { id, name, phase?, phase_lock_overrides? }). Null = single default area."
+        },
+        "deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Optional target date/time for the work unit (for display and future automation)."
+        },
+        "checklist_labels": {
+            "type": "object",
+            "description": "Optional map of workflow phase key -> custom checklist section title for that phase."
+        },
         "created_at": {
             "type": "string",
             "format": "date-time",
