@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -219,10 +219,19 @@ async def sync_rooms_from_template(
         if not phase_keys:
             phase_keys = [p["key"] for p in DEFAULT_PHASES]
 
-        room_tasks = [task for task in managed_tasks if task.room_id == room_id]
+        room_tasks_initial = [task for task in managed_tasks if task.room_id == room_id]
+
+        # Phases where this template already has managed tasks in this room (e.g. remontering only).
+        # Do NOT sync into every workflow phase — that duplicated one template across all phases
+        # (demontering + remontering + …) and polluted room boards.
+        phases_to_sync: Set[str] = {
+            _normalize_task_phase_key(getattr(t, "phase", None), phase_keys) for t in room_tasks_initial
+        }
+        if not phases_to_sync:
+            phases_to_sync = {phase_keys[0]}
 
         # Remove managed tasks for template items that no longer exist.
-        for task in list(room_tasks):
+        for task in list(room_tasks_initial):
             if task.template_item_id is None or task.template_item_id not in template_item_ids:
                 await db.delete(task)
                 removed += 1
@@ -237,6 +246,23 @@ async def sync_rooms_from_template(
         )
         room_tasks = list(fresh_result.scalars().all())
 
+        # Remove managed tasks for this template in phases we're not syncing (fixes prior sync pollution).
+        for task in list(room_tasks):
+            ph = _normalize_task_phase_key(getattr(task, "phase", None), phase_keys)
+            if ph not in phases_to_sync:
+                await db.delete(task)
+                removed += 1
+
+        fresh_result2 = await db.execute(
+            select(Tasks).where(
+                Tasks.room_id == room_id,
+                Tasks.template_id == id,
+                Tasks.user_id == uid,
+                Tasks.is_template_managed == True,  # noqa: E712
+            )
+        )
+        room_tasks = list(fresh_result2.scalars().all())
+
         by_template_item_phase: Dict[Tuple[int, str], Tasks] = {}
         for task in room_tasks:
             tid = task.template_item_id
@@ -245,8 +271,10 @@ async def sync_rooms_from_template(
             ph = _normalize_task_phase_key(getattr(task, "phase", None), phase_keys)
             by_template_item_phase[(tid, ph)] = task
 
-        # One checklist row per template line per workflow phase.
+        # Only create/update rows in phases that already used this template for this room.
         for phase_key in phase_keys:
+            if phase_key not in phases_to_sync:
+                continue
             for idx, item in enumerate(template_items):
                 existing = by_template_item_phase.get((item.id, phase_key))
                 if not existing:
