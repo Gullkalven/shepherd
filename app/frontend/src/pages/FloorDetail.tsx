@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { client } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
@@ -104,6 +104,8 @@ export default function FloorDetail() {
   const [templateName, setTemplateName] = useState('');
   const [templateItemsText, setTemplateItemsText] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
+  /** Guards template editor loads so a slow response cannot overwrite a newer selection. */
+  const templateEditRequestIdRef = useRef(0);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRoomIds, setSelectedRoomIds] = useState<number[]>([]);
   const [checklistByRoomId, setChecklistByRoomId] = useState<ChecklistSummaryMap>({});
@@ -638,6 +640,7 @@ export default function FloorDetail() {
   };
 
   const loadTemplateForEdit = async (templateId: string) => {
+    const requestId = ++templateEditRequestIdRef.current;
     setEditingTemplateId(templateId);
     const selected = templates.find((t) => String(t.id) === templateId);
     setTemplateName(selected?.name || '');
@@ -645,6 +648,7 @@ export default function FloorDetail() {
       setTemplateItemsText('');
       return;
     }
+    setTemplateItemsText('');
     try {
       const itemsRes = await client.apiCall.invoke({
         url: '/api/v1/entities/checklist_template_items',
@@ -652,12 +656,14 @@ export default function FloorDetail() {
         params: { query: JSON.stringify({ template_id: Number(templateId) }), sort: 'sort_order', limit: 500 },
         data: {},
       });
+      if (requestId !== templateEditRequestIdRef.current) return;
       const items: ChecklistTemplateItem[] = itemsRes?.data?.items || [];
       const selectedItems = items
         .filter((i) => Number(i.template_id) === Number(templateId))
         .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       setTemplateItemsText(selectedItems.map((i) => i.name).join('\n'));
     } catch {
+      if (requestId !== templateEditRequestIdRef.current) return;
       setTemplateItemsText('');
     }
   };
@@ -690,7 +696,13 @@ export default function FloorDetail() {
           method: 'POST',
           data: { name },
         });
-        templateId = created?.data?.id;
+        const body = (created as { data?: { id?: number } })?.data;
+        const nid = Number(body?.id);
+        templateId = Number.isFinite(nid) && nid > 0 ? nid : 0;
+        if (!templateId) {
+          toast.error('Failed to create template');
+          return;
+        }
       }
 
       await Promise.all(

@@ -93,6 +93,18 @@ async def update_checklist_template_item(
     return result
 
 
+# More specific path before /{id} so "by-template" is never parsed as a numeric id.
+@router.delete("/by-template/{template_id}")
+async def delete_checklist_template_items_by_template(
+    template_id: int,
+    manager: UserResponse = Depends(require_manager_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    service = ChecklistTemplateItemsService(db)
+    deleted_count = await service.delete_by_template(template_id, user_id=str(manager.id))
+    return {"message": "Checklist template items deleted", "deleted_count": deleted_count}
+
+
 @router.delete("/{id}")
 async def delete_checklist_template_item(
     id: int,
@@ -104,14 +116,3 @@ async def delete_checklist_template_item(
     if not success:
         raise HTTPException(status_code=404, detail="Checklist template item not found")
     return {"message": "Checklist template item deleted", "id": id}
-
-
-@router.delete("/by-template/{template_id}")
-async def delete_checklist_template_items_by_template(
-    template_id: int,
-    manager: UserResponse = Depends(require_manager_or_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    service = ChecklistTemplateItemsService(db)
-    deleted_count = await service.delete_by_template(template_id, user_id=str(manager.id))
-    return {"message": "Checklist template items deleted", "deleted_count": deleted_count}
