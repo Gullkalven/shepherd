@@ -766,10 +766,10 @@ export default function FloorDetail() {
       );
 
       toast.success('Template saved');
-      selectedTemplateIdRef.current = '';
-      setEditingTemplateId('');
-      setTemplateName('');
-      setTemplateItemsText('');
+      const savedIdStr = String(templateId);
+      selectedTemplateIdRef.current = savedIdStr;
+      setEditingTemplateId(savedIdStr);
+      setTemplateName(name);
       await loadTemplates();
     } catch {
       toast.error('Failed to save template');
