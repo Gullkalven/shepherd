@@ -63,6 +63,24 @@ interface ChecklistTemplateItem {
   sort_order?: number;
 }
 
+/** Set localStorage SHEPHERD_TEMPLATE_DEBUG=1 (dev) to trace template IDs in the browser console. */
+function templateDebugEnabled() {
+  try {
+    return (
+      import.meta.env.DEV &&
+      typeof globalThis.localStorage !== 'undefined' &&
+      globalThis.localStorage.getItem('SHEPHERD_TEMPLATE_DEBUG') === '1'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function logTemplateDebug(phase: string, payload: Record<string, unknown>) {
+  if (!templateDebugEnabled()) return;
+  console.info('[Shepherd checklist templates]', phase, payload);
+}
+
 export default function FloorDetail() {
   const { projectId, floorId } = useParams<{ projectId: string; floorId: string }>();
   const navigate = useNavigate();
@@ -106,6 +124,13 @@ export default function FloorDetail() {
   const [savingTemplate, setSavingTemplate] = useState(false);
   /** Guards template editor loads so a slow response cannot overwrite a newer selection. */
   const templateEditRequestIdRef = useRef(0);
+  /**
+   * Which template id the user intends to edit — updated synchronously on select change.
+   * React state editingTemplateId can lag one render behind the visible dropdown; save/sync could read
+   * the stale id while templateItemsText already held lines from the newly chosen template, causing
+   * deletes/posts against the wrong template_id (templates looked "linked").
+   */
+  const selectedTemplateIdRef = useRef<string>('');
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedRoomIds, setSelectedRoomIds] = useState<number[]>([]);
   const [checklistByRoomId, setChecklistByRoomId] = useState<ChecklistSummaryMap>({});
@@ -641,8 +666,10 @@ export default function FloorDetail() {
   };
 
   const loadTemplateForEdit = async (templateId: string) => {
+    selectedTemplateIdRef.current = templateId;
     const requestId = ++templateEditRequestIdRef.current;
     setEditingTemplateId(templateId);
+    logTemplateDebug('select', { templateId, ref: selectedTemplateIdRef.current });
     const selected = templates.find((t) => String(t.id) === templateId);
     setTemplateName(selected?.name || '');
     if (!templateId) {
@@ -661,7 +688,13 @@ export default function FloorDetail() {
       const selectedItems = items
         .filter((i) => Number(i.template_id) === Number(templateId))
         .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
-      setTemplateItemsText(selectedItems.map((i) => i.name).join('\n'));
+      const lines = selectedItems.map((i) => i.name);
+      logTemplateDebug('load_items_done', {
+        templateId,
+        itemCount: lines.length,
+        linePreview: lines.slice(0, 8),
+      });
+      setTemplateItemsText(lines.join('\n'));
     } catch {
       if (requestId !== templateEditRequestIdRef.current) return;
       setTemplateItemsText('');
@@ -678,7 +711,24 @@ export default function FloorDetail() {
 
     setSavingTemplate(true);
     try {
-      let templateId = editingTemplateId ? Number(editingTemplateId) : 0;
+      const rawSelected = selectedTemplateIdRef.current;
+      let templateId = rawSelected ? Number(rawSelected) : 0;
+      logTemplateDebug('save:start', {
+        rawRef: rawSelected,
+        stateEditingTemplateId: editingTemplateId,
+        resolvedNumericId: templateId,
+        itemLineCount: itemNames.length,
+      });
+      if (
+        rawSelected &&
+        editingTemplateId &&
+        rawSelected !== editingTemplateId
+      ) {
+        logTemplateDebug('save:ref_state_mismatch', {
+          rawRef: rawSelected,
+          stateEditingTemplateId: editingTemplateId,
+        });
+      }
       if (templateId) {
         await client.apiCall.invoke({
           url: `/api/v1/entities/checklist_templates/${templateId}`,
@@ -716,6 +766,7 @@ export default function FloorDetail() {
       );
 
       toast.success('Template saved');
+      selectedTemplateIdRef.current = '';
       setEditingTemplateId('');
       setTemplateName('');
       setTemplateItemsText('');
@@ -728,13 +779,14 @@ export default function FloorDetail() {
   };
 
   const handleSyncTemplate = async () => {
-    if (!editingTemplateId) {
+    const syncId = selectedTemplateIdRef.current || editingTemplateId;
+    if (!syncId) {
       toast.error('Select a template first');
       return;
     }
     try {
       const res = await client.apiCall.invoke({
-        url: `/api/v1/entities/checklist_templates/${editingTemplateId}/sync-rooms`,
+        url: `/api/v1/entities/checklist_templates/${syncId}/sync-rooms`,
         method: 'POST',
         data: {},
       });
@@ -1443,7 +1495,12 @@ export default function FloorDetail() {
           <div className="space-y-3">
             <select
               value={editingTemplateId}
-              onChange={(e) => loadTemplateForEdit(e.target.value)}
+              onChange={(e) => {
+                const v = e.target.value;
+                selectedTemplateIdRef.current = v;
+                logTemplateDebug('select_dom', { value: v });
+                void loadTemplateForEdit(v);
+              }}
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             >
               <option value="">New template</option>

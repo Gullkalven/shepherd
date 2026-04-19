@@ -1,4 +1,6 @@
 import json
+import logging
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,6 +13,9 @@ from dependencies.auth import get_current_user
 from routers.checklist_templates import require_manager_or_admin
 from schemas.auth import UserResponse
 from services.checklist_template_items import ChecklistTemplateItemsService
+
+logger = logging.getLogger(__name__)
+_TEMPLATE_DEBUG = os.environ.get("SHEPHERD_TEMPLATE_DEBUG", "").lower() in ("1", "true", "yes")
 
 router = APIRouter(prefix="/api/v1/entities/checklist_template_items", tags=["checklist_template_items"])
 
@@ -56,13 +61,24 @@ async def list_checklist_template_items_by_template(
 ):
     """Return items for one template only (scoped by user). Avoids relying on JSON query filters from clients."""
     service = ChecklistTemplateItemsService(db)
-    return await service.get_list(
+    out = await service.get_list(
         skip=skip,
         limit=limit,
         query_dict={"template_id": template_id},
         sort=sort,
         user_id=str(current_user.id),
     )
+    if _TEMPLATE_DEBUG:
+        items = out.get("items") or []
+        names = [getattr(x, "name", None) for x in items[:20]]
+        logger.info(
+            "[checklist_template_items] GET by-template id=%s user=%s count=%s sample=%s",
+            template_id,
+            current_user.id,
+            len(items),
+            names,
+        )
+    return out
 
 
 @router.get("", response_model=ChecklistTemplateItemsListResponse)
@@ -92,6 +108,13 @@ async def create_checklist_template_item(
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplateItemsService(db)
+    if _TEMPLATE_DEBUG:
+        logger.info(
+            "[checklist_template_items] POST item template_id=%s name=%r user=%s",
+            data.template_id,
+            data.name,
+            manager.id,
+        )
     result = await service.create(data.model_dump(), user_id=str(manager.id))
     if not result:
         raise HTTPException(status_code=400, detail="Failed to create checklist template item")
@@ -121,7 +144,19 @@ async def delete_checklist_template_items_by_template(
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplateItemsService(db)
+    if _TEMPLATE_DEBUG:
+        logger.info(
+            "[checklist_template_items] DELETE by-template id=%s user=%s",
+            template_id,
+            manager.id,
+        )
     deleted_count = await service.delete_by_template(template_id, user_id=str(manager.id))
+    if _TEMPLATE_DEBUG:
+        logger.info(
+            "[checklist_template_items] DELETE by-template id=%s done deleted_count=%s",
+            template_id,
+            deleted_count,
+        )
     return {"message": "Checklist template items deleted", "deleted_count": deleted_count}
 
 
