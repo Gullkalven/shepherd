@@ -218,11 +218,12 @@ export default function FloorDetail() {
 
   const getTemplateItems = async (templateId?: number): Promise<ChecklistTemplateItem[]> => {
     if (!templateId) return [];
+    // @metagptx/web-sdk apiCall.invoke only forwards `data` to axios query string for GET — not `params`.
+    // Use a per-template URL so each request is scoped and cache-safe.
     const itemsRes = await client.apiCall.invoke({
-      url: '/api/v1/entities/checklist_template_items',
+      url: `/api/v1/entities/checklist_template_items/by-template/${templateId}`,
       method: 'GET',
-      params: { query: JSON.stringify({ template_id: templateId }), sort: 'sort_order', limit: 500 },
-      data: {},
+      data: { sort: 'sort_order', limit: 2000 },
     });
     const items: ChecklistTemplateItem[] = itemsRes?.data?.items || [];
     return items
@@ -651,10 +652,9 @@ export default function FloorDetail() {
     setTemplateItemsText('');
     try {
       const itemsRes = await client.apiCall.invoke({
-        url: '/api/v1/entities/checklist_template_items',
+        url: `/api/v1/entities/checklist_template_items/by-template/${templateId}`,
         method: 'GET',
-        params: { query: JSON.stringify({ template_id: Number(templateId) }), sort: 'sort_order', limit: 500 },
-        data: {},
+        data: { sort: 'sort_order', limit: 2000 },
       });
       if (requestId !== templateEditRequestIdRef.current) return;
       const items: ChecklistTemplateItem[] = itemsRes?.data?.items || [];

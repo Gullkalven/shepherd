@@ -45,6 +45,26 @@ class ChecklistTemplateItemsListResponse(BaseModel):
     limit: int
 
 
+@router.get("/by-template/{template_id}", response_model=ChecklistTemplateItemsListResponse)
+async def list_checklist_template_items_by_template(
+    template_id: int,
+    sort: str = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(2000, ge=1, le=2000),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return items for one template only (scoped by user). Avoids relying on JSON query filters from clients."""
+    service = ChecklistTemplateItemsService(db)
+    return await service.get_list(
+        skip=skip,
+        limit=limit,
+        query_dict={"template_id": template_id},
+        sort=sort,
+        user_id=str(current_user.id),
+    )
+
+
 @router.get("", response_model=ChecklistTemplateItemsListResponse)
 async def query_checklist_template_items(
     query: str = Query(None),
