@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     lambda_function_name: str = "fastapi-backend"
     aws_region: str = "us-east-1"
 
+    # Object storage integration (used by /api/v1/storage/* endpoints)
+    oss_service_url: str = ""
+    oss_api_key: str = ""
+
     @property
     def backend_url(self) -> str:
         """Generate backend URL from host and port."""
