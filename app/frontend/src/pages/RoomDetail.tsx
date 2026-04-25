@@ -889,7 +889,8 @@ export default function RoomDetail() {
     if (!file || !room) return;
     setUploading(true);
     try {
-      const objectKey = `room-${room.id}/${Date.now()}-${file.name}`;
+      const safeFilename = file.name.replace(/[^A-Za-z0-9._-]/g, '-');
+      const objectKey = `${Date.now()}-${safeFilename}`;
       const uploadRes = await client.storage.getUploadUrl({
         bucket_name: 'room-photos',
         object_key: objectKey,
