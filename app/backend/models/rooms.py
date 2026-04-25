@@ -27,5 +27,7 @@ class Rooms(Base):
     deadline_at = Column(DateTime(timezone=True), nullable=True)
     # Optional per-workflow-phase checklist section titles: { phase_key: label }
     checklist_labels = Column(JSON, nullable=True)
+    # Heating cable documentation payload per room (3 stages + fields)
+    heating_cable_doc = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

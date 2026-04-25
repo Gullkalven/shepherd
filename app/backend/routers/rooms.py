@@ -71,6 +71,7 @@ class RoomsData(BaseModel):
     areas: Optional[List[Dict[str, Any]]] = None
     deadline_at: Optional[datetime] = None
     checklist_labels: Optional[Dict[str, str]] = None
+    heating_cable_doc: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -91,6 +92,7 @@ class RoomsUpdateData(BaseModel):
     areas: Optional[List[Dict[str, Any]]] = None
     deadline_at: Optional[datetime] = None
     checklist_labels: Optional[Dict[str, str]] = None
+    heating_cable_doc: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -113,6 +115,7 @@ class RoomsResponse(BaseModel):
     areas: Optional[List[Dict[str, Any]]] = None
     deadline_at: Optional[datetime] = None
     checklist_labels: Optional[Dict[str, Any]] = None
+    heating_cable_doc: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -402,7 +405,7 @@ async def update_rooms(
         for k, v in raw_dump.items():
             if v is not None:
                 update_dict[k] = v
-            elif k in ("deadline_at", "checklist_labels"):
+            elif k in ("deadline_at", "checklist_labels", "heating_cable_doc"):
                 update_dict[k] = None
         existing = await service.get_by_id(id, user_id=str(current_user.id))
         if not existing:

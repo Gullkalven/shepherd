@@ -16,6 +16,7 @@ import {
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import { taskCountsForFloorBoard } from '@/lib/roomAreas';
+import { deriveHeatingCableStatus } from '@/lib/heatingCable';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -49,6 +50,7 @@ interface Room {
   is_locked?: boolean;
   areas?: unknown;
   deadline_at?: string | null;
+  heating_cable_doc?: unknown;
 }
 
 interface ChecklistTemplate {
@@ -1146,6 +1148,13 @@ export default function FloorDetail() {
                 const completed = summary?.completed ?? 0;
                 const total = summary?.total ?? 0;
                 const rp = normalizeRoomPhase(room.phase, phaseWorkflow);
+                const heatingStatus = deriveHeatingCableStatus(room.heating_cable_doc);
+                const heatingStatusLabel: Record<string, string> = {
+                  not_started: 'Not started',
+                  partial: 'Partial',
+                  complete: 'Complete',
+                  has_deviation_missing: 'Deviation/missing',
+                };
                 return (
                   <RoomFloorCardContextMenu
                     key={room.id}
@@ -1169,6 +1178,7 @@ export default function FloorDetail() {
                       assignedWorker={room.assigned_worker}
                       updatedAt={room.updated_at}
                       deadlineAt={room.deadline_at}
+                      heatingCableStatusLabel={heatingStatusLabel[heatingStatus.status]}
                       onClick={() =>
                         selectionMode
                           ? toggleRoomSelection(room.id)

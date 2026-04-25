@@ -38,8 +38,12 @@ interface Room {
   id: number;
   status: string;
   floor_id: number;
+  room_number: string;
+  assigned_worker?: string;
+  updated_at?: string | null;
   phase?: string;
   areas?: unknown;
+  heating_cable_doc?: unknown;
 }
 
 interface ProjectTaskRow {

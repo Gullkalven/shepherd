@@ -37,6 +37,13 @@ import {
   type RoomArea,
 } from '@/lib/roomAreas';
 import { cn } from '@/lib/utils';
+import {
+  HEATING_CABLE_STAGES,
+  normalizeHeatingCableDoc,
+  deriveHeatingCableStatus,
+  type HeatingCableDoc,
+  type HeatingCableStageKey,
+} from '@/lib/heatingCable';
 
 const STATUS_OPTIONS = [
   { value: 'not_started', label: 'Not Started', color: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
@@ -92,6 +99,8 @@ interface Room {
   deadline_at?: string | null;
   /** Admin: optional checklist card title per workflow phase key */
   checklist_labels?: unknown;
+  /** Heating cable documentation payload */
+  heating_cable_doc?: unknown;
   floor_id: number;
   project_id: number;
 }
@@ -279,6 +288,8 @@ export default function RoomDetail() {
   const [editingChecklistTitle, setEditingChecklistTitle] = useState(false);
   const [checklistTitleDraft, setChecklistTitleDraft] = useState('');
   const [savingChecklistTitle, setSavingChecklistTitle] = useState(false);
+  const [heatingCableDoc, setHeatingCableDoc] = useState<HeatingCableDoc>({});
+  const [savingHeatingCable, setSavingHeatingCable] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!projectId || !floorId || !roomId) return;
@@ -422,6 +433,11 @@ export default function RoomDetail() {
   useEffect(() => {
     if (room) setDeviations(coerceWorkflowDeviations(room.workflow_deviations));
   }, [room?.id, room?.workflow_deviations]);
+
+  useEffect(() => {
+    if (!room) return;
+    setHeatingCableDoc(normalizeHeatingCableDoc(room.heating_cable_doc));
+  }, [room?.id, room?.heating_cable_doc]);
 
   useEffect(() => {
     setShowAddTask(false);
@@ -1038,6 +1054,82 @@ export default function RoomDetail() {
     }
   }, [room, canEdit, checklistTitleDraft, phaseTab, phaseWorkflow]);
 
+  const updateHeatingStageField = (
+    stageKey: HeatingCableStageKey,
+    field: 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
+    value: string
+  ) => {
+    setHeatingCableDoc((prev) => ({
+      ...prev,
+      [stageKey]: {
+        ...(prev[stageKey] || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const saveHeatingCableDoc = async () => {
+    if (!room) return;
+    setSavingHeatingCable(true);
+    try {
+      const savedName = (localStorage.getItem(WORKER_NAME_KEY) || '').trim();
+      const normalizedWithWorker: HeatingCableDoc = {
+        ...heatingCableDoc,
+      };
+      for (const stage of HEATING_CABLE_STAGES) {
+        const row = normalizedWithWorker[stage.key] || {};
+        const hasAnyValue =
+          Boolean(row.resistance_ohm?.trim()) ||
+          Boolean(row.insulation_mohm?.trim()) ||
+          Boolean(row.date?.trim()) ||
+          Boolean(row.note?.trim());
+        if (hasAnyValue && !row.performed_by?.trim() && savedName) {
+          normalizedWithWorker[stage.key] = {
+            ...row,
+            performed_by: savedName,
+          };
+        }
+      }
+      const payload: HeatingCableDoc = {
+        ...normalizedWithWorker,
+        updated_at: new Date().toISOString(),
+      };
+      await client.entities.rooms.update({
+        id: String(room.id),
+        data: { heating_cable_doc: payload } as Record<string, unknown>,
+      });
+      setRoom({ ...room, heating_cable_doc: payload });
+      toast.success('Heating cable documentation saved');
+    } catch {
+      toast.error('Failed to save heating cable documentation');
+    } finally {
+      setSavingHeatingCable(false);
+    }
+  };
+
+  const toggleHeatingCableLock = async () => {
+    if (!room || !canEdit) return;
+    setSavingHeatingCable(true);
+    try {
+      const payload: HeatingCableDoc = {
+        ...heatingCableDoc,
+        locked_by_admin: !(heatingCableDoc.locked_by_admin === true),
+        updated_at: new Date().toISOString(),
+      };
+      await client.entities.rooms.update({
+        id: String(room.id),
+        data: { heating_cable_doc: payload } as Record<string, unknown>,
+      });
+      setHeatingCableDoc(payload);
+      setRoom({ ...room, heating_cable_doc: payload });
+      toast.success(payload.locked_by_admin ? 'Heating cable section locked' : 'Heating cable section unlocked');
+    } catch {
+      toast.error('Failed to update heating cable lock');
+    } finally {
+      setSavingHeatingCable(false);
+    }
+  };
+
   const activityEntries = useMemo(() => {
     if (!room) return [];
     const primary = areasList[0]?.id ?? DEFAULT_AREA_ID;
@@ -1130,6 +1222,15 @@ export default function RoomDetail() {
     checklistLabelsMap[selPhase]?.trim() || DEFAULT_CHECKLIST_SECTION;
   const dueLine = formatDeadlineDisplay(room.deadline_at ?? null);
   const duePast = isDeadlinePast(room.deadline_at ?? null);
+  const heatingDerived = deriveHeatingCableStatus(heatingCableDoc);
+  const heatingLockedByAdmin = heatingCableDoc.locked_by_admin === true;
+  const canEditHeatingCable = !editsBlocked && (!heatingLockedByAdmin || canEdit);
+  const heatingStatusLabel: Record<string, string> = {
+    not_started: 'Not started',
+    partial: 'Partially documented',
+    complete: 'Complete',
+    has_deviation_missing: 'Has deviation/missing values',
+  };
 
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
@@ -1550,6 +1651,114 @@ export default function RoomDetail() {
             ) : null}
 
             <div className="space-y-4">
+                  <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
+                    <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-2 sm:px-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-[15px] font-semibold tracking-tight text-foreground">
+                          Heating Cable Documentation
+                        </h3>
+                        <div className="flex items-center gap-1.5">
+                          <Badge variant="secondary" className="text-[10px]">
+                            {heatingStatusLabel[heatingDerived.status]}
+                          </Badge>
+                          {canEdit ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-6 text-[10px]"
+                              onClick={() => void toggleHeatingCableLock()}
+                              disabled={savingHeatingCable}
+                            >
+                              {heatingLockedByAdmin ? 'Unlock' : 'Lock'}
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                        Fill all three measurement stages for complete documentation.
+                      </p>
+                      {heatingLockedByAdmin ? (
+                        <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
+                          Locked by admin. Workers can view, admins can still correct.
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="p-2 space-y-3">
+                      {HEATING_CABLE_STAGES.map((stage) => {
+                        const row = heatingCableDoc[stage.key] || {};
+                        return (
+                          <div key={stage.key} className="rounded-md border border-border/50 p-2 space-y-2">
+                            <p className="text-xs font-semibold text-foreground">{stage.label}</p>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <Input
+                                placeholder="Resistance (Ohm)"
+                                value={row.resistance_ohm || ''}
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onChange={(e) =>
+                                  updateHeatingStageField(stage.key, 'resistance_ohm', e.target.value)
+                                }
+                                className="h-8 text-xs"
+                              />
+                              <Input
+                                placeholder="Insulation (MΩ)"
+                                value={row.insulation_mohm || ''}
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onChange={(e) =>
+                                  updateHeatingStageField(stage.key, 'insulation_mohm', e.target.value)
+                                }
+                                className="h-8 text-xs"
+                              />
+                              <Input
+                                type="date"
+                                value={row.date || ''}
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onChange={(e) => updateHeatingStageField(stage.key, 'date', e.target.value)}
+                                className="h-8 text-xs"
+                              />
+                              <Input
+                                placeholder="Performed by"
+                                value={row.performed_by || ''}
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onChange={(e) =>
+                                  updateHeatingStageField(stage.key, 'performed_by', e.target.value)
+                                }
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                            <Textarea
+                              placeholder="Optional note / deviation"
+                              value={row.note || ''}
+                              disabled={!canEditHeatingCable || savingHeatingCable}
+                              onChange={(e) => updateHeatingStageField(stage.key, 'note', e.target.value)}
+                              rows={2}
+                              className="text-xs"
+                            />
+                          </div>
+                        );
+                      })}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <p className="text-[11px] text-muted-foreground">
+                          Missing stages:{' '}
+                          {heatingDerived.missingStages.length > 0
+                            ? heatingDerived.missingStages
+                                .map((k) => HEATING_CABLE_STAGES.find((s) => s.key === k)?.label || k)
+                                .join(', ')
+                            : 'None'}
+                        </p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => void saveHeatingCableDoc()}
+                          disabled={!canEditHeatingCable || savingHeatingCable}
+                        >
+                          {savingHeatingCable ? 'Saving...' : 'Save measurements'}
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+
                   {sectionVisibility.checklist && (
                     <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
                       <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-1.5 sm:px-2.5 sm:py-2">

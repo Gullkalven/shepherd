@@ -101,6 +101,7 @@ interface RoomDashboardCardProps {
   updatedAt?: string | null;
   /** Optional target date shown on the card */
   deadlineAt?: string | null;
+  heatingCableStatusLabel?: string;
   onClick: () => void;
   selectionMode?: boolean;
   selected?: boolean;
@@ -124,6 +125,7 @@ export default function RoomDashboardCard({
   assignedWorker,
   updatedAt,
   deadlineAt,
+  heatingCableStatusLabel,
   onClick,
   selectionMode = false,
   selected = false,
@@ -255,6 +257,12 @@ export default function RoomDashboardCard({
               </span>
             ) : null}
           </div>
+
+          {heatingCableStatusLabel ? (
+            <div className="text-[10px] text-muted-foreground">
+              Heating cable: <span className="font-medium text-foreground/85">{heatingCableStatusLabel}</span>
+            </div>
+          ) : null}
 
           {assignedWorker ? (
             <div className="flex items-center gap-1 text-[11px] text-slate-700 dark:text-slate-300">
