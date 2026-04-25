@@ -897,12 +897,33 @@ export default function RoomDetail() {
       });
       const uploadUrl = uploadRes?.data?.upload_url;
       if (!uploadUrl) throw new Error('No upload URL');
+      const token = localStorage.getItem('token');
+      const isApiUploadTarget = (() => {
+        try {
+          const u = new URL(uploadUrl, window.location.origin);
+          return u.origin === window.location.origin && u.pathname.startsWith('/api/');
+        } catch {
+          return false;
+        }
+      })();
 
-      await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type },
-      });
+      if (isApiUploadTarget) {
+        const formData = new FormData();
+        formData.append('file', file, file.name);
+        const authHeaders: Record<string, string> = {};
+        if (token) authHeaders.Authorization = `Bearer ${token}`;
+        await fetch(uploadUrl, {
+          method: 'POST',
+          body: formData,
+          headers: authHeaders,
+        });
+      } else {
+        await fetch(uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type },
+        });
+      }
 
       await client.entities.room_photos.create({
         data: {
