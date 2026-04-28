@@ -392,7 +392,7 @@ function SidebarFooter({ afterNav }: { afterNav: () => void }) {
   const { theme, toggleTheme } = useTheme();
   const { endSession } = useDevPresentationSession();
   const { canManageUsers } = usePermissions();
-  const { language, setLanguage, t } = useI18n();
+  const { t } = useI18n();
 
   return (
     <div className="mt-auto shrink-0 space-y-2 border-t border-border/60 pt-3">
@@ -412,29 +412,6 @@ function SidebarFooter({ afterNav }: { afterNav: () => void }) {
           {t('adminSettings')}
         </button>
       )}
-      <div className="px-1 space-y-1">
-        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('language')}</p>
-        <div className="flex gap-1">
-          <Button
-            type="button"
-            size="sm"
-            variant={language === 'no' ? 'secondary' : 'ghost'}
-            className="h-7 px-2 text-xs"
-            onClick={() => setLanguage('no')}
-          >
-            {t('norsk')}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={language === 'en' ? 'secondary' : 'ghost'}
-            className="h-7 px-2 text-xs"
-            onClick={() => setLanguage('en')}
-          >
-            {t('english')}
-          </Button>
-        </div>
-      </div>
       <div className="flex flex-wrap items-center gap-1 px-1">
         <DevRoleSwitcher />
       </div>
