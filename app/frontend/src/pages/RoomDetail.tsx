@@ -255,6 +255,7 @@ export default function RoomDetail() {
   const [showDeleteRoomDialog, setShowDeleteRoomDialog] = useState(false);
   const [deletingRoom, setDeletingRoom] = useState(false);
   const { t } = useI18n();
+  const defaultChecklistTitle = t('checklist');
 
   const [deviations, setDeviations] = useState<WorkflowDeviation[]>([]);
   const [newDeviationText, setNewDeviationText] = useState('');
@@ -1343,7 +1344,6 @@ export default function RoomDetail() {
   const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
   const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
   const chipUiSel = computePhaseChipUi(selPhase, areaMainPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
-  const defaultChecklistTitle = t('checklist');
   const checklistLabelsMap = coerceChecklistLabels(room.checklist_labels);
   const checklistSectionTitle =
     checklistLabelsMap[selPhase]?.trim() || defaultChecklistTitle;
