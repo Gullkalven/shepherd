@@ -143,7 +143,7 @@ class StorageService:
         if not self.oss_enabled:
             expires_at = self._fallback_expires_at()
             upload_url = (
-                f"{settings.backend_url}/api/v1/storage/local-upload/"
+                f"{settings.upload_base_url}/api/v1/storage/local-upload/"
                 f"{request.bucket_name}/{request.object_key}"
             )
             return FileUpDownResponse(upload_url=upload_url, expires_at=expires_at)
@@ -154,7 +154,7 @@ class StorageService:
             result = await self._apost_oss_service(endpoint, payload)
             upload_url = result.get("upload_url", "")
             if self._is_internal_url(upload_url):
-                upload_url = f"/api/v1/storage/proxy-upload?target_url={quote_plus(upload_url)}"
+                upload_url = f"{settings.upload_base_url}/api/v1/storage/proxy-upload?target_url={quote_plus(upload_url)}"
             # Format response according to ObjectStorage service response
             return FileUpDownResponse(
                 upload_url=upload_url,
@@ -171,7 +171,7 @@ class StorageService:
         if not self.oss_enabled:
             expires_at = self._fallback_expires_at()
             download_url = (
-                f"{settings.backend_url}/api/v1/storage/local-files/"
+                f"{settings.upload_base_url}/api/v1/storage/local-files/"
                 f"{request.bucket_name}/{request.object_key}"
             )
             return FileUpDownResponse(download_url=download_url, expires_at=expires_at)
@@ -189,7 +189,9 @@ class StorageService:
             result = await self._apost_oss_service(endpoint, payload)
             download_url = result.get("download_url", "")
             if self._is_internal_url(download_url):
-                download_url = f"/api/v1/storage/proxy-download?target_url={quote_plus(download_url)}"
+                download_url = (
+                    f"{settings.upload_base_url}/api/v1/storage/proxy-download?target_url={quote_plus(download_url)}"
+                )
             # Format response according to ObjectStorage service response
             return FileUpDownResponse(
                 download_url=download_url,

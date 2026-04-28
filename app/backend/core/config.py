@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # Object storage integration (used by /api/v1/storage/* endpoints)
     oss_service_url: str = ""
     oss_api_key: str = ""
+    public_backend_url: str = ""
+    frontend_origin: str = "https://shepherd-frontend.onrender.com"
 
     @property
     def backend_url(self) -> str:
@@ -41,6 +43,14 @@ class Settings(BaseSettings):
             # Use localhost for external callbacks instead of 0.0.0.0
             display_host = "127.0.0.1" if self.host == "0.0.0.0" else self.host
             return os.environ.get("PYTHON_BACKEND_URL", f"http://{display_host}:{self.port}")
+
+    @property
+    def upload_base_url(self) -> str:
+        """Public URL used in browser-facing upload/download links."""
+        explicit = (self.public_backend_url or "").strip()
+        if explicit:
+            return explicit.rstrip("/")
+        return self.backend_url.rstrip("/")
 
     class Config:
         case_sensitive = False

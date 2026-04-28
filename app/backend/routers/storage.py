@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from dependencies.auth import get_admin_user, get_current_user
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
 import httpx
 from schemas.auth import UserResponse
@@ -200,6 +200,24 @@ async def local_upload_file(bucket_name: str, object_key: str, file: UploadFile 
         await file.close()
 
 
+@router.put("/local-upload/{bucket_name}/{object_key}")
+async def local_upload_file_put(bucket_name: str, object_key: str, request: Request):
+    """
+    Local fallback upload endpoint for clients that PUT file bytes directly.
+    """
+    try:
+        bucket_dir = LOCAL_STORAGE_ROOT / bucket_name
+        bucket_dir.mkdir(parents=True, exist_ok=True)
+        target = bucket_dir / object_key
+        body = await request.body()
+        with target.open("wb") as f:
+            f.write(body)
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"Failed local PUT upload: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"{e}")
+
+
 @router.get("/local-files/{bucket_name}/{object_key}")
 async def local_download_file(bucket_name: str, object_key: str):
     """
@@ -241,6 +259,30 @@ async def proxy_upload_to_internal_oss(
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Proxy upload failed: {e}")
     finally:
         await file.close()
+
+
+@router.put("/proxy-upload")
+async def proxy_upload_to_internal_oss_put(
+    target_url: str,
+    request: Request,
+    _current_user: UserResponse = Depends(get_current_user),
+):
+    """
+    Proxy browser PUT upload bytes to an internal signed OSS URL.
+    """
+    if not _is_internal_target_url(target_url):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid target_url")
+
+    try:
+        body = await request.body()
+        content_type = request.headers.get("content-type", "application/octet-stream")
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.put(target_url, content=body, headers={"Content-Type": content_type})
+        resp.raise_for_status()
+        return {"ok": True}
+    except httpx.HTTPError as e:
+        logger.error(f"Proxy PUT upload failed: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Proxy upload failed: {e}")
 
 
 @router.get("/proxy-download")
