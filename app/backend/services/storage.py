@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional, Union
 from urllib.parse import urljoin
 
@@ -28,13 +29,17 @@ class StorageService:
     """Service for handling file upload and display with ObjectStorage service integration."""
 
     def __init__(self):
-        if not settings.oss_service_url or not settings.oss_api_key:
-            raise ValueError("OSS service not configured. Set OSS_SERVICE_URL and OSS_API_KEY.")
+        # Use getattr for resilience when runtime settings object is missing newer attributes.
+        self.oss_service_url = str(getattr(settings, "oss_service_url", "") or "").strip()
+        self.oss_api_key = str(getattr(settings, "oss_api_key", "") or "").strip()
+        self.oss_enabled = bool(self.oss_service_url and self.oss_api_key)
 
-        self.headers = {
-            "Authorization": f"Bearer {settings.oss_api_key}",
-            "Content-Type": "application/json",
-        }
+        self.headers = {}
+        if self.oss_enabled:
+            self.headers = {
+                "Authorization": f"Bearer {self.oss_api_key}",
+                "Content-Type": "application/json",
+            }
 
     async def create_bucket(self, request: BucketRequest) -> BucketResponse:
         """
@@ -134,6 +139,14 @@ class StorageService:
         """
         Create presigned URL for file upload with access URL.
         """
+        if not self.oss_enabled:
+            expires_at = self._fallback_expires_at()
+            upload_url = (
+                f"{settings.backend_url}/api/v1/storage/local-upload/"
+                f"{request.bucket_name}/{request.object_key}"
+            )
+            return FileUpDownResponse(upload_url=upload_url, expires_at=expires_at)
+
         endpoint = f"/api/v1/infra/client/oss/buckets/{request.bucket_name}/objects/upload_url"
         payload = {"expires_in": 0, "object_key": request.object_key}
         try:
@@ -151,6 +164,14 @@ class StorageService:
         """
         Create presigned URL for file download with access URL.
         """
+        if not self.oss_enabled:
+            expires_at = self._fallback_expires_at()
+            download_url = (
+                f"{settings.backend_url}/api/v1/storage/local-files/"
+                f"{request.bucket_name}/{request.object_key}"
+            )
+            return FileUpDownResponse(download_url=download_url, expires_at=expires_at)
+
         endpoint = f"/api/v1/infra/client/oss/buckets/{request.bucket_name}/objects/download_url"
         content_type, _ = mimetypes.guess_type(str(request.object_key))
         if not content_type:
@@ -189,7 +210,9 @@ class StorageService:
         payload: Optional[dict] = None,
     ) -> Union[dict, list]:
         """统一的 OSS 服务请求方法"""
-        url = urljoin(settings.oss_service_url, endpoint)
+        if not self.oss_enabled:
+            raise ValueError("OSS service not configured. Set OSS_SERVICE_URL and OSS_API_KEY.")
+        url = urljoin(self.oss_service_url, endpoint)
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
@@ -217,3 +240,7 @@ class StorageService:
         except Exception as e:
             logger.error(f"Failed to call ObjectStorage service: {e}")
             raise
+
+    @staticmethod
+    def _fallback_expires_at() -> str:
+        return (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
