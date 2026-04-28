@@ -1,7 +1,8 @@
 import logging
+import ipaddress
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional, Union
-from urllib.parse import urljoin
+from urllib.parse import quote_plus, urljoin, urlparse
 
 import httpx
 import mimetypes
@@ -151,9 +152,12 @@ class StorageService:
         payload = {"expires_in": 0, "object_key": request.object_key}
         try:
             result = await self._apost_oss_service(endpoint, payload)
+            upload_url = result.get("upload_url", "")
+            if self._is_internal_url(upload_url):
+                upload_url = f"/api/v1/storage/proxy-upload?target_url={quote_plus(upload_url)}"
             # Format response according to ObjectStorage service response
             return FileUpDownResponse(
-                upload_url=result.get("upload_url"),
+                upload_url=upload_url,
                 expires_at=result.get("expires_at"),
             )
         except Exception as e:
@@ -183,9 +187,12 @@ class StorageService:
         }
         try:
             result = await self._apost_oss_service(endpoint, payload)
+            download_url = result.get("download_url", "")
+            if self._is_internal_url(download_url):
+                download_url = f"/api/v1/storage/proxy-download?target_url={quote_plus(download_url)}"
             # Format response according to ObjectStorage service response
             return FileUpDownResponse(
-                download_url=result.get("download_url"),
+                download_url=download_url,
                 expires_at=result.get("expires_at"),
             )
 
@@ -244,3 +251,18 @@ class StorageService:
     @staticmethod
     def _fallback_expires_at() -> str:
         return (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+
+    @staticmethod
+    def _is_internal_url(url: str) -> bool:
+        if not url:
+            return False
+        try:
+            parsed = urlparse(url)
+            host = (parsed.hostname or "").strip().lower()
+            if host in {"localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal"}:
+                return True
+            ip = ipaddress.ip_address(host)
+            return ip.is_private or ip.is_loopback or ip.is_link_local
+        except ValueError:
+            # Not an IP, treat common local service hostnames as internal.
+            return host in {"minio", "storage", "oss"}

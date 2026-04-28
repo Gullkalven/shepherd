@@ -1,9 +1,12 @@
 import logging
+import ipaddress
 from pathlib import Path
+from urllib.parse import urlparse
 
 from dependencies.auth import get_admin_user, get_current_user
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
+import httpx
 from schemas.auth import UserResponse
 from schemas.storage import (
     BucketListResponse,
@@ -25,6 +28,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/storage", tags=["storage"])
 LOCAL_STORAGE_ROOT = Path(__file__).resolve().parents[1] / "local_storage"
+
+
+def _is_internal_target_url(target_url: str) -> bool:
+    try:
+        parsed = urlparse(target_url)
+        host = (parsed.hostname or "").strip().lower()
+        if host in {"localhost", "127.0.0.1", "0.0.0.0", "host.docker.internal", "minio", "storage", "oss"}:
+            return True
+        ip = ipaddress.ip_address(host)
+        return ip.is_private or ip.is_loopback or ip.is_link_local
+    except ValueError:
+        return False
 
 
 @router.post("/create-bucket", response_model=BucketResponse)
@@ -200,3 +215,48 @@ async def local_download_file(bucket_name: str, object_key: str):
     except Exception as e:
         logger.error(f"Failed local file fetch: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"{e}")
+
+
+@router.post("/proxy-upload")
+async def proxy_upload_to_internal_oss(
+    target_url: str,
+    file: UploadFile = File(...),
+    _current_user: UserResponse = Depends(get_current_user),
+):
+    """
+    Proxy browser upload to an internal signed OSS URL.
+    """
+    if not _is_internal_target_url(target_url):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid target_url")
+
+    try:
+        body = await file.read()
+        content_type = file.content_type or "application/octet-stream"
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.put(target_url, content=body, headers={"Content-Type": content_type})
+        resp.raise_for_status()
+        return {"ok": True}
+    except httpx.HTTPError as e:
+        logger.error(f"Proxy upload failed: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Proxy upload failed: {e}")
+    finally:
+        await file.close()
+
+
+@router.get("/proxy-download")
+async def proxy_download_from_internal_oss(target_url: str):
+    """
+    Proxy browser download from an internal signed OSS URL.
+    """
+    if not _is_internal_target_url(target_url):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid target_url")
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.get(target_url)
+        resp.raise_for_status()
+        media_type = resp.headers.get("content-type") or "application/octet-stream"
+        return Response(content=resp.content, media_type=media_type)
+    except httpx.HTTPError as e:
+        logger.error(f"Proxy download failed: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Proxy download failed: {e}")
