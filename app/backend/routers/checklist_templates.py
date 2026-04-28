@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -154,6 +154,27 @@ async def delete_checklist_template(
     manager: UserResponse = Depends(require_manager_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    linked_active_result = await db.execute(
+        select(func.count(Tasks.id))
+        .select_from(Tasks)
+        .join(Rooms, Rooms.id == Tasks.room_id)
+        .where(
+            Tasks.template_id == id,
+            Tasks.user_id == str(manager.id),
+            Rooms.user_id == str(manager.id),
+            or_(Rooms.status.is_(None), Rooms.status != "completed"),
+        )
+    )
+    linked_active_count = int(linked_active_result.scalar() or 0)
+    if linked_active_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This template is linked to active room checklists. "
+                "Finish those rooms first or switch them to a different template."
+            ),
+        )
+
     service = ChecklistTemplatesService(db)
     success = await service.delete(id, user_id=str(manager.id))
     if not success:

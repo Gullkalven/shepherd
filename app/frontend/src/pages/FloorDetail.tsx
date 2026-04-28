@@ -801,6 +801,38 @@ export default function FloorDetail() {
     }
   };
 
+  const handleDeleteTemplate = async () => {
+    const templateId = selectedTemplateIdRef.current || editingTemplateId;
+    if (!templateId) {
+      toast.error('Select a template first');
+      return;
+    }
+    if (!confirm('Are you sure you want to delete this template?')) return;
+
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/entities/checklist_templates/${templateId}`,
+        method: 'DELETE',
+        data: {},
+      });
+
+      setTemplates((prev) => prev.filter((t) => String(t.id) !== String(templateId)));
+      selectedTemplateIdRef.current = '';
+      setEditingTemplateId('');
+      setTemplateName('');
+      setTemplateItemsText('');
+      toast.success('Template deleted');
+    } catch (e: unknown) {
+      const err = e as { data?: { detail?: string }; response?: { data?: { detail?: string } }; message?: string };
+      const detail = err?.data?.detail || err?.response?.data?.detail || err?.message || '';
+      if (typeof detail === 'string' && detail.trim()) {
+        toast.error(detail);
+      } else {
+        toast.error('Failed to delete template');
+      }
+    }
+  };
+
   const openWorkflowDialog = () => {
     setWorkflowDraft(phaseWorkflow.map((p) => ({ ...p })));
     setShowWorkflowDialog(true);
@@ -1540,10 +1572,22 @@ export default function FloorDetail() {
               placeholder={"Cable routing\nInstall wall boxes\nHeating cable installation"}
             />
             <p className="text-xs text-muted-foreground">One checklist item per line.</p>
+            <p className="text-xs text-muted-foreground">
+              Deleting a template removes this template and its line list. Existing room checklists are not deleted.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={handleSyncTemplate} disabled={!editingTemplateId || savingTemplate}>
               Update rooms from template
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDeleteTemplate}
+              disabled={!editingTemplateId || savingTemplate}
+              className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
+            >
+              Delete Template
             </Button>
             <Button type="submit" disabled={savingTemplate}>
               {savingTemplate ? 'Saving...' : 'Save Template'}

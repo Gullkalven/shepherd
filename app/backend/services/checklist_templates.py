@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models.checklist_template_items import Checklist_template_items
 from models.checklist_templates import Checklist_templates
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,14 @@ class ChecklistTemplatesService:
             obj = await self.get_by_id(obj_id, user_id=user_id)
             if not obj:
                 return False
+            items_query = select(Checklist_template_items).where(
+                Checklist_template_items.template_id == obj_id
+            )
+            if user_id:
+                items_query = items_query.where(Checklist_template_items.user_id == user_id)
+            items_result = await self.db.execute(items_query)
+            for item in items_result.scalars().all():
+                await self.db.delete(item)
             await self.db.delete(obj)
             await self.db.commit()
             return True
