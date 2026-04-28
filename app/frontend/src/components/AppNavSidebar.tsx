@@ -8,6 +8,7 @@ import { runAppLogout, PROJECTS_NAV_REFRESH_EVENT, APP_LOGOUT_EVENT } from '@/li
 import { DEV_ROLE_CHANGED_EVENT, isDevRoleSwitcherHost } from '@/lib/devRole';
 import { useTheme } from '@/lib/theme';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
+import { useI18n } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import DevRoleSwitcher from '@/components/DevRoleSwitcher';
@@ -260,22 +261,23 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
   }, [projects, projectSearchTrim]);
 
   const activeProjectId = projectId ? Number(projectId) : NaN;
+  const { t } = useI18n();
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <p className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">Projects</p>
+      <p className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('projects')}</p>
       <Input
         type="search"
-        placeholder={projectId ? 'Search floors & rooms…' : 'Search projects…'}
+        placeholder={projectId ? t('searchFloorsAndRooms') : t('searchProjects')}
         value={projectId ? treeSearch : projectSearch}
         onChange={(e) => (projectId ? setTreeSearch(e.target.value) : setProjectSearch(e.target.value))}
         className="h-9 text-sm"
-        aria-label={projectId ? 'Search floors and rooms' : 'Search projects'}
+        aria-label={projectId ? t('searchFloorsAndRoomsAria') : t('searchProjectsAria')}
       />
 
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
         {projectsLoading ? (
-          <p className="px-1 text-xs text-muted-foreground">Loading…</p>
+          <p className="px-1 text-xs text-muted-foreground">{t('loading')}</p>
         ) : (
           <ul className="space-y-0.5">
             {filteredProjects.map((p) => {
@@ -305,15 +307,15 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
         {projectId && (
           <div className="mt-5 border-t border-border/60 pt-4">
             {treeLoading ? (
-              <p className="px-1 text-xs text-muted-foreground">Loading floors…</p>
+              <p className="px-1 text-xs text-muted-foreground">{t('loadingFloors')}</p>
             ) : (
               <>
                 <h2 className="px-1 text-sm font-semibold text-foreground truncate" title={project?.name}>
-                  {project?.name ?? 'Project'}
+                  {project?.name ?? t('project')}
                 </h2>
                 <div className="mt-3 space-y-3">
                   {filteredFloors.length === 0 ? (
-                    <p className="px-1 text-xs text-muted-foreground">No matches</p>
+                    <p className="px-1 text-xs text-muted-foreground">{t('noMatches')}</p>
                   ) : (
                     filteredFloors.map((f) => {
                       const expanded = isFloorExpanded(f);
@@ -390,6 +392,7 @@ function SidebarFooter({ afterNav }: { afterNav: () => void }) {
   const { theme, toggleTheme } = useTheme();
   const { endSession } = useDevPresentationSession();
   const { canManageUsers } = usePermissions();
+  const { language, setLanguage, t } = useI18n();
 
   return (
     <div className="mt-auto shrink-0 space-y-2 border-t border-border/60 pt-3">
@@ -406,9 +409,32 @@ function SidebarFooter({ afterNav }: { afterNav: () => void }) {
             location.pathname.startsWith('/admin') && 'bg-slate-200 dark:bg-slate-800 font-medium shadow-sm'
           )}
         >
-          Admin settings
+          {t('adminSettings')}
         </button>
       )}
+      <div className="px-1 space-y-1">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('language')}</p>
+        <div className="flex gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={language === 'no' ? 'secondary' : 'ghost'}
+            className="h-7 px-2 text-xs"
+            onClick={() => setLanguage('no')}
+          >
+            {t('norsk')}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={language === 'en' ? 'secondary' : 'ghost'}
+            className="h-7 px-2 text-xs"
+            onClick={() => setLanguage('en')}
+          >
+            {t('english')}
+          </Button>
+        </div>
+      </div>
       <div className="flex flex-wrap items-center gap-1 px-1">
         <DevRoleSwitcher />
       </div>
@@ -423,7 +449,7 @@ function SidebarFooter({ afterNav }: { afterNav: () => void }) {
           }}
         >
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          {theme === 'dark' ? t('lightMode') : t('darkMode')}
         </Button>
         <Button
           type="button"
@@ -434,7 +460,7 @@ function SidebarFooter({ afterNav }: { afterNav: () => void }) {
           }}
         >
           <LogOut className="h-4 w-4" />
-          Log out
+          {t('logOut')}
         </Button>
       </div>
     </div>

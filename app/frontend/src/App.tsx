@@ -5,6 +5,7 @@ import { queryClient } from '@/lib/queryClient';
 import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
 import { ThemeProvider } from '@/lib/theme';
 import { DevPresentationSessionProvider } from '@/lib/devPresentationSession';
+import { I18nProvider } from '@/lib/i18n';
 import Index from './pages/Index';
 import AuthCallback from './pages/AuthCallback';
 import AuthError from './pages/AuthError';
@@ -18,27 +19,29 @@ import NotFound from './pages/NotFound';
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider>
-      <TooltipProvider>
-        <Toaster />
-        <BrowserRouter>
-          <DevPresentationSessionProvider>
-          <Routes>
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="/auth/error" element={<AuthError />} />
-            <Route path="/" element={<AppShellLayout />}>
-              <Route index element={<Index />} />
-              <Route path="admin/users" element={<AdminUsers />} />
-              <Route path="project/:projectId" element={<Outlet />}>
-                <Route index element={<ProjectDetail />} />
-                <Route path="floor/:floorId" element={<FloorDetail />} />
-                <Route path="floor/:floorId/room/:roomId" element={<RoomDetail />} />
+      <I18nProvider>
+        <TooltipProvider>
+          <Toaster />
+          <BrowserRouter>
+            <DevPresentationSessionProvider>
+            <Routes>
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/auth/error" element={<AuthError />} />
+              <Route path="/" element={<AppShellLayout />}>
+                <Route index element={<Index />} />
+                <Route path="admin/users" element={<AdminUsers />} />
+                <Route path="project/:projectId" element={<Outlet />}>
+                  <Route index element={<ProjectDetail />} />
+                  <Route path="floor/:floorId" element={<FloorDetail />} />
+                  <Route path="floor/:floorId/room/:roomId" element={<RoomDetail />} />
+                </Route>
               </Route>
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-          </DevPresentationSessionProvider>
-        </BrowserRouter>
-      </TooltipProvider>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+            </DevPresentationSessionProvider>
+          </BrowserRouter>
+        </TooltipProvider>
+      </I18nProvider>
     </ThemeProvider>
   </QueryClientProvider>
 );

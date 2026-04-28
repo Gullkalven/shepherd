@@ -37,6 +37,7 @@ import {
   type RoomArea,
 } from '@/lib/roomAreas';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/i18n';
 import {
   HEATING_CABLE_STAGES,
   normalizeHeatingCableDoc,
@@ -55,8 +56,6 @@ const STATUS_OPTIONS = [
 ];
 
 const WORKER_NAME_KEY = 'trello_v2_worker_name';
-const DEFAULT_CHECKLIST_SECTION = 'Checklist';
-
 interface Task {
   id: number;
   name: string;
@@ -255,6 +254,7 @@ export default function RoomDetail() {
   const [showPhotoPreview, setShowPhotoPreview] = useState<string | null>(null);
   const [showDeleteRoomDialog, setShowDeleteRoomDialog] = useState(false);
   const [deletingRoom, setDeletingRoom] = useState(false);
+  const { t } = useI18n();
 
   const [deviations, setDeviations] = useState<WorkflowDeviation[]>([]);
   const [newDeviationText, setNewDeviationText] = useState('');
@@ -1029,15 +1029,15 @@ export default function RoomDetail() {
     if (!room || !canEdit) return;
     const phaseKey = normalizeRoomPhase(phaseTab, phaseWorkflow);
     const prev = coerceChecklistLabels(room.checklist_labels);
-    const displayed = prev[phaseKey]?.trim() || DEFAULT_CHECKLIST_SECTION;
-    const t = checklistTitleDraft.trim();
-    if (t === displayed) {
+    const displayed = prev[phaseKey]?.trim() || defaultChecklistTitle;
+    const trimmedTitle = checklistTitleDraft.trim();
+    if (trimmedTitle === displayed) {
       setEditingChecklistTitle(false);
       return;
     }
     const next = { ...prev };
-    if (!t || t === DEFAULT_CHECKLIST_SECTION) delete next[phaseKey];
-    else next[phaseKey] = t;
+    if (!trimmedTitle || trimmedTitle === defaultChecklistTitle) delete next[phaseKey];
+    else next[phaseKey] = trimmedTitle;
     setSavingChecklistTitle(true);
     try {
       await client.entities.rooms.update({
@@ -1054,7 +1054,7 @@ export default function RoomDetail() {
       setSavingChecklistTitle(false);
       setEditingChecklistTitle(false);
     }
-  }, [room, canEdit, checklistTitleDraft, phaseTab, phaseWorkflow]);
+  }, [room, canEdit, checklistTitleDraft, phaseTab, phaseWorkflow, defaultChecklistTitle]);
 
   const updateHeatingStageField = (
     stageKey: HeatingCableStageKey,
@@ -1343,9 +1343,10 @@ export default function RoomDetail() {
   const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
   const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
   const chipUiSel = computePhaseChipUi(selPhase, areaMainPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
+  const defaultChecklistTitle = t('checklist');
   const checklistLabelsMap = coerceChecklistLabels(room.checklist_labels);
   const checklistSectionTitle =
-    checklistLabelsMap[selPhase]?.trim() || DEFAULT_CHECKLIST_SECTION;
+    checklistLabelsMap[selPhase]?.trim() || defaultChecklistTitle;
   const dueLine = formatDeadlineDisplay(room.deadline_at ?? null);
   const duePast = isDeadlinePast(room.deadline_at ?? null);
   const heatingDerived = deriveHeatingCableStatus(heatingCableDoc);
@@ -1418,7 +1419,7 @@ export default function RoomDetail() {
                       onClick={handleSaveWorker}
                       disabled={editsBlocked}
                     >
-                      Save
+                      {t('save')}
                     </Button>
                   </>
                 ) : room.assigned_worker ? (
@@ -1472,7 +1473,7 @@ export default function RoomDetail() {
           {canEdit && !editsBlocked ? (
             <div className="mt-3 border-t border-border/25 pt-2.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] text-muted-foreground/80 shrink-0">Deadline</span>
+                <span className="text-[10px] text-muted-foreground/80 shrink-0">{t('deadline')}</span>
                 <Input
                   type="date"
                   value={deadlineDraft}
@@ -1532,7 +1533,7 @@ export default function RoomDetail() {
                 onClick={() => setShowDeleteRoomDialog(true)}
               >
                 <Trash2 className="h-3 w-3 mr-1 opacity-70" />
-                Delete item
+                {t('delete')}
               </Button>
             </div>
           ) : null}
@@ -2335,7 +2336,7 @@ export default function RoomDetail() {
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={uploading || !canMutatePhaseMedia}
                               >
-                                {uploading ? 'Uploading...' : 'Add photo'}
+                                {uploading ? 'Uploading...' : t('uploadPhoto')}
                               </Button>
                             ) : null}
                             {photosForPhase.length === 0 ? (
@@ -2616,7 +2617,7 @@ export default function RoomDetail() {
               disabled={deletingRoom}
               className="bg-red-500 hover:bg-red-600 text-white"
             >
-              {deletingRoom ? 'Deleting...' : 'Delete'}
+              {deletingRoom ? 'Deleting...' : t('delete')}
             </Button>
           </DialogFooter>
           </DialogForm>

@@ -16,6 +16,7 @@ import {
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import { taskCountsForFloorBoard } from '@/lib/roomAreas';
+import { useI18n } from '@/lib/i18n';
 
 /** Compact labels for default phases; other keys use first letter */
 function phaseProgressLetter(key: string): string {
@@ -73,6 +74,7 @@ export default function ProjectDetail() {
   const [creating, setCreating] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [loading, setLoading] = useState(true);
+  const { t } = useI18n();
 
   // Inline edit state for project name
   const [editingProjectName, setEditingProjectName] = useState(false);
@@ -259,7 +261,7 @@ export default function ProjectDetail() {
         >
           <span className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-[#1E3A5F] dark:text-blue-400" />
-            Foreman Dashboard
+            {t('dashboard')}
           </span>
           <ChevronRight className={`h-4 w-4 transition-transform ${showDashboard ? 'rotate-90' : ''}`} />
         </Button>
