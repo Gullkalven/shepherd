@@ -10,17 +10,21 @@ export type HeatingCableRoomStatus =
   | 'has_deviation_missing';
 
 export interface HeatingCableStage {
+  id?: string;
+  label?: string;
   resistance_ohm?: string;
   insulation_mohm?: string;
   date?: string;
   performed_by?: string;
   note?: string;
+  photos?: string[];
 }
 
 export interface HeatingCableDoc {
   before_installation?: HeatingCableStage;
   after_cable_laid?: HeatingCableStage;
   after_screed_final?: HeatingCableStage;
+  extra_steps?: HeatingCableStage[];
   locked_by_admin?: boolean;
   updated_at?: string;
 }
@@ -47,12 +51,16 @@ function isFilled(v: unknown): boolean {
 function normalizeStage(raw: unknown): HeatingCableStage {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const row = raw as Record<string, unknown>;
+  const photosRaw = Array.isArray(row.photos) ? row.photos : [];
   return {
+    id: typeof row.id === 'string' ? row.id : '',
+    label: typeof row.label === 'string' ? row.label : '',
     resistance_ohm: typeof row.resistance_ohm === 'string' ? row.resistance_ohm : '',
     insulation_mohm: typeof row.insulation_mohm === 'string' ? row.insulation_mohm : '',
     date: typeof row.date === 'string' ? row.date : '',
     performed_by: typeof row.performed_by === 'string' ? row.performed_by : '',
     note: typeof row.note === 'string' ? row.note : '',
+    photos: photosRaw.filter((p) => typeof p === 'string').map((p) => String(p)),
   };
 }
 
@@ -63,6 +71,7 @@ export function normalizeHeatingCableDoc(raw: unknown): HeatingCableDoc {
     before_installation: normalizeStage(row.before_installation),
     after_cable_laid: normalizeStage(row.after_cable_laid),
     after_screed_final: normalizeStage(row.after_screed_final),
+    extra_steps: Array.isArray(row.extra_steps) ? row.extra_steps.map((s) => normalizeStage(s)) : [],
     locked_by_admin: row.locked_by_admin === true,
     updated_at: typeof row.updated_at === 'string' ? row.updated_at : undefined,
   };
@@ -109,6 +118,16 @@ export function deriveHeatingCableStatus(docRaw: unknown): HeatingCableDerived {
     if (isFilled(value?.note)) hasDeviation = true;
     if (isFilled(value?.performed_by)) performers.push(String(value?.performed_by).trim());
   }
+  for (const rawStage of doc.extra_steps || []) {
+    const value = normalizeStage(rawStage);
+    const started = stageStarted(value);
+    const complete = stageComplete(value);
+    hasStartedAny = hasStartedAny || started;
+    if (!complete) allComplete = false;
+    if (started && !complete) hasMissingValues = true;
+    if (isFilled(value?.note)) hasDeviation = true;
+    if (isFilled(value?.performed_by)) performers.push(String(value?.performed_by).trim());
+  }
 
   let status: HeatingCableRoomStatus = 'not_started';
   if (hasStartedAny) {
@@ -125,4 +144,15 @@ export function deriveHeatingCableStatus(docRaw: unknown): HeatingCableDerived {
     lastUpdated: isFilled(doc.updated_at) ? String(doc.updated_at) : null,
     performedBy: Array.from(new Set(performers)).join(', '),
   };
+}
+
+export function isHeatingCablePhase(phaseKey: string, phaseLabel: string): boolean {
+  const k = String(phaseKey || '').toLowerCase();
+  const l = String(phaseLabel || '').toLowerCase();
+  return (
+    k.includes('varmekabel') ||
+    l.includes('varmekabel') ||
+    (k.includes('heating') && k.includes('cable')) ||
+    (l.includes('heating') && l.includes('cable'))
+  );
 }

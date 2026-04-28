@@ -41,6 +41,7 @@ import {
   HEATING_CABLE_STAGES,
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
+  isHeatingCablePhase,
   type HeatingCableDoc,
   type HeatingCableStageKey,
 } from '@/lib/heatingCable';
@@ -290,6 +291,7 @@ export default function RoomDetail() {
   const [savingChecklistTitle, setSavingChecklistTitle] = useState(false);
   const [heatingCableDoc, setHeatingCableDoc] = useState<HeatingCableDoc>({});
   const [savingHeatingCable, setSavingHeatingCable] = useState(false);
+  const heatingPhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   const loadData = useCallback(async () => {
     if (!projectId || !floorId || !roomId) return;
@@ -1107,6 +1109,130 @@ export default function RoomDetail() {
     }
   };
 
+  const addExtraHeatingStep = () => {
+    setHeatingCableDoc((prev) => {
+      const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
+      extra.push({
+        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hc-${Date.now()}`,
+        label: '',
+        resistance_ohm: '',
+        insulation_mohm: '',
+        date: '',
+        performed_by: '',
+        note: '',
+        photos: [],
+      });
+      return { ...prev, extra_steps: extra };
+    });
+  };
+
+  const updateExtraHeatingStepField = (
+    stepIndex: number,
+    field: 'label' | 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
+    value: string
+  ) => {
+    setHeatingCableDoc((prev) => {
+      const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
+      const step = extra[stepIndex] || {};
+      extra[stepIndex] = { ...step, [field]: value };
+      return { ...prev, extra_steps: extra };
+    });
+  };
+
+  const removeExtraHeatingStep = (stepIndex: number) => {
+    setHeatingCableDoc((prev) => {
+      const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
+      extra.splice(stepIndex, 1);
+      return { ...prev, extra_steps: extra };
+    });
+  };
+
+  const uploadHeatingModulePhoto = async (stageId: string, file: File) => {
+    if (!room) return;
+    const safeFilename = file.name.replace(/[^A-Za-z0-9._-]/g, '-');
+    const objectKey = `${Date.now()}-${safeFilename}`;
+    const uploadRes = await client.storage.getUploadUrl({
+      bucket_name: 'room-photos',
+      object_key: objectKey,
+    });
+    const uploadUrl = uploadRes?.data?.upload_url;
+    if (!uploadUrl) throw new Error('No upload URL');
+    const token = localStorage.getItem('token');
+    const isApiUploadTarget = (() => {
+      try {
+        const u = new URL(uploadUrl, window.location.origin);
+        return u.origin === window.location.origin && u.pathname.startsWith('/api/');
+      } catch {
+        return false;
+      }
+    })();
+    if (isApiUploadTarget) {
+      const formData = new FormData();
+      formData.append('file', file, file.name);
+      const authHeaders: Record<string, string> = {};
+      if (token) authHeaders.Authorization = `Bearer ${token}`;
+      await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData,
+        headers: authHeaders,
+      });
+    } else {
+      await fetch(uploadUrl, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type },
+      });
+    }
+    await client.entities.room_photos.create({
+      data: {
+        room_id: room.id,
+        object_key: objectKey,
+        filename: file.name,
+        caption: `Heating cable module photo (${stageId})`,
+        phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
+        ...taskPhotoVisitAreaPayload(),
+      },
+    });
+    setHeatingCableDoc((prev) => {
+      const out: HeatingCableDoc = { ...prev };
+      const addToStage = (stage: HeatingCableDoc[keyof HeatingCableDoc] | undefined) => {
+        const row = (stage || {}) as any;
+        const photos = Array.isArray(row.photos) ? [...row.photos, objectKey] : [objectKey];
+        return { ...row, photos };
+      };
+      if (stageId === 'before_installation') out.before_installation = addToStage(prev.before_installation);
+      else if (stageId === 'after_cable_laid') out.after_cable_laid = addToStage(prev.after_cable_laid);
+      else if (stageId === 'after_screed_final') out.after_screed_final = addToStage(prev.after_screed_final);
+      else {
+        const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
+        const idx = extra.findIndex((s) => (s.id || '') === stageId);
+        if (idx >= 0) {
+          const row = extra[idx] || {};
+          const photos = Array.isArray(row.photos) ? [...row.photos, objectKey] : [objectKey];
+          extra[idx] = { ...row, photos };
+          out.extra_steps = extra;
+        }
+      }
+      return out;
+    });
+    await loadData();
+  };
+
+  const handleHeatingStagePhotoInput = async (stageId: string, file?: File) => {
+    if (!file || !room) return;
+    setSavingHeatingCable(true);
+    try {
+      await uploadHeatingModulePhoto(stageId, file);
+      toast.success('Heating module photo uploaded');
+    } catch {
+      toast.error('Failed to upload heating module photo');
+    } finally {
+      setSavingHeatingCable(false);
+      const ref = heatingPhotoInputRefs.current[stageId];
+      if (ref) ref.value = '';
+    }
+  };
+
   const toggleHeatingCableLock = async () => {
     if (!room || !canEdit) return;
     setSavingHeatingCable(true);
@@ -1225,6 +1351,8 @@ export default function RoomDetail() {
   const heatingDerived = deriveHeatingCableStatus(heatingCableDoc);
   const heatingLockedByAdmin = heatingCableDoc.locked_by_admin === true;
   const canEditHeatingCable = !editsBlocked && (!heatingLockedByAdmin || canEdit);
+  const selectedPhaseLabel = phaseLabel(selPhase, phaseWorkflow);
+  const showHeatingCableModule = isHeatingCablePhase(selPhase, selectedPhaseLabel);
   const heatingStatusLabel: Record<string, string> = {
     not_started: 'Not started',
     partial: 'Partially documented',
@@ -1651,6 +1779,7 @@ export default function RoomDetail() {
             ) : null}
 
             <div className="space-y-4">
+                  {showHeatingCableModule ? (
                   <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
                     <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-2 sm:px-2.5">
                       <div className="flex items-center justify-between gap-2">
@@ -1734,10 +1863,134 @@ export default function RoomDetail() {
                               rows={2}
                               className="text-xs"
                             />
+                            <div className="flex items-center gap-2">
+                              <input
+                                ref={(el) => {
+                                  heatingPhotoInputRefs.current[stage.key] = el;
+                                }}
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                className="hidden"
+                                onChange={(e) => void handleHeatingStagePhotoInput(stage.key, e.target.files?.[0])}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px]"
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onClick={() => heatingPhotoInputRefs.current[stage.key]?.click()}
+                              >
+                                Add module photo
+                              </Button>
+                              <span className="text-[10px] text-muted-foreground">
+                                {Array.isArray(row.photos) ? row.photos.length : 0} photo(s)
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {(heatingCableDoc.extra_steps || []).map((step, idx) => {
+                        const sid = step.id || `extra-${idx}`;
+                        return (
+                          <div key={sid} className="rounded-md border border-border/50 p-2 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <Input
+                                placeholder="Extra step name (e.g. Before connecting thermostat)"
+                                value={step.label || ''}
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onChange={(e) => updateExtraHeatingStepField(idx, 'label', e.target.value)}
+                                className="h-8 text-xs"
+                              />
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 text-[10px]"
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onClick={() => removeExtraHeatingStep(idx)}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <Input
+                                placeholder="Resistance (Ohm)"
+                                value={step.resistance_ohm || ''}
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onChange={(e) => updateExtraHeatingStepField(idx, 'resistance_ohm', e.target.value)}
+                                className="h-8 text-xs"
+                              />
+                              <Input
+                                placeholder="Insulation (MΩ)"
+                                value={step.insulation_mohm || ''}
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onChange={(e) => updateExtraHeatingStepField(idx, 'insulation_mohm', e.target.value)}
+                                className="h-8 text-xs"
+                              />
+                              <Input
+                                type="date"
+                                value={step.date || ''}
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onChange={(e) => updateExtraHeatingStepField(idx, 'date', e.target.value)}
+                                className="h-8 text-xs"
+                              />
+                              <Input
+                                placeholder="Performed by"
+                                value={step.performed_by || ''}
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onChange={(e) => updateExtraHeatingStepField(idx, 'performed_by', e.target.value)}
+                                className="h-8 text-xs"
+                              />
+                            </div>
+                            <Textarea
+                              placeholder="Optional note / deviation"
+                              value={step.note || ''}
+                              disabled={!canEditHeatingCable || savingHeatingCable}
+                              onChange={(e) => updateExtraHeatingStepField(idx, 'note', e.target.value)}
+                              rows={2}
+                              className="text-xs"
+                            />
+                            <div className="flex items-center gap-2">
+                              <input
+                                ref={(el) => {
+                                  heatingPhotoInputRefs.current[sid] = el;
+                                }}
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                className="hidden"
+                                onChange={(e) => void handleHeatingStagePhotoInput(sid, e.target.files?.[0])}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-[10px]"
+                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                onClick={() => heatingPhotoInputRefs.current[sid]?.click()}
+                              >
+                                Add module photo
+                              </Button>
+                              <span className="text-[10px] text-muted-foreground">
+                                {Array.isArray(step.photos) ? step.photos.length : 0} photo(s)
+                              </span>
+                            </div>
                           </div>
                         );
                       })}
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={addExtraHeatingStep}
+                          disabled={!canEditHeatingCable || savingHeatingCable}
+                        >
+                          Add extra step
+                        </Button>
                         <p className="text-[11px] text-muted-foreground">
                           Missing stages:{' '}
                           {heatingDerived.missingStages.length > 0
@@ -1758,6 +2011,7 @@ export default function RoomDetail() {
                       </div>
                     </div>
                   </Card>
+                  ) : null}
 
                   {sectionVisibility.checklist && (
                     <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
