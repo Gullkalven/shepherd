@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/lib/i18n';
+import { usePermissions } from '@/lib/permissions';
 import { cn } from '@/lib/utils';
 
 export type RoomNavSibling = { id: number; room_number: string };
@@ -32,6 +33,7 @@ export function RoomLocationNav({
   nextUnavailableHint,
 }: Props) {
   const { t } = useI18n();
+  const { isWorker } = usePermissions();
   const linkCls = cn(
     'text-muted-foreground transition-colors underline-offset-2 hover:text-foreground hover:underline',
     'rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
@@ -44,14 +46,14 @@ export function RoomLocationNav({
         aria-label="Location"
       >
         <Link to="/" className={linkCls}>
-          {t('projects')}
+          {isWorker ? t('today') : t('projects')}
         </Link>
         <ChevronRight className="h-4 w-4 shrink-0 opacity-50" aria-hidden />
         <Link
           to={`/project/${projectId}`}
           className={cn(linkCls, 'max-w-[42vw] truncate sm:max-w-[14rem]')}
         >
-          {projectName.trim() ? projectName : 'Project'}
+          {projectName.trim() ? projectName : isWorker ? t('site') : t('project')}
         </Link>
         <ChevronRight className="h-4 w-4 shrink-0 opacity-50" aria-hidden />
         <Link

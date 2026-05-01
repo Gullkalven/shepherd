@@ -261,17 +261,24 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
 
   const activeProjectId = projectId ? Number(projectId) : NaN;
   const { t } = useI18n();
+  const { isWorker } = usePermissions();
+
+  const navProjectsTitle = isWorker ? t('sites') : t('projects');
+  const searchRootPlaceholder = isWorker ? t('findSite') : t('searchProjects');
+  const searchRootAria = isWorker ? t('findSiteAria') : t('searchProjectsAria');
+  const searchTreePlaceholder = isWorker ? t('findRoom') : t('searchFloorsAndRooms');
+  const searchTreeAria = isWorker ? t('findRoomAria') : t('searchFloorsAndRoomsAria');
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <p className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('projects')}</p>
+      <p className="mb-1.5 px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{navProjectsTitle}</p>
       <Input
         type="search"
-        placeholder={projectId ? t('searchFloorsAndRooms') : t('searchProjects')}
+        placeholder={projectId ? searchTreePlaceholder : searchRootPlaceholder}
         value={projectId ? treeSearch : projectSearch}
         onChange={(e) => (projectId ? setTreeSearch(e.target.value) : setProjectSearch(e.target.value))}
         className="h-9 text-sm"
-        aria-label={projectId ? t('searchFloorsAndRoomsAria') : t('searchProjectsAria')}
+        aria-label={projectId ? searchTreeAria : searchRootAria}
       />
 
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
@@ -312,7 +319,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
             ) : (
               <>
                 <h2 className="px-1 text-sm font-semibold text-foreground truncate" title={project?.name}>
-                  {project?.name ?? t('project')}
+                  {project?.name ?? (isWorker ? t('site') : t('project'))}
                 </h2>
                 <div className="mt-3 space-y-3">
                   {filteredFloors.length === 0 ? (

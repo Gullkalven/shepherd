@@ -273,7 +273,7 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
         {projects.length === 0 ? (
           <Card className="p-8 text-center">
             <Layers className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-            <p className="text-muted-foreground">No projects yet</p>
+            <p className="text-muted-foreground">No sites yet</p>
           </Card>
         ) : (
           <div className="space-y-3">
@@ -318,7 +318,7 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
             {!resumeRoom && !fallbackReady && (
               <Card className="border-dashed p-5 text-center">
                 <p className="text-sm font-medium text-slate-800 dark:text-foreground">No rooms ready right now</p>
-                <p className="mt-1 text-sm text-muted-foreground">Check blocked rooms below or open a project.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Check blocked rooms below or open a site.</p>
               </Card>
             )}
 
@@ -359,7 +359,7 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
                   <div className="flex min-w-0 items-center gap-2">
                     <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
                     <span className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Active project
+                      Active site
                     </span>
                   </div>
                   <Button
@@ -379,7 +379,7 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
             <details className="group rounded-lg border border-border/80 bg-background/80">
               <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-muted-foreground transition hover:text-foreground [&::-webkit-details-marker]:hidden">
                 <span className="flex items-center justify-between gap-2">
-                  Browse projects
+                  Browse sites
                   <ChevronRight className="h-4 w-4 shrink-0 transition group-open:rotate-90" />
                 </span>
               </summary>

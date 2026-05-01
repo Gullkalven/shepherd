@@ -2,10 +2,17 @@ import { createContext, useContext, type ReactNode } from 'react';
 
 type TranslationKey =
   | 'projects'
+  | 'sites'
+  | 'today'
+  | 'site'
   | 'searchProjects'
   | 'searchFloorsAndRooms'
+  | 'findSite'
+  | 'findRoom'
   | 'searchProjectsAria'
   | 'searchFloorsAndRoomsAria'
+  | 'findSiteAria'
+  | 'findRoomAria'
   | 'loading'
   | 'loadingFloors'
   | 'project'
@@ -23,10 +30,17 @@ type TranslationKey =
 
 const DICTIONARY: Record<TranslationKey, string> = {
   projects: 'Projects',
+  sites: 'Sites',
+  today: 'Today',
+  site: 'Site',
   searchProjects: 'Search projects...',
   searchFloorsAndRooms: 'Search floors and rooms...',
+  findSite: 'Find site...',
+  findRoom: 'Find room...',
   searchProjectsAria: 'Search projects',
   searchFloorsAndRoomsAria: 'Search floors and rooms',
+  findSiteAria: 'Find site',
+  findRoomAria: 'Find room',
   loading: 'Loading...',
   loadingFloors: 'Loading floors...',
   project: 'Project',
