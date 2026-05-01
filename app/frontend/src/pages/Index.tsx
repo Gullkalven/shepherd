@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { client, fetchProjectsListAll } from '@/lib/api';
+import { client, extractProjectItemsFromListBody, fetchProjectsListAll } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import type { AppShellOutletContext } from '@/layouts/AppShellLayout';
 import { APP_LOGOUT_EVENT, PROJECTS_NAV_REFRESH_EVENT } from '@/lib/runAppLogout';
@@ -58,6 +58,9 @@ function IndexContent({
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
+  /** Until first list fetch settles, avoid flashing empty Worker/admin lists. */
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const [projectsLoadFailed, setProjectsLoadFailed] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -106,12 +109,19 @@ function IndexContent({
     // Localhost: list only when signed in. Deployed: load from /all whenever demo session or API user exists (no auth.me gate).
     const canLoad =
       devHost ? !!user : readDemoLocalStorageUser() !== null || !!user;
-    if (!canLoad) return;
+    if (!canLoad) {
+      setProjectsLoading(false);
+      setProjectsLoadFailed(false);
+      return;
+    }
+    setProjectsLoading(true);
+    setProjectsLoadFailed(false);
     try {
       const res = useProjectsAll
         ? await fetchProjectsListAll()
         : await client.entities.projects.query({ sort: '-created_at' });
-      setProjects((res?.data?.items || []) as Project[]);
+      const items = extractProjectItemsFromListBody(res?.data ?? res) as Project[];
+      setProjects(items);
     } catch (err: unknown) {
       const ax = err as {
         message?: string;
@@ -130,7 +140,10 @@ function IndexContent({
         requestUrl: fullUrl,
         requestParams: ax.config?.params,
       });
+      setProjectsLoadFailed(true);
       toast.error('Failed to load projects');
+    } finally {
+      setProjectsLoading(false);
     }
   }, [user]);
 
@@ -139,9 +152,17 @@ function IndexContent({
   }, [user, loadProjects]);
 
   useEffect(() => {
+    const onNavRefresh = () => void loadProjects();
+    window.addEventListener(PROJECTS_NAV_REFRESH_EVENT, onNavRefresh);
+    return () => window.removeEventListener(PROJECTS_NAV_REFRESH_EVENT, onNavRefresh);
+  }, [loadProjects]);
+
+  useEffect(() => {
     const onAppLogout = () => {
       setUser(null);
       setProjects([]);
+      setProjectsLoadFailed(false);
+      setProjectsLoading(false);
       onLogoutClearServer();
     };
     window.addEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
@@ -288,7 +309,15 @@ function IndexContent({
   }
 
   if (isWorker) {
-    return <WorkerTodayView hasUser={!!user} />;
+    return (
+      <WorkerTodayView
+        hasUser={!!user}
+        sites={projects}
+        sitesLoading={projectsLoading}
+        sitesLoadFailed={projectsLoadFailed}
+        onRefreshSites={() => void loadProjects()}
+      />
+    );
   }
 
   const roleBadge = ROLE_BADGE[role] || ROLE_BADGE.worker;

@@ -57,9 +57,21 @@ export async function fetchProjectsListAll(): Promise<{ data: { items: unknown[]
     err.config = { url, method: 'GET' };
     throw err;
   }
-  const items =
-    body && typeof body === 'object' && body !== null && 'items' in body && Array.isArray((body as { items: unknown }).items)
-      ? (body as { items: unknown[] }).items
-      : [];
+  const items = extractProjectItemsFromListBody(body);
   return { data: { items } };
+}
+
+/** Normalizes FastAPI / SDK variants: `{ items }`, `{ data: { items } }`, or a bare array. */
+export function extractProjectItemsFromListBody(body: unknown): unknown[] {
+  if (body == null) return [];
+  if (Array.isArray(body)) return body;
+  if (typeof body !== 'object') return [];
+  const o = body as Record<string, unknown>;
+  if (Array.isArray(o.items)) return o.items;
+  const nested = o.data;
+  if (nested && typeof nested === 'object') {
+    const d = nested as { items?: unknown };
+    if (Array.isArray(d.items)) return d.items;
+  }
+  return [];
 }

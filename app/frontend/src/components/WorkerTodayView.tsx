@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { client, fetchProjectsListAll } from '@/lib/api';
+import { client } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import {
   readWorkerLastRoom,
@@ -8,14 +8,12 @@ import {
   clearWorkerLastRoom,
   type WorkerLastRoom,
 } from '@/lib/workerLastRoom';
-import { PROJECTS_NAV_REFRESH_EVENT } from '@/lib/runAppLogout';
-import { DEV_ROLE_CHANGED_EVENT, isDevRoleSwitcherHost, readDemoLocalStorageUser } from '@/lib/devRole';
+import { DEV_ROLE_CHANGED_EVENT, readDemoLocalStorageUser } from '@/lib/devRole';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ChevronRight, FolderOpen, Layers } from 'lucide-react';
-import { toast } from 'sonner';
 
-interface ProjectRow {
+interface SiteRow {
   id: number;
   name: string;
 }
@@ -42,8 +40,12 @@ interface TaskRow {
 }
 
 export type WorkerTodayViewProps = {
-  /** Signed-in user present (same gate as parent Index). */
   hasUser: boolean;
+  /** Same project/site list as the sidebar (`Index.loadProjects`). */
+  sites: SiteRow[];
+  sitesLoading: boolean;
+  sitesLoadFailed: boolean;
+  onRefreshSites: () => void;
 };
 
 function isLocalDateToday(iso: string | null | undefined): boolean {
@@ -93,127 +95,120 @@ const ACTIONABLE = new Set(['not_started', 'in_progress', 'ready_for_inspection'
 /** Backend rejects higher limits with 422 (see FloorDetail / routers/tasks.py). */
 const TASKS_QUERY_LIMIT = 2000;
 
-export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
+export default function WorkerTodayView({
+  hasUser,
+  sites,
+  sitesLoading,
+  sitesLoadFailed,
+  onRefreshSites,
+}: WorkerTodayViewProps) {
   const navigate = useNavigate();
   const { displayName } = usePermissions();
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [roomsFlat, setRoomsFlat] = useState<EnrichedRoom[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  /** True when the projects/sites list request failed (distinct from “org has no sites”). */
-  const [sitesLoadError, setSitesLoadError] = useState(false);
-  /** Task checklist summary failed; rooms/sites may still be usable. */
+  /** Tasks + floors/rooms for Today cards (sites come from parent Index). */
+  const [enrichmentLoading, setEnrichmentLoading] = useState(false);
   const [taskSummaryUnavailable, setTaskSummaryUnavailable] = useState(false);
   const [lastLocal, setLastLocal] = useState<WorkerLastRoom | null>(() => readWorkerLastRoom());
+  const enrichmentSeq = useRef(0);
 
-  const loadTodayData = useCallback(async () => {
-    const devHost = isDevRoleSwitcherHost();
-    const canLoad = devHost ? hasUser : readDemoLocalStorageUser() !== null || hasUser;
-    if (!canLoad) {
-      setProjects([]);
+  const loadEnrichment = useCallback(async () => {
+    const demoOrUser = readDemoLocalStorageUser() !== null || hasUser;
+    if (!demoOrUser) {
       setRoomsFlat([]);
       setTasks([]);
-      setSitesLoadError(false);
       setTaskSummaryUnavailable(false);
-      setLoading(false);
+      setEnrichmentLoading(false);
       return;
     }
-    setLoading(true);
-    setSitesLoadError(false);
+
+    if (sitesLoading || sites.length === 0) {
+      setRoomsFlat([]);
+      setTasks([]);
+      setTaskSummaryUnavailable(false);
+      setEnrichmentLoading(false);
+      return;
+    }
+
+    const seq = ++enrichmentSeq.current;
+    setEnrichmentLoading(true);
     setTaskSummaryUnavailable(false);
 
-    const useProjectsAll = !devHost;
-    let plist: ProjectRow[] = [];
-
     try {
-      const projRes = useProjectsAll
-        ? await fetchProjectsListAll()
-        : await client.entities.projects.query({ sort: '-created_at' });
-      plist = (projRes?.data?.items || []) as ProjectRow[];
-      setProjects(plist);
-    } catch (err) {
-      console.error('[WorkerToday] projects load failed', err);
-      setSitesLoadError(true);
-      setProjects([]);
-      setRoomsFlat([]);
-      setTasks([]);
-      toast.error('Could not load your sites. Check connection and try again.');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const tasksRes = await client.entities.tasks.query({
-        limit: TASKS_QUERY_LIMIT,
-        sort: 'room_id',
-      });
-      setTasks((tasksRes?.data?.items || []) as TaskRow[]);
-    } catch (err) {
-      console.error('[WorkerToday] tasks summary failed', err);
-      setTasks([]);
-      setTaskSummaryUnavailable(true);
-    }
-
-    const enriched: EnrichedRoom[] = [];
-    for (let i = 0; i < plist.length; i++) {
-      const p = plist[i];
       try {
-        const [floorsRes, roomsRes] = await Promise.all([
-          client.entities.floors.query({
-            query: { project_id: p.id },
-            sort: 'floor_number',
-            limit: 100,
-          }),
-          client.entities.rooms.query({
-            query: { project_id: p.id },
-            limit: 500,
-          }),
-        ]);
-        const floors = (floorsRes?.data?.items || []) as FloorRow[];
-        const floorById = new Map(floors.map((f) => [f.id, f]));
-        const rlist = (roomsRes?.data?.items || []) as RoomRow[];
-        for (const r of rlist) {
-          const fl = floorById.get(r.floor_id);
-          if (!fl) continue;
-          enriched.push({
-            projectId: p.id,
-            projectName: p.name,
-            projectOrder: i,
-            floorId: fl.id,
-            floorNumber: fl.floor_number,
-            id: r.id,
-            room_number: r.room_number,
-            status: r.status,
-            updated_at: r.updated_at,
-          });
-        }
+        const tasksRes = await client.entities.tasks.query({
+          limit: TASKS_QUERY_LIMIT,
+          sort: 'room_id',
+        });
+        if (seq !== enrichmentSeq.current) return;
+        setTasks((tasksRes?.data?.items || []) as TaskRow[]);
       } catch (err) {
-        console.error('[WorkerToday] floors/rooms for project failed', p.id, err);
+        console.error('[WorkerToday] tasks summary failed', err);
+        if (seq !== enrichmentSeq.current) return;
+        setTasks([]);
+        setTaskSummaryUnavailable(true);
+      }
+
+      const enriched: EnrichedRoom[] = [];
+      const plist = sites;
+      for (let i = 0; i < plist.length; i++) {
+        const p = plist[i];
+        try {
+          const [floorsRes, roomsRes] = await Promise.all([
+            client.entities.floors.query({
+              query: { project_id: p.id },
+              sort: 'floor_number',
+              limit: 100,
+            }),
+            client.entities.rooms.query({
+              query: { project_id: p.id },
+              limit: 500,
+            }),
+          ]);
+          const floors = (floorsRes?.data?.items || []) as FloorRow[];
+          const floorById = new Map(floors.map((f) => [f.id, f]));
+          const rlist = (roomsRes?.data?.items || []) as RoomRow[];
+          for (const r of rlist) {
+            const fl = floorById.get(r.floor_id);
+            if (!fl) continue;
+            enriched.push({
+              projectId: p.id,
+              projectName: p.name,
+              projectOrder: i,
+              floorId: fl.id,
+              floorNumber: fl.floor_number,
+              id: r.id,
+              room_number: r.room_number,
+              status: r.status,
+              updated_at: r.updated_at,
+            });
+          }
+        } catch (err) {
+          console.error('[WorkerToday] floors/rooms for project failed', p.id, err);
+        }
+      }
+      if (seq !== enrichmentSeq.current) return;
+      enriched.sort(sortRooms);
+      setRoomsFlat(enriched);
+    } finally {
+      if (seq === enrichmentSeq.current) {
+        setEnrichmentLoading(false);
       }
     }
-    enriched.sort(sortRooms);
-    setRoomsFlat(enriched);
-    setLoading(false);
-  }, [hasUser]);
+  }, [hasUser, sites, sitesLoading]);
 
   useEffect(() => {
-    void loadTodayData();
-  }, [loadTodayData]);
-
-  useEffect(() => {
-    const onRefresh = () => void loadTodayData();
-    window.addEventListener(PROJECTS_NAV_REFRESH_EVENT, onRefresh);
-    return () => window.removeEventListener(PROJECTS_NAV_REFRESH_EVENT, onRefresh);
-  }, [loadTodayData]);
+    void loadEnrichment();
+  }, [loadEnrichment]);
 
   useEffect(() => {
     const onRole = () => {
       setLastLocal(readWorkerLastRoom());
-      void loadTodayData();
+      void loadEnrichment();
     };
     window.addEventListener(DEV_ROLE_CHANGED_EVENT, onRole);
     return () => window.removeEventListener(DEV_ROLE_CHANGED_EVENT, onRole);
-  }, [loadTodayData]);
+  }, [loadEnrichment]);
 
   useEffect(() => {
     setLastLocal(readWorkerLastRoom());
@@ -265,18 +260,19 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
 
   const primaryProject = useMemo(() => {
     if (resumeRoom) {
-      return projects.find((p) => p.id === resumeRoom.projectId) ?? null;
+      return sites.find((p) => p.id === resumeRoom.projectId) ?? null;
     }
     if (fallbackReady) {
-      return projects.find((p) => p.id === fallbackReady.projectId) ?? null;
+      return sites.find((p) => p.id === fallbackReady.projectId) ?? null;
     }
-    if (projects.length === 1) return projects[0];
-    return projects[0] ?? null;
-  }, [resumeRoom, fallbackReady, projects]);
+    if (sites.length === 1) return sites[0];
+    return sites[0] ?? null;
+  }, [resumeRoom, fallbackReady, sites]);
 
   const greeting = displayName?.trim() ? `, ${displayName.trim()}` : '';
 
-  if (loading) {
+  /** Initial sites list; avoid empty-state flash before Index finishes first fetch. */
+  if (sitesLoading && sites.length === 0) {
     return (
       <div className="min-h-dvh bg-slate-50 dark:bg-background flex items-center justify-center pb-8">
         <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
@@ -292,6 +288,8 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
   const primaryRoomLabel =
     resumeRoom?.label ?? primaryRoom?.room_number ?? (primaryRoom ? String(primaryRoom.id) : '');
 
+  const showSitesFailure = sitesLoadFailed && sites.length === 0;
+
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-10">
       <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
@@ -300,27 +298,44 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
           <p className="text-sm text-muted-foreground">My rooms{greeting}</p>
         </div>
 
-        {sitesLoadError ? (
+        {showSitesFailure ? (
           <Card className="border-amber-200/80 bg-amber-50/40 p-6 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
-            <p className="text-sm font-medium text-slate-900 dark:text-foreground">Couldn&apos;t load your sites</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-foreground">Couldn&apos;t load sites</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Check your connection, then try again. Your sign-in is still active.
+              Check your connection and try again. Your session is still active.
             </p>
             <Button
               type="button"
               className="mt-4 bg-[#1E3A5F] hover:bg-[#2a4f7a] dark:bg-blue-700 dark:hover:bg-blue-600"
-              onClick={() => void loadTodayData()}
+              onClick={() => onRefreshSites()}
             >
               Retry
             </Button>
           </Card>
-        ) : projects.length === 0 ? (
+        ) : sites.length === 0 ? (
           <Card className="p-8 text-center">
             <Layers className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
             <p className="text-muted-foreground">No sites yet</p>
           </Card>
         ) : (
           <div className="space-y-3">
+            {sitesLoadFailed && sites.length > 0 && (
+              <Card className="border-dashed border-amber-200/70 bg-amber-50/30 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100/90">
+                Site list may be out of date (last refresh failed).{' '}
+                <button
+                  type="button"
+                  className="font-semibold underline underline-offset-2"
+                  onClick={() => onRefreshSites()}
+                >
+                  Refresh
+                </button>
+              </Card>
+            )}
+
+            {enrichmentLoading && (
+              <p className="text-xs text-muted-foreground">Loading today&apos;s rooms…</p>
+            )}
+
             {taskSummaryUnavailable && (
               <Card className="border-dashed border-amber-200/70 bg-amber-50/30 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100/90">
                 Checklist progress couldn&apos;t be loaded. You can still open sites and rooms below.
@@ -443,7 +458,7 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
               </summary>
               <div className="border-t border-border/60 px-2 pb-3 pt-1">
                 <div className="space-y-1">
-                  {projects.map((p) => (
+                  {sites.map((p) => (
                     <button
                       key={p.id}
                       type="button"
