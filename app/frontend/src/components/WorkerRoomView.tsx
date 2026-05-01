@@ -1,4 +1,4 @@
-import { RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { RefObject, useEffect, useMemo, useRef, type ChangeEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -160,6 +160,49 @@ function formatVisitDateShort(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+/** Registers input with parent map ref; sr-only file control + dashed upload affordance. */
+function StyledFilePhotoTrigger(props: {
+  registerInput: (el: HTMLInputElement | null) => void;
+  disabled?: boolean;
+  onFile: (file?: File) => void;
+}) {
+  const localRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <>
+      <input
+        ref={(el) => {
+          localRef.current = el;
+          props.registerInput(el);
+        }}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="sr-only"
+        tabIndex={-1}
+        disabled={props.disabled}
+        onChange={(e: ChangeEvent<HTMLInputElement>) => {
+          props.onFile(e.target.files?.[0]);
+          e.target.value = '';
+        }}
+      />
+      <button
+        type="button"
+        disabled={props.disabled}
+        onClick={() => localRef.current?.click()}
+        className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border/80 bg-muted/15 px-3 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 sm:gap-3 sm:py-2.5"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border/40">
+          <Camera className="h-4 w-4 text-muted-foreground" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-foreground">Add photo</span>
+          <span className="mt-0.5 block text-xs text-muted-foreground">Camera or gallery</span>
+        </span>
+      </button>
+    </>
+  );
 }
 
 function heatingStageCollapseSummary(stage: HeatingCableStage): string {
@@ -357,101 +400,168 @@ export function WorkerRoomView(p: Props) {
     p.activityEntries.length,
   ]);
 
+  const heroWorkState = useMemo(() => {
+    if (p.blockedReason) {
+      return {
+        label: 'Blocked',
+        className:
+          'border-red-400/50 bg-red-50 text-red-950 dark:border-red-900/60 dark:bg-red-950/45 dark:text-red-50',
+      };
+    }
+    if (p.editsBlocked) {
+      return {
+        label: 'View only',
+        className: 'border-border/70 bg-muted/50 text-muted-foreground',
+      };
+    }
+    if (p.phaseCompleteEligible && !p.phaseReadOnly) {
+      return {
+        label: 'Ready',
+        className:
+          'border-emerald-400/55 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-50',
+      };
+    }
+    if (p.boardPhaseWorkReady) {
+      return {
+        label: 'On track',
+        className:
+          'border-teal-400/45 bg-teal-50/90 text-teal-950 dark:border-teal-800 dark:bg-teal-950/35 dark:text-teal-50',
+      };
+    }
+    return {
+      label: 'In progress',
+      className: 'border-[#1E3A5F]/25 bg-background/90 text-foreground dark:border-blue-800/50 dark:bg-background/80',
+    };
+  }, [
+    p.blockedReason,
+    p.editsBlocked,
+    p.phaseCompleteEligible,
+    p.phaseReadOnly,
+    p.boardPhaseWorkReady,
+  ]);
+
   return (
-    <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-3 sm:px-4 sm:py-4 lg:max-w-xl">
-      {/* Status strip */}
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge
-          className={cn('border-0 text-sm font-medium sm:text-xs', p.roomStatusClassName)}
-        >
-          {p.roomStatusLabel}
-        </Badge>
-        {p.dueLine ? (
-          <span
-            className={cn(
-              'text-sm font-medium flex items-center gap-1 sm:text-xs',
-              p.duePast ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
-            )}
-          >
-            Due {p.dueLine}
-            {p.duePast ? (
-              <>
-                <span className="max-sm:hidden"> · overdue</span>
-                <span className="sm:hidden"> · late</span>
-              </>
+    <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-4 sm:space-y-3 sm:px-4 sm:py-5 lg:max-w-xl">
+      {/* Room hero: status, room #, phase, work state, progress */}
+      <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.08] via-background to-background shadow-sm dark:from-blue-950/45 dark:via-background dark:to-background">
+        <div className="space-y-3 p-4 sm:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Badge
+                className={cn(
+                  'border-0 text-[11px] font-semibold uppercase tracking-wide sm:text-[10px]',
+                  p.roomStatusClassName
+                )}
+              >
+                {p.roomStatusLabel}
+              </Badge>
+              <span
+                className={cn(
+                  'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium sm:text-[10px]',
+                  heroWorkState.className
+                )}
+              >
+                {heroWorkState.label}
+              </span>
+            </div>
+            {p.dueLine ? (
+              <span
+                className={cn(
+                  'shrink-0 text-[11px] font-medium tabular-nums sm:text-[10px]',
+                  p.duePast ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
+                )}
+              >
+                Due {p.dueLine}
+                {p.duePast ? (
+                  <>
+                    <span className="max-sm:hidden"> · overdue</span>
+                    <span className="sm:hidden"> · late</span>
+                  </>
+                ) : null}
+              </span>
             ) : null}
-          </span>
-        ) : null}
-      </div>
-      {p.blockedReason ? (
-        <div className="rounded-lg border border-red-200/70 bg-red-50/80 dark:border-red-900/50 dark:bg-red-950/30 px-3 py-2 text-sm text-red-800 dark:text-red-200">
-          <span className="font-semibold">Blocked</span>
-          <p className="mt-1 text-xs leading-snug">{p.blockedReason}</p>
-        </div>
-      ) : null}
-
-      {p.editsBlocked ? (
-        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 flex items-start gap-2 text-sm">
-          <Lock className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
-          <p className="text-muted-foreground leading-snug">This room is locked for editing.</p>
-        </div>
-      ) : null}
-
-      {/* Current phase hero */}
-      <Card className="border-[#1E3A5F]/25 bg-gradient-to-br from-[#1E3A5F]/[0.07] to-transparent dark:from-blue-950/40 shadow-sm overflow-hidden">
-        <div className="p-4 sm:p-5 space-y-3">
-          <div className="space-y-1">
-            <p className="hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/90 sm:block">
-              Now
-            </p>
-            <h1 className="text-2xl sm:text-[1.65rem] font-bold tracking-tight text-foreground leading-tight">
-              {p.roomNumber}
-            </h1>
-            <p className="text-base font-semibold text-[#1E3A5F] dark:text-blue-300">{boardLabel}</p>
           </div>
 
-          <div className="rounded-xl bg-background/80 dark:bg-background/60 border border-border/50 px-3 py-2.5 space-y-1.5">
+          <div className="space-y-2">
+            {p.areaName ? (
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/85">
+                {p.areaName}
+              </p>
+            ) : null}
+            <h1 className="text-[1.75rem] font-semibold leading-none tracking-tight text-foreground sm:text-[2rem]">
+              {p.roomNumber}
+            </h1>
+            <div className="space-y-1 pt-1">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/75">
+                Current phase
+              </p>
+              <p className="text-base font-medium leading-snug text-foreground/95 sm:text-[1.0625rem]">
+                {boardLabel}
+              </p>
+            </div>
+          </div>
+
+          {p.blockedReason ? (
+            <div className="rounded-lg border border-red-200/80 bg-red-50/90 px-3 py-2 text-sm text-red-900 dark:border-red-900/55 dark:bg-red-950/40 dark:text-red-100">
+              <span className="font-semibold">Blocked</span>
+              <p className="mt-1 text-xs leading-snug text-red-800/95 dark:text-red-100/90">
+                {p.blockedReason}
+              </p>
+            </div>
+          ) : null}
+
+          {p.editsBlocked ? (
+            <div className="flex items-start gap-2 rounded-lg border border-border/55 bg-muted/25 px-3 py-2 text-xs text-muted-foreground">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              <span className="leading-snug">This room is locked for editing.</span>
+            </div>
+          ) : null}
+
+          <div className="space-y-2 rounded-xl border border-border/55 bg-background/75 px-3 py-3 dark:bg-background/55">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/75">
+              Progress
+            </p>
             {p.phaseCompleteEligible && !p.phaseReadOnly ? (
-              <div className="space-y-1.5">
-                <p className="text-base font-semibold text-emerald-800 dark:text-emerald-200">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
                   Ready for handoff
                 </p>
-                <p className="text-sm text-foreground leading-snug">
-                  Next step: <span className="font-semibold">Complete phase</span> below.
+                <p className="text-sm leading-snug text-foreground/95">
+                  Next: <span className="font-semibold">Complete phase</span> below.
                 </p>
                 {p.boardPhaseShowHeating ? (
-                  <p className="text-xs text-muted-foreground leading-snug">
+                  <p className="text-xs leading-snug text-muted-foreground">
                     Checklist and heating documentation are complete for this phase.
                   </p>
                 ) : p.boardPhaseTotalCount > 0 ? (
-                  <p className="text-xs text-muted-foreground leading-snug">
+                  <p className="text-xs leading-snug text-muted-foreground">
                     All checklist tasks for this phase are complete.
                   </p>
                 ) : (
-                  <p className="text-xs text-muted-foreground leading-snug">
+                  <p className="text-xs leading-snug text-muted-foreground">
                     Required work for this phase is complete.
                   </p>
                 )}
               </div>
             ) : (
-              <>
+              <div className="space-y-2">
                 {p.boardPhaseShowHeating && boardHeatingDocProgress ? (
-                  <p className="text-base text-foreground sm:text-sm">
-                    <span className="font-semibold">Documentation</span>{' '}
+                  <p className="text-sm text-foreground/95">
+                    <span className="font-medium">Documentation</span>{' '}
                     <span className="tabular-nums font-semibold">
                       {boardHeatingDocProgress.complete}/{boardHeatingDocProgress.total}
                     </span>
                     <span className="text-muted-foreground"> complete</span>
                   </p>
                 ) : p.boardPhaseTotalCount > 0 ? (
-                  <p className="text-base text-foreground sm:text-sm">
+                  <p className="text-sm text-foreground/95">
                     <span className="tabular-nums font-semibold">{p.boardPhaseIncompleteCount}</span>
                     <span className="text-muted-foreground">
                       {' '}
-                      checklist {p.boardPhaseIncompleteCount === 1 ? 'task' : 'tasks'} left
+                      {p.boardPhaseIncompleteCount === 1 ? 'task' : 'tasks'} remaining
                     </span>
-                    <span className="text-muted-foreground/80 text-xs max-sm:hidden"> · </span>
-                    <span className="text-xs text-muted-foreground tabular-nums max-sm:hidden">
+                    <span className="text-muted-foreground/90 max-sm:hidden"> · </span>
+                    <span className="text-xs tabular-nums text-muted-foreground max-sm:hidden">
                       {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/{p.boardPhaseTotalCount} done
                     </span>
                   </p>
@@ -459,82 +569,91 @@ export function WorkerRoomView(p: Props) {
                   <p className="text-sm text-muted-foreground">No checklist items in this phase.</p>
                 )}
                 {p.boardPhaseShowHeating && p.boardPhaseTotalCount > 0 ? (
-                  <p className="text-sm text-muted-foreground tabular-nums">
-                    Checklist {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/{p.boardPhaseTotalCount} done
+                  <p className="text-xs tabular-nums text-muted-foreground sm:hidden">
+                    Checklist {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/
+                    {p.boardPhaseTotalCount} done
                   </p>
                 ) : null}
                 {p.boardPhaseShowHeating ? (
-                  <p className="text-sm flex flex-wrap items-center gap-2">
-                    <span className="text-muted-foreground">Heating cable</span>
-                    <Badge variant="secondary" className="text-xs font-medium sm:text-[11px]">
+                  <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span>Heating cable</span>
+                    <span
+                      className={cn(
+                        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                        p.boardPhaseWorkReady
+                          ? 'border-emerald-400/50 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100'
+                          : 'border-border/70 bg-muted/40 text-foreground/90'
+                      )}
+                    >
                       {p.boardPhaseWorkReady ? 'Complete' : heatingStatusLabel[p.heatingDerived.status]}
-                    </Badge>
+                    </span>
                   </p>
                 ) : null}
-              </>
+              </div>
             )}
           </div>
         </div>
       </Card>
 
-      {/* Area picker */}
+      {/* Area picker — compact chips */}
       {p.showAreasNav && p.areasList.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {p.areasList.map((a) => (
-            <Button
+            <button
               key={a.id}
               type="button"
-              variant={a.id === p.activeAreaId ? 'default' : 'outline'}
-              size="sm"
               className={cn(
-                'min-h-11 h-11 px-4 text-sm rounded-lg sm:min-h-10 sm:h-10',
-                a.id === p.activeAreaId && 'bg-[#1E3A5F] hover:bg-[#1E3A5F]/90 dark:bg-blue-700'
+                'min-h-10 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-h-9 sm:py-1.5',
+                a.id === p.activeAreaId
+                  ? 'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm dark:border-blue-600 dark:bg-blue-700'
+                  : 'border-border/55 bg-background/90 text-muted-foreground hover:border-border hover:bg-muted/35 hover:text-foreground'
               )}
               onClick={() => p.onAreaChange(a.id)}
             >
               {a.name}
-            </Button>
+            </button>
           ))}
         </div>
       ) : null}
 
-      {/* Phase navigation — subdued so the active task stays primary */}
+      {/* Phase tabs — horizontal scroll on narrow viewports */}
       {workflowKeys.length > 1 ? (
-        <div className="space-y-1.5 rounded-lg border border-border/40 bg-muted/20 px-2.5 py-2 sm:py-1.5">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80 px-0.5">
+        <div className="rounded-xl border border-border/45 bg-muted/12 px-2 py-2">
+          <p className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/75">
             Phases
           </p>
-          <div className="flex flex-wrap gap-1 sm:gap-1">
-            {workflowKeys.map((key) => {
-              const isBoard = key === p.boardPhaseKey;
-              const isSel = key === p.selectedPhaseKey;
-              return (
-                <Button
-                  key={key}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    'h-auto min-h-0 rounded-md px-2 py-1.5 text-xs font-normal sm:py-1 sm:text-[11px]',
-                    isSel
-                      ? 'bg-background/90 text-foreground shadow-sm ring-1 ring-border/60'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
-                    !isSel && !isBoard && 'opacity-75'
-                  )}
-                  onClick={() => p.onPhaseSelect(key)}
-                >
-                  <span className="flex items-center gap-1.5">
+          <div className="-mx-1 overflow-x-auto overscroll-x-contain px-1 [-webkit-overflow-scrolling:touch]">
+            <div className="flex w-max max-w-none gap-2 pb-0.5">
+              {workflowKeys.map((key) => {
+                const isBoard = key === p.boardPhaseKey;
+                const isSel = key === p.selectedPhaseKey;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={cn(
+                      'flex max-w-[14rem] shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:max-w-none sm:py-1.5',
+                      isSel
+                        ? 'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm dark:border-blue-600 dark:bg-blue-700'
+                        : 'border-transparent bg-background/85 text-muted-foreground hover:bg-muted/45 hover:text-foreground',
+                      !isSel && !isBoard && 'opacity-[0.82]'
+                    )}
+                    onClick={() => p.onPhaseSelect(key)}
+                  >
                     {isBoard ? (
                       <span
-                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500/90"
+                        className={cn(
+                          'h-1.5 w-1.5 shrink-0 rounded-full',
+                          isSel ? 'bg-amber-300' : 'bg-amber-500/90'
+                        )}
                         aria-hidden
                       />
                     ) : null}
-                    {phaseLabel(key, p.phaseWorkflow)}
-                  </span>
-                </Button>
-              );
-            })}
+                    <span className="truncate">{phaseLabel(key, p.phaseWorkflow)}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       ) : null}
@@ -594,8 +713,8 @@ export function WorkerRoomView(p: Props) {
               </Button>
               <Button
                 type="button"
-                variant="secondary"
-                className="h-11 min-h-11 w-full sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1"
+                variant="outline"
+                className="h-11 min-h-11 w-full border-border/60 font-normal text-muted-foreground hover:bg-muted/40 hover:text-foreground sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1"
                 onClick={() => p.onPhaseSelect(p.boardPhaseKey)}
               >
                 Jump to active phase
@@ -608,11 +727,14 @@ export function WorkerRoomView(p: Props) {
       {/* Checklist — large action rows (before heating so checklist stays above long forms) */}
       {showFullPhaseDetails && p.showChecklistSection ? (
         <section aria-labelledby="worker-checklist-heading">
-          <div className="flex items-center justify-between gap-2 mb-3 px-0.5">
-            <h2 id="worker-checklist-heading" className="text-base font-medium tracking-tight text-muted-foreground">
+          <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
+            <h2
+              id="worker-checklist-heading"
+              className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80"
+            >
               {p.checklistSectionTitle}
             </h2>
-            <span className="text-xs tabular-nums text-muted-foreground/90 font-medium">
+            <span className="text-[11px] tabular-nums font-medium text-muted-foreground/85">
               {p.showHeatingModule && p.tasksForSelectedPhase.length === 0 && selectedHeatingDocProgress
                 ? `Documentation ${selectedHeatingDocProgress.complete}/${selectedHeatingDocProgress.total}`
                 : `${p.tasksForSelectedPhase.filter((t) => t.is_completed).length}/${p.tasksForSelectedPhase.length}`}
@@ -917,30 +1039,16 @@ export function WorkerRoomView(p: Props) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                           Photos
                         </p>
-                        <input
-                          ref={(el) => {
+                        <StyledFilePhotoTrigger
+                          registerInput={(el) => {
                             p.heatingPhotoInputRefs.current[stage.key] = el;
                           }}
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                          onChange={(e) => p.onHeatingStagePhotoChange(stage.key, e.target.files?.[0])}
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="min-h-11 h-11 w-full sm:w-auto px-4 text-sm gap-1.5 sm:h-10 sm:min-h-10 sm:px-3"
                           disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                          onClick={() => p.heatingPhotoInputRefs.current[stage.key]?.click()}
-                        >
-                          <Camera className="h-4 w-4" />
-                          Add photo
-                        </Button>
+                          onFile={(file) => p.onHeatingStagePhotoChange(stage.key, file)}
+                        />
                         {Array.isArray(row.photos) && row.photos.length > 0 ? (
                           <div className="grid grid-cols-3 gap-2">
                             {row.photos.map((url, pi) => (
@@ -1083,30 +1191,16 @@ export function WorkerRoomView(p: Props) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                           Photos
                         </p>
-                        <input
-                          ref={(el) => {
+                        <StyledFilePhotoTrigger
+                          registerInput={(el) => {
                             p.heatingPhotoInputRefs.current[photoKey] = el;
                           }}
-                          type="file"
-                          accept="image/*"
-                          capture="environment"
-                          className="hidden"
-                          onChange={(e) => p.onHeatingStagePhotoChange(photoKey, e.target.files?.[0])}
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="min-h-11 h-11 w-full sm:w-auto px-4 text-sm gap-1.5 sm:h-10 sm:min-h-10 sm:px-3"
                           disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                          onClick={() => p.heatingPhotoInputRefs.current[photoKey]?.click()}
-                        >
-                          <Camera className="h-4 w-4" />
-                          Add photo
-                        </Button>
+                          onFile={(file) => p.onHeatingStagePhotoChange(photoKey, file)}
+                        />
                         {Array.isArray(step.photos) && step.photos.length > 0 ? (
                           <div className="grid grid-cols-3 gap-2">
                             {step.photos.map((url, pi) => (
