@@ -38,6 +38,7 @@ import {
 } from '@/lib/roomAreas';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { WorkerRoomView } from '@/components/WorkerRoomView';
 import {
   HEATING_CABLE_STAGES,
   normalizeHeatingCableDoc,
@@ -248,6 +249,7 @@ export default function RoomDetail() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
+    isAdmin,
     canEdit,
     canEditRoom, canDeleteRoom, canChangeStatus, canAddChecklistItem, canDeleteChecklistItem,
     canCheckItem, canUploadPhoto, canDeletePhoto, canMovePhase,
@@ -321,6 +323,7 @@ export default function RoomDetail() {
   const [heatingCableDoc, setHeatingCableDoc] = useState<HeatingCableDoc>({});
   const [savingHeatingCable, setSavingHeatingCable] = useState(false);
   const heatingPhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [completingWorkerPhase, setCompletingWorkerPhase] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!projectId || !floorId || !roomId) return;
@@ -1021,6 +1024,38 @@ export default function RoomDetail() {
     }
   };
 
+  const handleWorkerPhaseComplete = async () => {
+    if (!room) return;
+    const workerName = resolveSessionWorkerLabel(displayName);
+    if (!workerName.trim()) {
+      toast.error('Add your name in your profile to record handoff.');
+      setShowCheckNameDialog(true);
+      return;
+    }
+    const phaseKey = normalizeRoomPhase(phaseTab, phaseWorkflow);
+    const areaPayload =
+      activeAreaId === DEFAULT_AREA_ID && !hasPersistedAreas(room.areas) ? {} : { area_id: activeAreaId };
+    setCompletingWorkerPhase(true);
+    try {
+      await client.entities.room_visits.create({
+        data: {
+          room_id: room.id,
+          worker_name: workerName,
+          action: `Phase ready for handoff: ${phaseLabel(phaseKey, phaseWorkflow)}`,
+          visited_at: new Date().toISOString(),
+          phase: phaseKey,
+          ...areaPayload,
+        },
+      });
+      toast.success('Recorded. An admin can advance the board phase.');
+      await loadData();
+    } catch {
+      toast.error('Could not record completion');
+    } finally {
+      setCompletingWorkerPhase(false);
+    }
+  };
+
   const handleSaveDeadline = async () => {
     if (!room || !canEdit) return;
     setSavingDeadline(true);
@@ -1370,7 +1405,7 @@ export default function RoomDetail() {
     });
   }, [deviations, phaseTab, phaseWorkflow, activeAreaId]);
 
-  if (loading) {
+  if (loading || permissionsLoading) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
         <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
@@ -1429,9 +1464,102 @@ export default function RoomDetail() {
     has_deviation_missing: 'Has deviation/missing values',
   };
 
+  const tasksForBoardPhase = tasksInArea.filter(
+    (t) => storedChecklistPhase(t.phase, phaseWorkflow) === areaMainPhaseNorm
+  );
+  const boardPhaseIncompleteCount = tasksForBoardPhase.filter((t) => !t.is_completed).length;
+  const boardPhaseTotalCount = tasksForBoardPhase.length;
+  const boardPhaseLabelForHeating = phaseLabel(areaMainPhaseNorm, phaseWorkflow);
+  const boardPhaseShowHeating = isHeatingCablePhase(areaMainPhaseNorm, boardPhaseLabelForHeating);
+  const workerPhaseCompleteEligible =
+    selPhase === areaMainPhaseNorm &&
+    !editsBlocked &&
+    !phaseReadOnly &&
+    (boardPhaseTotalCount === 0 || boardPhaseIncompleteCount === 0) &&
+    (!boardPhaseShowHeating || heatingDerived.status === 'complete');
+
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-3 sm:px-4 sm:py-4 lg:max-w-none lg:mx-0 lg:px-6 xl:px-8">
+        {!isAdmin ? (
+          <>
+            {(sectionVisibility.checklist || sectionVisibility.photos) && (
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
+            )}
+            <WorkerRoomView
+              projectName={project?.name ?? ''}
+              floorName={floor?.name ?? ''}
+              roomNumber={room.room_number}
+              areaName={showAreasNav ? activeArea?.name ?? null : null}
+              showAreasNav={showAreasNav}
+              areasList={areasList.map((a) => ({ id: a.id, name: a.name }))}
+              activeAreaId={activeAreaId}
+              onAreaChange={setActiveAreaId}
+              phaseWorkflow={phaseWorkflow}
+              boardPhaseKey={areaMainPhaseNorm}
+              selectedPhaseKey={selPhase}
+              onPhaseSelect={setPhaseTab}
+              boardPhaseIncompleteCount={boardPhaseIncompleteCount}
+              boardPhaseTotalCount={boardPhaseTotalCount}
+              boardPhaseShowHeating={boardPhaseShowHeating}
+              heatingDerived={heatingDerived}
+              phaseReadOnly={phaseReadOnly}
+              editsBlocked={editsBlocked}
+              checklistSectionTitle={checklistSectionTitle}
+              showChecklistSection={sectionVisibility.checklist}
+              tasksForSelectedPhase={tasksForPhase}
+              canInteractChecklist={canInteractChecklist}
+              onTaskClick={handleTaskClick}
+              showHeatingModule={showHeatingCableModule}
+              heatingCableDoc={heatingCableDoc}
+              canEditHeatingCable={canEditHeatingCable}
+              savingHeatingCable={savingHeatingCable}
+              heatingLockedByAdmin={heatingLockedByAdmin}
+              heatingPhotoInputRefs={heatingPhotoInputRefs}
+              onHeatingFieldChange={updateHeatingStageField}
+              onExtraHeatingFieldChange={updateExtraHeatingStepField}
+              onHeatingStagePhotoChange={(stageId, file) => void handleHeatingStagePhotoInput(stageId, file)}
+              onSaveHeatingCable={() => void saveHeatingCableDoc()}
+              onPhotoPreview={(url) => setShowPhotoPreview(url)}
+              showPhotosSection={sectionVisibility.photos}
+              canUploadPhoto={canUploadPhoto}
+              canMutatePhaseMedia={canMutatePhaseMedia}
+              uploadingPhoto={uploading}
+              onGeneralPhotoClick={() => fileInputRef.current?.click()}
+              photosForPhase={photosForPhase}
+              legacySavedWorkerName={legacySavedWorkerName || undefined}
+              onClearSavedWorkerName={legacySavedWorkerName ? handleClearSavedName : undefined}
+              activityEntries={activityEntries}
+              formatActivityWhen={formatActivityWhen}
+              deviations={deviationsForPhase.map((d) => ({
+                id: d.id,
+                text: d.text,
+                status: d.status,
+              }))}
+              newDeviationText={newDeviationText}
+              onNewDeviationChange={setNewDeviationText}
+              onAddDeviation={() => void handleAddDeviation()}
+              canAddDeviation={canInteractChecklist && !editsBlocked}
+              savingDeviations={savingDeviations}
+              roomStatusLabel={currentStatus.label}
+              roomStatusClassName={`${currentStatus.color} border-0`}
+              blockedReason={room.status === 'blocked' ? room.blocked_reason : null}
+              dueLine={dueLine}
+              duePast={duePast}
+              phaseCompleteEligible={workerPhaseCompleteEligible}
+              onCompletePhase={() => void handleWorkerPhaseComplete()}
+              completingPhase={completingWorkerPhase}
+            />
+          </>
+        ) : (
+          <>
         <Card className="border-border/45 bg-background/70 shadow-none p-2.5 sm:p-3">
           <div className="min-w-0">
             <h2 className="text-xl font-semibold text-foreground tracking-tight leading-tight sm:text-[1.35rem]">
@@ -2874,6 +3002,8 @@ export default function RoomDetail() {
                   </Collapsible>
             </div>
           </div>
+        )}
+          </>
         )}
 
       </div>
