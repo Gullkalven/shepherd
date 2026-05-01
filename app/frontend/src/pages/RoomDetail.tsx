@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { client } from '@/lib/api';
+import { persistWorkerLastRoom } from '@/lib/workerLastRoom';
 import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -371,6 +372,14 @@ export default function RoomDetail() {
       }
       setAssignedWorker(roomData?.assigned_worker || '');
       setBlockedReason(roomData?.blocked_reason || '');
+      if (roomData && projectId && floorId && roomId) {
+        persistWorkerLastRoom({
+          projectId: Number(projectId),
+          floorId: Number(floorId),
+          roomId: Number(roomId),
+          roomNumber: roomData.room_number,
+        });
+      }
       setTasks(tasksRes?.data?.items || []);
       setVisits(visitsRes?.data?.items || []);
 

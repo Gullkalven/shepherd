@@ -22,6 +22,7 @@ import {
   type DevAppRole,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
+import WorkerTodayView from '@/components/WorkerTodayView';
 import {
   getAuthMeEpoch,
   isClientLogoutGateActive,
@@ -53,7 +54,7 @@ function IndexContent({
 }) {
   const navigate = useNavigate();
   const { activateSession, endSession, sessionActive } = useDevPresentationSession();
-  const { role, canCreateProject, canDeleteProject, canEdit } = usePermissions();
+  const { role, canCreateProject, canDeleteProject, canEdit, isWorker, loading: permLoading } = usePermissions();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -276,6 +277,18 @@ function IndexContent({
         </div>
       </div>
     );
+  }
+
+  if (permLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (isWorker) {
+    return <WorkerTodayView hasUser={!!user} />;
   }
 
   const roleBadge = ROLE_BADGE[role] || ROLE_BADGE.worker;
