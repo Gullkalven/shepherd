@@ -333,7 +333,7 @@ export default function WorkerTodayView({
 
         {showSitesFailure ? (
           <Card className="border-amber-200/80 bg-amber-50/40 p-6 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
-            <p className="text-sm font-medium text-slate-900 dark:text-foreground">Couldn&apos;t load sites</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-foreground">Couldn&apos;t load projects</p>
             <p className="mt-1 text-sm text-muted-foreground">
               Check your connection and try again. Your session is still active.
             </p>
@@ -348,13 +348,13 @@ export default function WorkerTodayView({
         ) : sites.length === 0 ? (
           <Card className="p-8 text-center">
             <Layers className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-            <p className="text-muted-foreground">No sites yet</p>
+            <p className="text-muted-foreground">No projects yet</p>
           </Card>
         ) : (
           <div className="space-y-3">
             {sitesLoadFailed && sites.length > 0 && (
               <Card className="border-dashed border-amber-200/70 bg-amber-50/30 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100/90">
-                Site list may be out of date (last refresh failed).{' '}
+                Project list may be out of date (last refresh failed).{' '}
                 <button
                   type="button"
                   className="font-semibold underline underline-offset-2"
@@ -369,14 +369,14 @@ export default function WorkerTodayView({
               <div className="rounded-lg border border-border/60 bg-muted/25 px-3 py-2.5 dark:bg-muted/15">
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                   <p className="min-w-0 text-sm leading-snug">
-                    <span className="text-muted-foreground">Current site:</span>{' '}
+                    <span className="text-muted-foreground">Current project:</span>{' '}
                     <span className="font-semibold text-slate-900 dark:text-foreground">{primaryProject.name}</span>
                   </p>
                   {sites.length > 1 ? (
                     <details className="group relative shrink-0">
                       <summary className="cursor-pointer list-none text-xs font-semibold text-[#1E3A5F] underline-offset-2 hover:underline dark:text-blue-400 [&::-webkit-details-marker]:hidden">
                         <span className="inline-flex items-center gap-0.5">
-                          Change site
+                          Other projects
                           <ChevronRight className="h-3.5 w-3.5 transition group-open:rotate-90" aria-hidden />
                         </span>
                       </summary>
@@ -442,7 +442,7 @@ export default function WorkerTodayView({
             {!primaryRoom && primaryProject && (
               <Card className="border-dashed p-4">
                 <p className="text-sm text-muted-foreground">
-                  No rooms are ready to open from Today yet. Open the site to choose a floor or room.
+                  No rooms are ready to open from Today yet. Open the project to pick a floor or room.
                 </p>
                 <Button
                   type="button"
@@ -450,7 +450,7 @@ export default function WorkerTodayView({
                   className="mt-3 w-full border-[#1E3A5F]/30 text-[#1E3A5F] hover:bg-slate-50 dark:border-blue-700/50 dark:text-blue-400 dark:hover:bg-slate-900"
                   onClick={() => navigate(`/project/${primaryProject.id}`)}
                 >
-                  Open site
+                  Open project
                 </Button>
               </Card>
             )}
@@ -462,7 +462,7 @@ export default function WorkerTodayView({
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Also ready</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Another room ready</p>
                     <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
                       Room {alternateReady.room_number}
                     </p>
@@ -498,7 +498,7 @@ export default function WorkerTodayView({
 
             <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border/70 bg-white/50 px-3 py-2.5 dark:bg-background/50">
               <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Completed today
+                Finished today
               </span>
               <span className="text-2xl font-bold tabular-nums leading-none text-slate-900 dark:text-foreground">
                 {completedTodayCount}
