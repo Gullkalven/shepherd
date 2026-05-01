@@ -191,7 +191,7 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
 
   const roomById = useMemo(() => new Map(roomsFlat.map((r) => [r.id, r])), [roomsFlat]);
 
-  const continueTarget = useMemo(() => {
+  const resumeRoom = useMemo(() => {
     if (!lastLocal) return null;
     const live = roomById.get(lastLocal.roomId);
     if (!live) {
@@ -211,11 +211,18 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
     }
   }, [lastLocal, roomsFlat.length, roomById]);
 
-  const nextReady = useMemo(() => {
-    const skipId = continueTarget?.id;
-    const candidates = roomsFlat.filter((r) => ACTIONABLE.has(r.status) && r.id !== skipId);
-    return candidates.length ? candidates[0] : null;
-  }, [roomsFlat, continueTarget?.id]);
+  /** First actionable room (used when there is no valid last room). */
+  const fallbackReady = useMemo(() => {
+    const list = roomsFlat.filter((r) => ACTIONABLE.has(r.status));
+    return list.length ? list[0] : null;
+  }, [roomsFlat]);
+
+  /** Another actionable room when the primary action is “continue last”. */
+  const alternateReady = useMemo(() => {
+    if (!resumeRoom) return null;
+    const list = roomsFlat.filter((r) => ACTIONABLE.has(r.status) && r.id !== resumeRoom.id);
+    return list.length ? list[0] : null;
+  }, [roomsFlat, resumeRoom]);
 
   const blockedRooms = useMemo(() => roomsFlat.filter((r) => r.status === 'blocked').sort(sortRooms), [roomsFlat]);
 
@@ -227,12 +234,15 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
   );
 
   const primaryProject = useMemo(() => {
-    if (continueTarget) {
-      return projects.find((p) => p.id === continueTarget.projectId) ?? null;
+    if (resumeRoom) {
+      return projects.find((p) => p.id === resumeRoom.projectId) ?? null;
+    }
+    if (fallbackReady) {
+      return projects.find((p) => p.id === fallbackReady.projectId) ?? null;
     }
     if (projects.length === 1) return projects[0];
     return projects[0] ?? null;
-  }, [continueTarget, projects]);
+  }, [resumeRoom, fallbackReady, projects]);
 
   const greeting = displayName?.trim() ? `, ${displayName.trim()}` : '';
 
@@ -247,6 +257,10 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
   const goRoom = (r: EnrichedRoom) => {
     navigate(workerRoomPath(r.projectId, r.floorId, r.id));
   };
+
+  const primaryRoom = resumeRoom ?? fallbackReady;
+  const primaryRoomLabel =
+    resumeRoom?.label ?? primaryRoom?.room_number ?? (primaryRoom ? String(primaryRoom.id) : '');
 
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-10">
@@ -263,44 +277,48 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
           </Card>
         ) : (
           <div className="space-y-3">
-            {continueTarget && (
-              <button
+            {primaryRoom && (
+              <Button
                 type="button"
-                onClick={() => goRoom(continueTarget)}
-                className="w-full text-left rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm transition hover:border-amber-300 hover:shadow-md dark:border-amber-900/50 dark:from-amber-950/40 dark:to-background"
+                variant="default"
+                onClick={() => goRoom(primaryRoom)}
+                className="h-auto min-h-[5.5rem] w-full flex-row items-stretch justify-between gap-4 rounded-2xl bg-[#1E3A5F] px-5 py-5 text-left shadow-lg transition hover:bg-[#2a4f7a] dark:bg-blue-700 dark:hover:bg-blue-600"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200/90">
-                      Continue
-                    </p>
-                    <p className="text-lg font-bold text-slate-900 dark:text-foreground">
-                      Room {continueTarget.label}
-                    </p>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {taskSubtitle(continueTarget.id, tasks)}
-                    </p>
-                  </div>
-                  <ChevronRight className="h-5 w-5 shrink-0 text-amber-700 dark:text-amber-400/90 mt-0.5" />
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <span className="block text-lg font-bold leading-tight text-white">
+                    {resumeRoom ? 'Continue Last Room' : 'Next Ready Room'}
+                  </span>
+                  <span className="block text-base font-semibold text-white/95">Room {primaryRoomLabel}</span>
+                  <span className="block text-sm leading-snug text-white/80 line-clamp-2">
+                    {primaryRoom ? taskSubtitle(primaryRoom.id, tasks) : ''}
+                  </span>
                 </div>
-              </button>
+                <ChevronRight className="h-7 w-7 shrink-0 self-center text-white/90" aria-hidden />
+              </Button>
             )}
 
-            {nextReady && (
+            {alternateReady && (
               <Card
                 className="shepherd-interactive-card cursor-pointer p-4 transition hover:bg-slate-50/80 dark:hover:bg-slate-900/50"
-                onClick={() => goRoom(nextReady)}
+                onClick={() => goRoom(alternateReady)}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ready</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Also ready</p>
                     <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
-                      Room {nextReady.room_number}
+                      Room {alternateReady.room_number}
                     </p>
                     <p className="text-sm text-muted-foreground">Ready for work</p>
                   </div>
                   <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
                 </div>
+              </Card>
+            )}
+
+            {!resumeRoom && !fallbackReady && (
+              <Card className="border-dashed p-5 text-center">
+                <p className="text-sm font-medium text-slate-800 dark:text-foreground">No rooms ready right now</p>
+                <p className="mt-1 text-sm text-muted-foreground">Check blocked rooms below or open a project.</p>
               </Card>
             )}
 

@@ -252,6 +252,7 @@ export default function RoomDetail() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
     isAdmin,
+    isWorker,
     canEdit,
     canEditRoom, canDeleteRoom, canChangeStatus, canAddChecklistItem, canDeleteChecklistItem,
     canCheckItem, canUploadPhoto, canDeletePhoto, canMovePhase,
@@ -372,14 +373,6 @@ export default function RoomDetail() {
       }
       setAssignedWorker(roomData?.assigned_worker || '');
       setBlockedReason(roomData?.blocked_reason || '');
-      if (roomData && projectId && floorId && roomId) {
-        persistWorkerLastRoom({
-          projectId: Number(projectId),
-          floorId: Number(floorId),
-          roomId: Number(roomId),
-          roomNumber: roomData.room_number,
-        });
-      }
       setTasks(tasksRes?.data?.items || []);
       setVisits(visitsRes?.data?.items || []);
 
@@ -473,6 +466,17 @@ export default function RoomDetail() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (permissionsLoading || !isWorker) return;
+    if (!room || !projectId || !floorId || !roomId) return;
+    persistWorkerLastRoom({
+      projectId: Number(projectId),
+      floorId: Number(floorId),
+      roomId: Number(roomId),
+      roomNumber: room.room_number,
+    });
+  }, [permissionsLoading, isWorker, room, projectId, floorId, roomId]);
 
   useEffect(() => {
     if (!room) return;
