@@ -14,7 +14,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import {
   Camera, Trash2, User, Ban, CheckCircle2,
   Image as ImageIcon, X, Plus, Clock, ListPlus, Pencil, Check,
-  Lock, Unlock, ChevronDown, AlertTriangle, History, Calendar,
+  Lock, Unlock, ChevronDown, AlertTriangle, History, Calendar, Circle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -42,6 +42,7 @@ import {
   HEATING_CABLE_STAGES,
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
+  heatingStageHasAnyData,
   isHeatingCablePhase,
   type HeatingCableDoc,
   type HeatingCableStage,
@@ -1406,6 +1407,7 @@ export default function RoomDetail() {
   );
   const completedForPhase = tasksForPhase.filter((t) => t.is_completed).length;
   const totalForPhase = tasksForPhase.length;
+  const completedTaskNamesForPhase = tasksForPhase.filter((t) => t.is_completed).map((t) => t.name);
   const canInteractChecklist = canCheckItem && !editsBlocked && !phaseReadOnly;
   const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
   const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
@@ -1838,15 +1840,231 @@ export default function RoomDetail() {
             ) : null}
 
             {phaseReadOnly ? (
-              <div className="rounded-md border-l-2 border-muted-foreground/20 bg-muted/10 pl-2.5 pr-2 py-1.5 dark:bg-muted/15">
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Read-only for your role — only an admin can change this phase.
-                </p>
-              </div>
+              <Card className="overflow-hidden border-slate-300/70 bg-slate-50/90 shadow-none ring-1 ring-slate-200/80 dark:border-slate-600 dark:bg-slate-900/45 dark:ring-slate-700/80">
+                <div className="border-b border-border/45 bg-muted/[0.35] px-3 py-2.5 sm:px-3.5">
+                  <div className="flex items-start gap-2.5">
+                    <div className="mt-0.5 rounded-md border border-slate-300/80 bg-background/90 p-1.5 dark:border-slate-600">
+                      <Lock className="h-4 w-4 text-slate-600 dark:text-slate-300" aria-hidden />
+                    </div>
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-[15px] font-semibold tracking-tight text-foreground">{selectedPhaseLabel}</h3>
+                        <Badge
+                          variant="secondary"
+                          className="text-[10px] font-medium border-slate-300/80 bg-white/90 text-slate-800 dark:border-slate-600 dark:bg-slate-950/60 dark:text-slate-100"
+                        >
+                          {chipUiSel.workerLocked ? 'Locked — view only' : 'Read-only'}
+                        </Badge>
+                        {chipUiSel.status !== 'Active' ? (
+                          <span className="text-[10px] font-medium text-muted-foreground">{chipUiSel.status}</span>
+                        ) : null}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground leading-snug">
+                        This phase is closed for editing on your account. Historical work stays visible below.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="space-y-2 px-3 py-2.5 sm:px-3.5 text-[11px] leading-snug">
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <span className="text-muted-foreground">
+                      Checklist:{' '}
+                      <span className="font-medium text-foreground tabular-nums">
+                        {completedForPhase}/{totalForPhase}
+                      </span>{' '}
+                      done
+                    </span>
+                    {sectionVisibility.photos ? (
+                      <span className="text-muted-foreground">
+                        Photos:{' '}
+                        <span className="font-medium text-foreground tabular-nums">{photosForPhase.length}</span>
+                      </span>
+                    ) : null}
+                    {showHeatingCableModule ? (
+                      <span className="text-muted-foreground">
+                        Cable docs:{' '}
+                        <span className="font-medium text-foreground">{heatingStatusLabel[heatingDerived.status]}</span>
+                      </span>
+                    ) : null}
+                  </div>
+                  {completedTaskNamesForPhase.length > 0 ? (
+                    <div className="rounded-md border border-border/50 bg-background/60 px-2 py-1.5 dark:bg-background/40">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/90">
+                        Completed items
+                      </p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] text-foreground/90">
+                        {tasksForPhase
+                          .filter((t) => t.is_completed)
+                          .slice(0, 8)
+                          .map((task) => (
+                            <li key={task.id}>{task.name}</li>
+                          ))}
+                      </ul>
+                      {completedTaskNamesForPhase.length > 8 ? (
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          +{completedTaskNamesForPhase.length - 8} more
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : totalForPhase > 0 ? (
+                    <p className="text-[11px] text-muted-foreground">No checklist items marked complete in this phase.</p>
+                  ) : null}
+                  <p className="border-t border-border/35 pt-2 text-[10px] text-muted-foreground leading-relaxed">
+                    Unlocking, workflow moves, and corrections require an <span className="font-medium text-foreground/90">Admin</span>{' '}
+                    — contact them if something needs to change here.
+                  </p>
+                </div>
+              </Card>
             ) : null}
 
-            <div className="space-y-4">
+            <div className="flex flex-col gap-4">
                   {showHeatingCableModule ? (
+                  <div className={cn('min-w-0', phaseReadOnly ? 'order-2' : 'order-1')}>
+                  {phaseReadOnly ? (
+                  <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
+                    <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-2 sm:px-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-[15px] font-semibold tracking-tight text-foreground">
+                          Heating cable documentation
+                        </h3>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {heatingStatusLabel[heatingDerived.status]}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
+                        Recorded measurements and module photos — view only for your role.
+                      </p>
+                    </div>
+                    <div className="p-2 space-y-3">
+                      {HEATING_CABLE_STAGES.map((stage) => {
+                        const row = heatingCableDoc[stage.key] || {};
+                        const has = heatingStageHasAnyData(row);
+                        return (
+                          <div key={stage.key} className="rounded-md border border-border/50 p-2 space-y-2">
+                            <p className="text-xs font-semibold text-foreground">{stage.label}</p>
+                            {!has ? (
+                              <p className="text-[11px] text-muted-foreground">No measurements or photos recorded.</p>
+                            ) : (
+                              <>
+                                <div className="space-y-1.5 text-[11px] leading-snug">
+                                  {row.resistance_ohm ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Resistance: </span>
+                                      <span className="text-foreground">{row.resistance_ohm} Ω</span>
+                                    </p>
+                                  ) : null}
+                                  {row.insulation_mohm ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Insulation: </span>
+                                      <span className="text-foreground">{row.insulation_mohm} MΩ</span>
+                                    </p>
+                                  ) : null}
+                                  {row.date ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Date: </span>
+                                      <span className="text-foreground">{row.date}</span>
+                                    </p>
+                                  ) : null}
+                                  {row.performed_by ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Performed by: </span>
+                                      <span className="text-foreground">{row.performed_by}</span>
+                                    </p>
+                                  ) : null}
+                                </div>
+                                {row.note ? (
+                                  <p className="text-[11px] text-foreground/90 whitespace-pre-wrap leading-snug rounded-md bg-muted/25 px-2 py-1.5">
+                                    {row.note}
+                                  </p>
+                                ) : null}
+                                {Array.isArray(row.photos) && row.photos.length > 0 ? (
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {row.photos.map((url, pi) => (
+                                      <button
+                                        key={`${stage.key}-p-${pi}`}
+                                        type="button"
+                                        className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
+                                        onClick={() => setShowPhotoPreview(url)}
+                                      >
+                                        <img
+                                          src={url}
+                                          alt=""
+                                          className="h-full w-full object-cover"
+                                        />
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {(heatingCableDoc.extra_steps || []).map((step, idx) => {
+                        const sid = step.id || `extra-${idx}`;
+                        const has = heatingStageHasAnyData(step);
+                        return (
+                          <div key={sid} className="rounded-md border border-border/50 p-2 space-y-2">
+                            <p className="text-xs font-semibold text-foreground">
+                              {step.label?.trim() ? step.label : `Extra step ${idx + 1}`}
+                            </p>
+                            {!has ? (
+                              <p className="text-[11px] text-muted-foreground">No measurements or photos recorded.</p>
+                            ) : (
+                              <>
+                                <div className="space-y-1.5 text-[11px] leading-snug">
+                                  {step.resistance_ohm ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Resistance: </span>
+                                      <span className="text-foreground">{step.resistance_ohm} Ω</span>
+                                    </p>
+                                  ) : null}
+                                  {step.insulation_mohm ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Insulation: </span>
+                                      <span className="text-foreground">{step.insulation_mohm} MΩ</span>
+                                    </p>
+                                  ) : null}
+                                  {step.date ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Date: </span>
+                                      <span className="text-foreground">{step.date}</span>
+                                    </p>
+                                  ) : null}
+                                  {step.performed_by ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Performed by: </span>
+                                      <span className="text-foreground">{step.performed_by}</span>
+                                    </p>
+                                  ) : null}
+                                </div>
+                                {step.note ? (
+                                  <p className="text-[11px] text-foreground/90 whitespace-pre-wrap leading-snug rounded-md bg-muted/25 px-2 py-1.5">
+                                    {step.note}
+                                  </p>
+                                ) : null}
+                                {Array.isArray(step.photos) && step.photos.length > 0 ? (
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {step.photos.map((url, pi) => (
+                                      <button
+                                        key={`${sid}-p-${pi}`}
+                                        type="button"
+                                        className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
+                                        onClick={() => setShowPhotoPreview(url)}
+                                      >
+                                        <img src={url} alt="" className="h-full w-full object-cover" />
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                  ) : (
                   <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
                     <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-2 sm:px-2.5">
                       <div className="flex items-center justify-between gap-2">
@@ -2078,9 +2296,89 @@ export default function RoomDetail() {
                       </div>
                     </div>
                   </Card>
+                  )}
+                  </div>
                   ) : null}
 
                   {sectionVisibility.checklist && (
+                    <div
+                      className={cn(
+                        'min-w-0',
+                        phaseReadOnly ? 'order-3' : 'order-2'
+                      )}
+                    >
+                    {phaseReadOnly ? (
+                    <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
+                      <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-1.5 sm:px-2.5 sm:py-2">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 pt-0.5">
+                            <h3 className="text-[15px] font-semibold tracking-tight text-foreground flex flex-wrap items-center gap-1.5">
+                              <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400 opacity-85" />
+                              <span className="min-w-0">{checklistSectionTitle}</span>
+                            </h3>
+                            <p className="mt-0.5 text-[10px] leading-snug text-muted-foreground/75">
+                              <span className="text-muted-foreground">{phaseLabel(selPhase, phaseWorkflow)}</span>
+                              <span className="text-muted-foreground/85"> · checklist history — view only</span>
+                            </p>
+                          </div>
+                          <span
+                            className="text-base font-semibold tabular-nums tracking-tight text-emerald-700 dark:text-emerald-300 shrink-0"
+                            title={`${completedForPhase} of ${totalForPhase} complete`}
+                          >
+                            {completedForPhase}/{totalForPhase}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-1.5 sm:p-2 pt-1.5">
+                        <div className="divide-y divide-border/50 rounded-md border border-border/50 bg-background dark:bg-background/80">
+                          {tasksForPhase.length === 0 ? (
+                            <p className="py-5 text-center text-sm text-muted-foreground/90">
+                              No checklist items for this phase.
+                            </p>
+                          ) : null}
+                          {tasksForPhase.map((task) => (
+                            <div key={task.id} className="flex items-start gap-2.5 min-h-[2.45rem] py-2 px-2 sm:px-2">
+                              {task.is_completed ? (
+                                <CheckCircle2 className="h-5 w-5 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                              ) : (
+                                <Circle className="h-5 w-5 shrink-0 mt-0.5 text-muted-foreground/45" aria-hidden />
+                              )}
+                              <div className="flex-1 min-w-0 pt-px">
+                                <span
+                                  className={`text-sm leading-snug block ${
+                                    task.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'
+                                  }`}
+                                >
+                                  {task.name}
+                                </span>
+                                {task.checked_by ? (
+                                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                    <Badge
+                                      variant="secondary"
+                                      className={`text-[10px] h-5 px-1.5 ${
+                                        task.is_completed
+                                          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                                          : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
+                                      }`}
+                                    >
+                                      <User className="h-2.5 w-2.5 mr-0.5" />
+                                      {task.checked_by}
+                                    </Badge>
+                                    {task.checked_at ? (
+                                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                        <Clock className="h-2.5 w-2.5" />
+                                        {formatVisitDate(task.checked_at)}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </Card>
+                    ) : (
                     <Card className="overflow-hidden border-border/55 bg-card shadow-none ring-1 ring-border/40 dark:ring-border/50">
                       <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-1.5 sm:px-2.5 sm:py-2">
                         <div className="flex items-start justify-between gap-3">
@@ -2380,10 +2678,18 @@ export default function RoomDetail() {
                       )}
                       </div>
                     </Card>
+                    )}
+                    </div>
                   )}
 
                   {sectionVisibility.photos && (
-                    <Collapsible defaultOpen={false} className="rounded-md border border-border/40 bg-muted/[0.07] shadow-none">
+                    <div
+                      className={cn(
+                        'min-w-0',
+                        phaseReadOnly ? 'order-1' : 'order-3'
+                      )}
+                    >
+                    <Collapsible defaultOpen={phaseReadOnly} className="rounded-md border border-border/40 bg-muted/[0.07] shadow-none">
                         <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/25 rounded-md">
                           <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                             <Camera className="h-3.5 w-3.5 opacity-70" />
@@ -2445,6 +2751,7 @@ export default function RoomDetail() {
                           </div>
                         </CollapsibleContent>
                     </Collapsible>
+                    </div>
                   )}
 
                   <Collapsible defaultOpen={false} className="rounded-md border border-border/40 bg-muted/[0.07] shadow-none">

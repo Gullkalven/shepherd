@@ -77,15 +77,22 @@ export function normalizeHeatingCableDoc(raw: unknown): HeatingCableDoc {
   };
 }
 
-function stageStarted(stage: HeatingCableStage | undefined): boolean {
+/** True if this stage has any measurement, note, or attached photo URL. */
+export function heatingStageHasAnyData(stage: HeatingCableStage | undefined): boolean {
   if (!stage) return false;
+  const hasPhotos = Array.isArray(stage.photos) && stage.photos.some((p) => typeof p === 'string' && p.trim().length > 0);
   return (
     isFilled(stage.resistance_ohm) ||
     isFilled(stage.insulation_mohm) ||
     isFilled(stage.date) ||
     isFilled(stage.performed_by) ||
-    isFilled(stage.note)
+    isFilled(stage.note) ||
+    hasPhotos
   );
+}
+
+function stageStarted(stage: HeatingCableStage | undefined): boolean {
+  return heatingStageHasAnyData(stage);
 }
 
 function stageComplete(stage: HeatingCableStage | undefined): boolean {
