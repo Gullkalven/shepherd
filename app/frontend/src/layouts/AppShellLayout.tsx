@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Menu } from 'lucide-react';
-import { PermissionProvider } from '@/lib/permissions';
+import { PermissionProvider, usePermissions } from '@/lib/permissions';
 import { readDemoLocalStorageUser } from '@/lib/devRole';
 import { useAppShellAuth } from '@/lib/useAppShellAuth';
 import AppNavSidebar from '@/components/AppNavSidebar';
@@ -14,6 +14,46 @@ export type AppShellOutletContext = {
   onLogoutClearServer: () => void;
   onDemoSignedIn: () => void;
 };
+
+/** Slimmer top bar on worker home so the page hero (rooms / site) stays primary on small screens. */
+function MobileNavHeader({
+  mobileOpen,
+  setMobileOpen,
+}: {
+  mobileOpen: boolean;
+  setMobileOpen: (open: boolean) => void;
+}) {
+  const { isWorker } = usePermissions();
+  const location = useLocation();
+  const compactWorkerHome = isWorker && location.pathname === '/';
+
+  return (
+    <header
+      className={cn(
+        'sticky top-0 z-40 flex items-center gap-2 border-b border-border bg-background px-2 sm:px-3 lg:hidden',
+        compactWorkerHome ? 'h-10 py-1.5' : 'h-12'
+      )}
+    >
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetTrigger asChild>
+          <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Open menu">
+            <Menu className="h-5 w-5" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="flex w-[min(100vw-2rem,18rem)] flex-col p-0">
+          <AppNavSidebar variant="sheet" onNavigate={() => setMobileOpen(false)} />
+        </SheetContent>
+      </Sheet>
+      {!compactWorkerHome && (
+        <span className="truncate text-sm font-black uppercase tracking-[0.12em]">
+          {APP_NAME_PARTS.prefix}
+          <span className="text-amber-600/90 dark:text-amber-400/90">{APP_NAME_PARTS.dot}</span>
+          {APP_NAME_PARTS.suffix}
+        </span>
+      )}
+    </header>
+  );
+}
 
 export default function AppShellLayout() {
   const { isAuth, checking, setApiUser } = useAppShellAuth();
@@ -56,23 +96,7 @@ export default function AppShellLayout() {
       <div className="min-h-dvh bg-slate-50 dark:bg-background">
         <AppNavSidebar variant="desktop" />
 
-        <header className="sticky top-0 z-40 flex h-12 items-center gap-2 border-b border-border bg-background px-3 lg:hidden">
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger asChild>
-              <Button type="button" variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Open menu">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="flex w-[min(100vw-2rem,18rem)] flex-col p-0">
-              <AppNavSidebar variant="sheet" onNavigate={() => setMobileOpen(false)} />
-            </SheetContent>
-          </Sheet>
-          <span className="truncate text-sm font-black uppercase tracking-[0.12em]">
-            {APP_NAME_PARTS.prefix}
-            <span className="text-amber-600/90 dark:text-amber-400/90">{APP_NAME_PARTS.dot}</span>
-            {APP_NAME_PARTS.suffix}
-          </span>
-        </header>
+        <MobileNavHeader mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
 
         <div className={cn('min-h-0 lg:pl-56')}>
           <Outlet context={outletContext} />

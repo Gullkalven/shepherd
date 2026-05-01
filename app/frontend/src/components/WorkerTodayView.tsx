@@ -417,156 +417,163 @@ export default function WorkerTodayView({
               </Card>
             )}
 
-            {primaryProject && (
-              <div className="rounded-lg border border-border/60 bg-muted/25 px-3 py-2.5 dark:bg-muted/15">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <p className="min-w-0 text-sm leading-snug">
-                    <span className="text-muted-foreground">Current project:</span>{' '}
-                    <span className="font-semibold text-slate-900 dark:text-foreground">{primaryProject.name}</span>
-                  </p>
-                  {sites.length > 1 ? (
-                    <details className="group relative shrink-0">
-                      <summary className="cursor-pointer list-none text-xs font-semibold text-[#1E3A5F] underline-offset-2 hover:underline dark:text-blue-400 [&::-webkit-details-marker]:hidden">
-                        <span className="inline-flex items-center gap-0.5">
-                          Other projects
-                          <ChevronRight className="h-3.5 w-3.5 transition group-open:rotate-90" aria-hidden />
-                        </span>
-                      </summary>
-                      <div className="mt-2 space-y-0.5 border-t border-border/60 pt-2">
-                        {sites.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            className={`flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800 ${
-                              p.id === primaryProject.id ? 'bg-slate-100/80 font-medium dark:bg-slate-800/80' : ''
-                            }`}
-                            onClick={() => navigate(`/project/${p.id}`)}
-                          >
-                            <span className="truncate">{p.name}</span>
-                            {p.id === primaryProject.id ? (
-                              <span className="shrink-0 text-[10px] font-medium uppercase text-muted-foreground">
-                                Current
-                              </span>
-                            ) : (
-                              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            )}
-                          </button>
-                        ))}
+            {/* lg+: site context before actions. Compact: primary room actions first so they stay above the fold. */}
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-3 max-lg:order-2 lg:order-1">
+                {primaryProject && (
+                  <div className="rounded-lg border border-border/60 bg-muted/25 px-3 py-2 lg:py-2.5 dark:bg-muted/15">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                      <p className="min-w-0 text-sm leading-snug">
+                        <span className="text-muted-foreground">Current site:</span>{' '}
+                        <span className="font-semibold text-slate-900 dark:text-foreground">{primaryProject.name}</span>
+                      </p>
+                      {sites.length > 1 ? (
+                        <details className="group relative shrink-0">
+                          <summary className="cursor-pointer list-none text-xs font-semibold text-[#1E3A5F] underline-offset-2 hover:underline dark:text-blue-400 [&::-webkit-details-marker]:hidden">
+                            <span className="inline-flex items-center gap-0.5">
+                              Other sites
+                              <ChevronRight className="h-3.5 w-3.5 transition group-open:rotate-90" aria-hidden />
+                            </span>
+                          </summary>
+                          <div className="mt-2 space-y-0.5 border-t border-border/60 pt-2">
+                            {sites.map((p) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                className={`flex w-full items-center justify-between rounded-md px-2 py-2 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                                  p.id === primaryProject.id ? 'bg-slate-100/80 font-medium dark:bg-slate-800/80' : ''
+                                }`}
+                                onClick={() => navigate(`/project/${p.id}`)}
+                              >
+                                <span className="truncate">{p.name}</span>
+                                {p.id === primaryProject.id ? (
+                                  <span className="shrink-0 text-[10px] font-medium uppercase text-muted-foreground">
+                                    Current
+                                  </span>
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </details>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-3 max-lg:order-1 lg:order-2">
+                {enrichmentLoading && (
+                  <p className="text-xs text-muted-foreground">Loading today&apos;s rooms…</p>
+                )}
+
+                {taskSummaryUnavailable && (
+                  <Card className="border-dashed border-amber-200/70 bg-amber-50/30 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100/90">
+                    Checklist progress couldn&apos;t be loaded. You can still open rooms below.
+                  </Card>
+                )}
+                {primaryRoom && (
+                  <Button
+                    type="button"
+                    variant="default"
+                    onClick={() => goRoom(primaryRoom)}
+                    className="h-auto min-h-[5.5rem] w-full flex-row items-stretch justify-between gap-4 rounded-2xl bg-[#1E3A5F] px-5 py-5 text-left shadow-lg transition hover:bg-[#2a4f7a] dark:bg-blue-700 dark:hover:bg-blue-600"
+                  >
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <span className="block text-lg font-bold leading-tight text-white">
+                        {resumeRoom ? 'Continue Last Room' : 'Next Ready Room'}
+                      </span>
+                      <span className="block text-base font-semibold text-white/95">Room {primaryRoomLabel}</span>
+                      {primaryTrustLines.length > 0 && (
+                        <div className="space-y-0.5 pt-0.5">
+                          {primaryTrustLines.map((line, i) => (
+                            <span key={`${i}-${line}`} className="block text-sm leading-snug text-white/80">
+                              {line}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <span className="block text-sm leading-snug text-white/75 line-clamp-2 border-t border-white/15 pt-1.5 mt-0.5">
+                        {primaryRoom ? taskSubtitle(primaryRoom.id, tasks) : ''}
+                      </span>
+                    </div>
+                    <ChevronRight className="h-7 w-7 shrink-0 self-center text-white/90" aria-hidden />
+                  </Button>
+                )}
+
+                {!primaryRoom && primaryProject && (
+                  <Card className="border-dashed p-4">
+                    <p className="text-sm text-muted-foreground">
+                      No rooms are ready to open from Today yet. Open the project to pick a floor or room.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-3 w-full border-[#1E3A5F]/30 text-[#1E3A5F] hover:bg-slate-50 dark:border-blue-700/50 dark:text-blue-400 dark:hover:bg-slate-900"
+                      onClick={() => navigate(`/project/${primaryProject.id}`)}
+                    >
+                      Open project
+                    </Button>
+                  </Card>
+                )}
+
+                {alternateReady && (
+                  <Card
+                    className="shepherd-interactive-card cursor-pointer p-4 transition hover:bg-slate-50/80 dark:hover:bg-slate-900/50"
+                    onClick={() => goRoom(alternateReady)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Another room ready</p>
+                        <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
+                          Room {alternateReady.room_number}
+                        </p>
+                        <div className="space-y-0.5 pt-0.5">
+                          {alternateRoomTrustLines(alternateReady).map((line, i) => (
+                            <p key={`${i}-${line}`} className="text-sm text-muted-foreground leading-snug">
+                              {line}
+                            </p>
+                          ))}
+                        </div>
                       </div>
-                    </details>
-                  ) : null}
+                      <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
+                    </div>
+                  </Card>
+                )}
+
+                {blockedCount > 0 && (
+                  <Card
+                    className="shepherd-interactive-card cursor-pointer border-red-200/80 bg-red-50/50 p-4 dark:border-red-900/50 dark:bg-red-950/25"
+                    onClick={() => {
+                      const first = blockedRooms[0];
+                      if (first) goRoom(first);
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
+                          Blocked
+                        </p>
+                        <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
+                          {blockedCount} blocked room{blockedCount === 1 ? '' : 's'}
+                        </p>
+                        <p className="text-sm text-red-700/90 dark:text-red-300/90">Open to see why</p>
+                      </div>
+                      <ChevronRight className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
+                    </div>
+                  </Card>
+                )}
+
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border/70 bg-white/50 px-3 py-2.5 dark:bg-background/50">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Finished today
+                  </span>
+                  <span className="text-2xl font-bold tabular-nums leading-none text-slate-900 dark:text-foreground">
+                    {completedTodayCount}
+                  </span>
                 </div>
               </div>
-            )}
-
-            {enrichmentLoading && (
-              <p className="text-xs text-muted-foreground">Loading today&apos;s rooms…</p>
-            )}
-
-            {taskSummaryUnavailable && (
-              <Card className="border-dashed border-amber-200/70 bg-amber-50/30 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100/90">
-                Checklist progress couldn&apos;t be loaded. You can still open rooms below.
-              </Card>
-            )}
-            {primaryRoom && (
-              <Button
-                type="button"
-                variant="default"
-                onClick={() => goRoom(primaryRoom)}
-                className="h-auto min-h-[5.5rem] w-full flex-row items-stretch justify-between gap-4 rounded-2xl bg-[#1E3A5F] px-5 py-5 text-left shadow-lg transition hover:bg-[#2a4f7a] dark:bg-blue-700 dark:hover:bg-blue-600"
-              >
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <span className="block text-lg font-bold leading-tight text-white">
-                    {resumeRoom ? 'Continue Last Room' : 'Next Ready Room'}
-                  </span>
-                  <span className="block text-base font-semibold text-white/95">Room {primaryRoomLabel}</span>
-                  {primaryTrustLines.length > 0 && (
-                    <div className="space-y-0.5 pt-0.5">
-                      {primaryTrustLines.map((line, i) => (
-                        <span key={`${i}-${line}`} className="block text-sm leading-snug text-white/80">
-                          {line}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <span className="block text-sm leading-snug text-white/75 line-clamp-2 border-t border-white/15 pt-1.5 mt-0.5">
-                    {primaryRoom ? taskSubtitle(primaryRoom.id, tasks) : ''}
-                  </span>
-                </div>
-                <ChevronRight className="h-7 w-7 shrink-0 self-center text-white/90" aria-hidden />
-              </Button>
-            )}
-
-            {!primaryRoom && primaryProject && (
-              <Card className="border-dashed p-4">
-                <p className="text-sm text-muted-foreground">
-                  No rooms are ready to open from Today yet. Open the project to pick a floor or room.
-                </p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="mt-3 w-full border-[#1E3A5F]/30 text-[#1E3A5F] hover:bg-slate-50 dark:border-blue-700/50 dark:text-blue-400 dark:hover:bg-slate-900"
-                  onClick={() => navigate(`/project/${primaryProject.id}`)}
-                >
-                  Open project
-                </Button>
-              </Card>
-            )}
-
-            {alternateReady && (
-              <Card
-                className="shepherd-interactive-card cursor-pointer p-4 transition hover:bg-slate-50/80 dark:hover:bg-slate-900/50"
-                onClick={() => goRoom(alternateReady)}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Another room ready</p>
-                    <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
-                      Room {alternateReady.room_number}
-                    </p>
-                    <div className="space-y-0.5 pt-0.5">
-                      {alternateRoomTrustLines(alternateReady).map((line, i) => (
-                        <p key={`${i}-${line}`} className="text-sm text-muted-foreground leading-snug">
-                          {line}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                  <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
-                </div>
-              </Card>
-            )}
-
-            {blockedCount > 0 && (
-              <Card
-                className="shepherd-interactive-card cursor-pointer border-red-200/80 bg-red-50/50 p-4 dark:border-red-900/50 dark:bg-red-950/25"
-                onClick={() => {
-                  const first = blockedRooms[0];
-                  if (first) goRoom(first);
-                }}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
-                      Blocked
-                    </p>
-                    <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
-                      {blockedCount} blocked room{blockedCount === 1 ? '' : 's'}
-                    </p>
-                    <p className="text-sm text-red-700/90 dark:text-red-300/90">Open to see why</p>
-                  </div>
-                  <ChevronRight className="h-5 w-5 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
-                </div>
-              </Card>
-            )}
-
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border/70 bg-white/50 px-3 py-2.5 dark:bg-background/50">
-              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Finished today
-              </span>
-              <span className="text-2xl font-bold tabular-nums leading-none text-slate-900 dark:text-foreground">
-                {completedTodayCount}
-              </span>
             </div>
           </div>
         )}
