@@ -1577,6 +1577,7 @@ export default function RoomDetail() {
               boardPhaseShowHeating={boardPhaseShowHeating}
               heatingDerived={heatingDerived}
               phaseReadOnly={phaseReadOnly}
+              phaseTabLocked={phaseWorkerLocked}
               editsBlocked={editsBlocked}
               checklistSectionTitle={checklistSectionTitle}
               showChecklistSection={sectionVisibility.checklist}

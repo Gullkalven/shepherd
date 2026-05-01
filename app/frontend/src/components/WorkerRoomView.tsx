@@ -32,7 +32,7 @@ import {
   type HeatingCableStageKey,
 } from '@/lib/heatingCable';
 import type { PhaseWorkflowEntry } from '@/lib/roomPhases';
-import { phaseLabel } from '@/lib/roomPhases';
+import { phaseLabel, phaseTimelineState } from '@/lib/roomPhases';
 import { cn } from '@/lib/utils';
 
 export type WorkerTask = {
@@ -77,6 +77,8 @@ type Props = {
   heatingDerived: HeatingCableDerived;
 
   phaseReadOnly: boolean;
+  /** True when this phase tab is locked for the worker (future phase or admin override). */
+  phaseTabLocked: boolean;
   editsBlocked: boolean;
 
   checklistSectionTitle: string;
@@ -188,6 +190,13 @@ export function WorkerRoomView(p: Props) {
   const selectedLabel = phaseLabel(p.selectedPhaseKey, p.phaseWorkflow);
   const boardLabel = phaseLabel(p.boardPhaseKey, p.phaseWorkflow);
   const viewingNonBoard = p.selectedPhaseKey !== p.boardPhaseKey;
+  const phaseTimeline = phaseTimelineState(p.boardPhaseKey, p.selectedPhaseKey, p.phaseWorkflow);
+
+  const [nonBoardDetailsExpanded, setNonBoardDetailsExpanded] = useState(false);
+  useEffect(() => {
+    setNonBoardDetailsExpanded(false);
+  }, [p.selectedPhaseKey]);
+  const showFullPhaseDetails = !viewingNonBoard || nonBoardDetailsExpanded;
   const boardHeatingDocProgress = p.boardPhaseShowHeating
     ? heatingDocumentationProgress(p.heatingCableDoc)
     : null;
@@ -270,6 +279,76 @@ export function WorkerRoomView(p: Props) {
     const step = p.heatingCableDoc.extra_steps?.[focusTarget.index];
     return step?.label?.trim() || `Extra step ${focusTarget.index + 1}`;
   }, [focusTarget, p.heatingCableDoc.extra_steps]);
+
+  const nonBoardFocus = useMemo(() => {
+    if (p.phaseTabLocked && phaseTimeline === 'upcoming') {
+      return {
+        badge: 'Locked',
+        badgeClass:
+          'border-amber-300/80 bg-amber-100 text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100',
+        description:
+          'Upcoming after the current phase. Use View details for the full record, or jump back to focus on today\'s work.',
+      };
+    }
+    if (p.phaseTabLocked) {
+      return {
+        badge: 'Locked',
+        badgeClass:
+          'border-slate-300/80 bg-slate-100 text-slate-900 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100',
+        description: 'This phase is locked for editing. You can still open details to review history.',
+      };
+    }
+    if (phaseTimeline === 'done') {
+      return {
+        badge: 'Completed',
+        badgeClass:
+          'border-emerald-300/80 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-100',
+        description:
+          'Earlier phase on this room. Open details anytime for checklist entries, documentation, and photos.',
+      };
+    }
+    return {
+      badge: 'Upcoming',
+      badgeClass:
+        'border-blue-300/70 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100',
+      description:
+        'You may work ahead when ready. Details stay collapsed here so the active phase stays in focus.',
+    };
+  }, [p.phaseTabLocked, phaseTimeline]);
+
+  const compactSummaryLines = useMemo(() => {
+    const lines: string[] = [];
+    const tasks = p.tasksForSelectedPhase;
+    if (tasks.length > 0) {
+      const done = tasks.filter((t) => t.is_completed).length;
+      lines.push(`Checklist ${done}/${tasks.length} done`);
+    } else {
+      lines.push('No checklist items in this phase');
+    }
+    if (p.showHeatingModule && selectedHeatingDocProgress) {
+      lines.push(`Heating documentation ${selectedHeatingDocProgress.complete}/${selectedHeatingDocProgress.total}`);
+    }
+    if (p.showPhotosSection && p.photosForPhase.length > 0) {
+      const n = p.photosForPhase.length;
+      lines.push(`${n} phase photo${n === 1 ? '' : 's'}`);
+    }
+    if (p.deviations.length > 0) {
+      const n = p.deviations.length;
+      lines.push(`${n} reported issue${n === 1 ? '' : 's'}`);
+    }
+    if (p.activityEntries.length > 0) {
+      lines.push(`${p.activityEntries.length} activity entr${p.activityEntries.length === 1 ? 'y' : 'ies'}`);
+    }
+    return lines;
+  }, [
+    p.tasksForSelectedPhase,
+    p.showHeatingModule,
+    selectedHeatingDocProgress,
+    p.showPhotosSection,
+    p.photosForPhase.length,
+    p.deviations.length,
+    p.activityEntries.length,
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-3 sm:px-4 sm:py-4 lg:max-w-xl">
@@ -418,25 +497,73 @@ export function WorkerRoomView(p: Props) {
       ) : null}
 
       {viewingNonBoard ? (
-        <div className="rounded-lg border border-amber-200/80 bg-amber-50/90 dark:bg-amber-950/35 dark:border-amber-900/50 px-3 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <p className="text-sm text-amber-950 dark:text-amber-100 leading-snug sm:text-xs">
-            Viewing <span className="font-semibold">{selectedLabel}</span>. Current work is{' '}
-            <span className="font-semibold">{boardLabel}</span>.
-          </p>
-          <Button
-            type="button"
-            size="sm"
-            className="h-11 min-h-11 w-full shrink-0 sm:h-9 sm:min-h-0 sm:w-auto"
-            variant="secondary"
-            onClick={() => p.onPhaseSelect(p.boardPhaseKey)}
-          >
-            Jump to current
-          </Button>
-        </div>
+        <Card className="overflow-hidden border-[#1E3A5F]/20 bg-muted/20 shadow-sm">
+          <div className="p-4 space-y-3 sm:p-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0 space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Not the active phase
+                </p>
+                <p className="text-lg font-semibold tracking-tight leading-snug">{selectedLabel}</p>
+                <p className="text-sm text-muted-foreground">
+                  Current focus: <span className="font-medium text-foreground">{boardLabel}</span>
+                </p>
+              </div>
+              <Badge
+                variant="outline"
+                className={cn('shrink-0 border font-semibold sm:text-xs', nonBoardFocus.badgeClass)}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {p.phaseTabLocked ? (
+                    <Lock className="h-3 w-3 shrink-0" aria-hidden />
+                  ) : phaseTimeline === 'done' ? (
+                    <CheckCircle2 className="h-3 w-3 shrink-0" aria-hidden />
+                  ) : (
+                    <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                  )}
+                  {nonBoardFocus.badge}
+                </span>
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground leading-snug">{nonBoardFocus.description}</p>
+            {!nonBoardDetailsExpanded ? (
+              <ul className="rounded-lg border border-border/50 bg-background/60 px-3 py-2.5 text-sm space-y-1">
+                {compactSummaryLines.map((line) => (
+                  <li key={line} className="flex gap-2">
+                    <span className="text-muted-foreground">·</span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button
+                type="button"
+                variant={nonBoardDetailsExpanded ? 'outline' : 'default'}
+                className={cn(
+                  'h-11 min-h-11 w-full sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1',
+                  !nonBoardDetailsExpanded &&
+                    'bg-[#1E3A5F] hover:bg-[#1E3A5F]/90 dark:bg-blue-700 dark:hover:bg-blue-700/90'
+                )}
+                onClick={() => setNonBoardDetailsExpanded((v) => !v)}
+              >
+                {nonBoardDetailsExpanded ? 'Hide details' : 'View details'}
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-11 min-h-11 w-full sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1"
+                onClick={() => p.onPhaseSelect(p.boardPhaseKey)}
+              >
+                Jump to active phase
+              </Button>
+            </div>
+          </div>
+        </Card>
       ) : null}
 
       {/* Complete phase */}
-      {p.phaseCompleteEligible && !p.phaseReadOnly ? (
+      {showFullPhaseDetails && p.phaseCompleteEligible && !p.phaseReadOnly ? (
         <Card className="border-emerald-200/80 bg-emerald-50/50 dark:bg-emerald-950/25 dark:border-emerald-900/50 p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
@@ -458,7 +585,7 @@ export function WorkerRoomView(p: Props) {
       ) : null}
 
       {/* Checklist — large action rows (before heating so checklist stays above long forms) */}
-      {p.showChecklistSection ? (
+      {showFullPhaseDetails && p.showChecklistSection ? (
         <section aria-labelledby="worker-checklist-heading">
           <div className="flex items-center justify-between gap-2 mb-2 px-0.5">
             <h2 id="worker-checklist-heading" className="text-lg font-semibold tracking-tight">
@@ -563,7 +690,7 @@ export function WorkerRoomView(p: Props) {
       ) : null}
 
       {/* Heating cable — collapsible stages, defaults on active step */}
-      {p.showHeatingModule ? (
+      {showFullPhaseDetails && p.showHeatingModule ? (
         <Card className="overflow-hidden border-border/60 shadow-sm">
           <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1">
             <h2 className="text-lg font-semibold tracking-tight">Heating cable</h2>
@@ -926,7 +1053,7 @@ export function WorkerRoomView(p: Props) {
       ) : null}
 
       {/* Phase photos (compact) */}
-      {p.showPhotosSection && p.photosForPhase.length > 0 ? (
+      {showFullPhaseDetails && p.showPhotosSection && p.photosForPhase.length > 0 ? (
         <Card className="p-3 border-border/50">
           <p className="mb-2 hidden text-xs font-medium text-muted-foreground sm:block">Photos this phase</p>
           <div className="grid grid-cols-3 gap-2">
@@ -949,6 +1076,7 @@ export function WorkerRoomView(p: Props) {
       ) : null}
 
       {/* Deviations */}
+      {showFullPhaseDetails ? (
       <Collapsible defaultOpen className="rounded-lg border border-border/50 bg-muted/15">
         <CollapsibleTrigger className="group flex w-full min-h-[48px] cursor-pointer items-center justify-between gap-3 px-4 py-4 text-left hover:bg-muted/25 rounded-lg sm:min-h-0 sm:px-3 sm:py-3">
           <span className="flex min-w-0 flex-1 items-center gap-3 text-base font-medium sm:gap-2 sm:text-sm">
@@ -1006,7 +1134,9 @@ export function WorkerRoomView(p: Props) {
           </div>
         </CollapsibleContent>
       </Collapsible>
+      ) : null}
 
+      {showFullPhaseDetails ? (
       <Collapsible className="rounded-lg border border-border/50 bg-muted/10">
         <CollapsibleTrigger className="group flex w-full min-h-[48px] cursor-pointer items-center justify-between gap-3 px-4 py-4 text-left text-base text-muted-foreground hover:bg-muted/20 rounded-lg sm:min-h-0 sm:px-3 sm:py-2.5 sm:text-sm">
           <span className="flex items-center gap-3 sm:gap-2">
@@ -1032,6 +1162,7 @@ export function WorkerRoomView(p: Props) {
           </div>
         </CollapsibleContent>
       </Collapsible>
+      ) : null}
     </div>
   );
 }
