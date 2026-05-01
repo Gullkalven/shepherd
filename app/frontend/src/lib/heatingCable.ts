@@ -154,7 +154,7 @@ export function heatingExtraStepRowVisible(step: HeatingCableStage | undefined):
   return heatingStageHasAnyData(step) || Boolean(step.label?.trim());
 }
 
-/** Count of fully documented stages vs total stages (fixed three + any extra steps). */
+/** Count of fully documented stages vs total stages (fixed three + visible extra steps only). */
 export function heatingDocumentationProgress(docRaw: unknown): { complete: number; total: number } {
   const doc = normalizeHeatingCableDoc(docRaw);
   let complete = 0;
@@ -162,10 +162,14 @@ export function heatingDocumentationProgress(docRaw: unknown): { complete: numbe
     if (isHeatingCableStageComplete(doc[stage.key])) complete++;
   }
   const extras = doc.extra_steps || [];
+  let extraTotal = 0;
   for (const raw of extras) {
-    if (isHeatingCableStageComplete(normalizeStage(raw))) complete++;
+    const row = normalizeStage(raw);
+    if (!heatingExtraStepRowVisible(row)) continue;
+    extraTotal++;
+    if (isHeatingCableStageComplete(row)) complete++;
   }
-  const total = HEATING_CABLE_STAGES.length + extras.length;
+  const total = HEATING_CABLE_STAGES.length + extraTotal;
   return { complete, total };
 }
 
@@ -191,6 +195,7 @@ export function deriveHeatingCableStatus(docRaw: unknown): HeatingCableDerived {
   }
   for (const rawStage of doc.extra_steps || []) {
     const value = normalizeStage(rawStage);
+    if (!heatingExtraStepRowVisible(value)) continue;
     const started = stageStarted(value);
     const complete = isHeatingCableStageComplete(value);
     hasStartedAny = hasStartedAny || started;

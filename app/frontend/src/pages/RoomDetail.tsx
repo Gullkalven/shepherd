@@ -1439,7 +1439,10 @@ export default function RoomDetail() {
     );
   }
 
-  const currentStatus = STATUS_OPTIONS.find((s) => s.value === room.status) || STATUS_OPTIONS[0];
+  const normalizedRoomStatus =
+    typeof room.status === 'string' && room.status.trim() !== '' ? room.status.trim() : 'not_started';
+  const currentStatus =
+    STATUS_OPTIONS.find((s) => s.value === normalizedRoomStatus) || STATUS_OPTIONS[0];
   const uniqueWorkers = [...new Set(visits.map((v) => v.worker_name))];
   const editsBlocked = Boolean(room.is_locked) && !canEdit;
   const boardPhaseNorm = normalizeRoomPhase(areasList[0]?.phase ?? room.phase, phaseWorkflow);
@@ -1495,11 +1498,16 @@ export default function RoomDetail() {
   const workerPhaseCompleteEligible =
     selPhase === areaMainPhaseNorm && !editsBlocked && !phaseReadOnly && boardPhaseWorkReady;
 
-  const workerRoomStatus =
-    room.status === 'not_started' && boardPhaseWorkReady
-      ? STATUS_OPTIONS.find((s) => s.value === (workerPhaseCompleteEligible ? 'ready_for_inspection' : 'in_progress')) ??
-        STATUS_OPTIONS[1]
-      : currentStatus;
+  const workerRoomStatus = (() => {
+    if (workerPhaseCompleteEligible) {
+      const ready = STATUS_OPTIONS.find((s) => s.value === 'ready_for_inspection') ?? STATUS_OPTIONS[2];
+      return { ...ready, label: 'Ready for handoff' };
+    }
+    if (normalizedRoomStatus === 'not_started' && boardPhaseWorkReady) {
+      return STATUS_OPTIONS.find((s) => s.value === 'in_progress') ?? STATUS_OPTIONS[1];
+    }
+    return currentStatus;
+  })();
 
   const floorNavLabel =
     floor?.name?.trim()
@@ -1575,6 +1583,7 @@ export default function RoomDetail() {
               boardPhaseIncompleteCount={boardPhaseIncompleteCount}
               boardPhaseTotalCount={boardPhaseTotalCount}
               boardPhaseShowHeating={boardPhaseShowHeating}
+              boardPhaseWorkReady={boardPhaseWorkReady}
               heatingDerived={heatingDerived}
               phaseReadOnly={phaseReadOnly}
               phaseTabLocked={phaseWorkerLocked}

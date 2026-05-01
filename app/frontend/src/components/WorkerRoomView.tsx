@@ -74,6 +74,8 @@ type Props = {
   boardPhaseIncompleteCount: number;
   boardPhaseTotalCount: number;
   boardPhaseShowHeating: boolean;
+  /** True when checklist + heating (if applicable) for the board phase are satisfied. */
+  boardPhaseWorkReady: boolean;
   heatingDerived: HeatingCableDerived;
 
   phaseReadOnly: boolean;
@@ -409,42 +411,68 @@ export function WorkerRoomView(p: Props) {
           </div>
 
           <div className="rounded-xl bg-background/80 dark:bg-background/60 border border-border/50 px-3 py-2.5 space-y-1.5">
-            {p.boardPhaseShowHeating && boardHeatingDocProgress ? (
-              <p className="text-base text-foreground sm:text-sm">
-                <span className="font-semibold">Documentation</span>{' '}
-                <span className="tabular-nums font-semibold">
-                  {boardHeatingDocProgress.complete}/{boardHeatingDocProgress.total}
-                </span>
-                <span className="text-muted-foreground"> complete</span>
-              </p>
-            ) : p.boardPhaseTotalCount > 0 ? (
-              <p className="text-base text-foreground sm:text-sm">
-                <span className="tabular-nums font-semibold">{p.boardPhaseIncompleteCount}</span>
-                <span className="text-muted-foreground">
-                  {' '}
-                  checklist {p.boardPhaseIncompleteCount === 1 ? 'task' : 'tasks'} left
-                </span>
-                <span className="text-muted-foreground/80 text-xs max-sm:hidden"> · </span>
-                <span className="text-xs text-muted-foreground tabular-nums max-sm:hidden">
-                  {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/{p.boardPhaseTotalCount} done
-                </span>
-              </p>
+            {p.phaseCompleteEligible && !p.phaseReadOnly ? (
+              <div className="space-y-1.5">
+                <p className="text-base font-semibold text-emerald-800 dark:text-emerald-200">
+                  Ready for handoff
+                </p>
+                <p className="text-sm text-foreground leading-snug">
+                  Next step: <span className="font-semibold">Complete phase</span> below.
+                </p>
+                {p.boardPhaseShowHeating ? (
+                  <p className="text-xs text-muted-foreground leading-snug">
+                    Checklist and heating documentation are complete for this phase.
+                  </p>
+                ) : p.boardPhaseTotalCount > 0 ? (
+                  <p className="text-xs text-muted-foreground leading-snug">
+                    All checklist tasks for this phase are complete.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground leading-snug">
+                    Required work for this phase is complete.
+                  </p>
+                )}
+              </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No checklist items in this phase.</p>
+              <>
+                {p.boardPhaseShowHeating && boardHeatingDocProgress ? (
+                  <p className="text-base text-foreground sm:text-sm">
+                    <span className="font-semibold">Documentation</span>{' '}
+                    <span className="tabular-nums font-semibold">
+                      {boardHeatingDocProgress.complete}/{boardHeatingDocProgress.total}
+                    </span>
+                    <span className="text-muted-foreground"> complete</span>
+                  </p>
+                ) : p.boardPhaseTotalCount > 0 ? (
+                  <p className="text-base text-foreground sm:text-sm">
+                    <span className="tabular-nums font-semibold">{p.boardPhaseIncompleteCount}</span>
+                    <span className="text-muted-foreground">
+                      {' '}
+                      checklist {p.boardPhaseIncompleteCount === 1 ? 'task' : 'tasks'} left
+                    </span>
+                    <span className="text-muted-foreground/80 text-xs max-sm:hidden"> · </span>
+                    <span className="text-xs text-muted-foreground tabular-nums max-sm:hidden">
+                      {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/{p.boardPhaseTotalCount} done
+                    </span>
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No checklist items in this phase.</p>
+                )}
+                {p.boardPhaseShowHeating && p.boardPhaseTotalCount > 0 ? (
+                  <p className="text-sm text-muted-foreground tabular-nums">
+                    Checklist {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/{p.boardPhaseTotalCount} done
+                  </p>
+                ) : null}
+                {p.boardPhaseShowHeating ? (
+                  <p className="text-sm flex flex-wrap items-center gap-2">
+                    <span className="text-muted-foreground">Heating cable</span>
+                    <Badge variant="secondary" className="text-xs font-medium sm:text-[11px]">
+                      {p.boardPhaseWorkReady ? 'Complete' : heatingStatusLabel[p.heatingDerived.status]}
+                    </Badge>
+                  </p>
+                ) : null}
+              </>
             )}
-            {p.boardPhaseShowHeating && p.boardPhaseTotalCount > 0 ? (
-              <p className="text-sm text-muted-foreground tabular-nums">
-                Checklist {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/{p.boardPhaseTotalCount} done
-              </p>
-            ) : null}
-            {p.boardPhaseShowHeating ? (
-              <p className="text-sm flex flex-wrap items-center gap-2">
-                <span className="text-muted-foreground">Heating cable</span>
-                <Badge variant="secondary" className="text-xs font-medium sm:text-[11px]">
-                  {heatingStatusLabel[p.heatingDerived.status]}
-                </Badge>
-              </p>
-            ) : null}
           </div>
         </div>
       </Card>
