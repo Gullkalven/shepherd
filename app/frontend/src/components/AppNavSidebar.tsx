@@ -200,10 +200,6 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
     setOpenFloors((prev) => new Set(prev).add(id));
   }, [floorId, projectId]);
 
-  useEffect(() => {
-    if (!floorId) setOpenFloors(new Set());
-  }, [floorId]);
-
   const roomsByFloorId = useMemo(() => {
     const m = new Map<number, RoomRow[]>();
     for (const r of rooms) {
@@ -291,9 +287,11 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
                       afterNav();
                     }}
                     className={cn(
-                      'w-full cursor-pointer rounded-md px-2 py-1.5 text-left text-sm transition-[background-color,box-shadow] duration-200 ease-out',
-                      !isActiveProject && 'hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90',
-                      isActiveProject && 'bg-slate-200 dark:bg-slate-800 font-medium shadow-sm'
+                      'w-full cursor-pointer rounded-md border-l-2 py-1.5 pl-[6px] pr-2 text-left text-sm transition-[background-color,box-shadow] duration-200 ease-out',
+                      !isActiveProject &&
+                        'border-transparent hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90',
+                      isActiveProject &&
+                        'border-[#1E3A5F] bg-slate-200 font-semibold shadow-sm ring-1 ring-inset ring-[#1E3A5F]/25 dark:border-blue-400 dark:bg-slate-800 dark:ring-blue-400/30'
                     )}
                   >
                     <span className="truncate">{p.name}</span>
@@ -328,9 +326,11 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
                             type="button"
                             onClick={() => toggleFloor(f.id)}
                             className={cn(
-                              'flex w-full cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-left text-sm transition-[background-color,box-shadow] duration-200 ease-out',
-                              !isActiveFloor && 'hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90',
-                              isActiveFloor && 'bg-slate-200 dark:bg-slate-800 font-medium shadow-sm'
+                              'flex w-full cursor-pointer items-center gap-1 rounded-md border-l-2 py-1.5 pl-[6px] pr-2 text-left text-sm transition-[background-color,box-shadow] duration-200 ease-out',
+                              !isActiveFloor &&
+                                'border-transparent hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90',
+                              isActiveFloor &&
+                                'border-[#1E3A5F] bg-slate-200 font-semibold shadow-sm ring-1 ring-inset ring-[#1E3A5F]/25 dark:border-blue-400 dark:bg-slate-800 dark:ring-blue-400/30'
                             )}
                             aria-expanded={expanded}
                           >
@@ -360,7 +360,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
                                         'w-full cursor-pointer rounded-md px-2 py-1 text-left text-sm transition-[background-color,box-shadow] duration-200 ease-out',
                                         !isActiveRoom && 'hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90',
                                         isActiveRoom
-                                          ? 'bg-[#1E3A5F]/15 text-[#1E3A5F] shadow-sm dark:bg-blue-950/50 dark:text-blue-200 font-medium'
+                                          ? 'bg-[#1E3A5F]/15 text-[#1E3A5F] shadow-sm ring-1 ring-inset ring-[#1E3A5F]/35 dark:bg-blue-950/55 dark:text-blue-100 dark:ring-blue-400/40 font-semibold'
                                           : 'text-muted-foreground'
                                       )}
                                     >

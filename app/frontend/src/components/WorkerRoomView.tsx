@@ -9,7 +9,6 @@ import {
   Camera,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   Circle,
   Clock,
   History,
@@ -50,8 +49,6 @@ export type WorkerDeviation = {
 };
 
 type Props = {
-  projectName: string;
-  floorName: string;
   roomNumber: string;
   areaName: string | null;
   showAreasNav: boolean;
@@ -164,24 +161,6 @@ export function WorkerRoomView(p: Props) {
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-3 sm:px-4 sm:py-4 lg:max-w-xl">
-      {/* Breadcrumb */}
-      <nav
-        className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground sm:text-xs"
-        aria-label="Location"
-      >
-        <span className="font-medium text-foreground/90 truncate max-w-[40vw]">{p.projectName || 'Project'}</span>
-        <ChevronRight className="h-4 w-4 shrink-0 opacity-50 sm:h-3.5 sm:w-3.5" aria-hidden />
-        <span className="truncate max-w-[35vw]">{p.floorName || 'Floor'}</span>
-        <ChevronRight className="h-4 w-4 shrink-0 opacity-50 sm:h-3.5 sm:w-3.5" aria-hidden />
-        <span className="text-foreground font-semibold truncate">{p.roomNumber}</span>
-        {p.areaName ? (
-          <>
-            <ChevronRight className="h-4 w-4 shrink-0 opacity-50 sm:h-3.5 sm:w-3.5" aria-hidden />
-            <span className="truncate text-foreground/85">{p.areaName}</span>
-          </>
-        ) : null}
-      </nav>
-
       {/* Status strip */}
       <div className="flex flex-wrap items-center gap-2">
         <Badge

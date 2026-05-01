@@ -39,6 +39,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import { WorkerRoomView } from '@/components/WorkerRoomView';
+import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationNav';
 import {
   HEATING_CABLE_STAGES,
   normalizeHeatingCableDoc,
@@ -324,23 +325,30 @@ export default function RoomDetail() {
   const [savingHeatingCable, setSavingHeatingCable] = useState(false);
   const heatingPhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [completingWorkerPhase, setCompletingWorkerPhase] = useState(false);
+  const [floorRoomsOrdered, setFloorRoomsOrdered] = useState<RoomNavSibling[]>([]);
 
   const loadData = useCallback(async () => {
     if (!projectId || !floorId || !roomId) return;
     try {
-      const [projRes, floorRes, roomRes, tasksRes, photosRes, visitsRes, wfRes] = await Promise.all([
-        client.entities.projects.get({ id: projectId }),
-        client.entities.floors.get({ id: floorId }),
-        client.entities.rooms.get({ id: roomId }),
-        client.entities.tasks.query({ query: { room_id: Number(roomId) }, sort: 'sort_order', limit: 200 }),
-        client.entities.room_photos.query({ query: { room_id: Number(roomId) }, sort: '-created_at', limit: 50 }),
-        client.entities.room_visits.queryAll({ query: { room_id: Number(roomId) }, sort: '-visited_at', limit: 100 }),
-        client.apiCall.invoke({
-          url: `/api/v1/projects/${projectId}/workflow`,
-          method: 'GET',
-          data: {},
-        }),
-      ]);
+      const [projRes, floorRes, roomRes, tasksRes, photosRes, visitsRes, wfRes, floorRoomsRes] =
+        await Promise.all([
+          client.entities.projects.get({ id: projectId }),
+          client.entities.floors.get({ id: floorId }),
+          client.entities.rooms.get({ id: roomId }),
+          client.entities.tasks.query({ query: { room_id: Number(roomId) }, sort: 'sort_order', limit: 200 }),
+          client.entities.room_photos.query({ query: { room_id: Number(roomId) }, sort: '-created_at', limit: 50 }),
+          client.entities.room_visits.queryAll({ query: { room_id: Number(roomId) }, sort: '-visited_at', limit: 100 }),
+          client.apiCall.invoke({
+            url: `/api/v1/projects/${projectId}/workflow`,
+            method: 'GET',
+            data: {},
+          }),
+          client.entities.rooms.query({
+            query: { floor_id: Number(floorId) },
+            sort: 'room_number',
+            limit: 500,
+          }),
+        ]);
       const rawPhases = wfRes?.data?.phases;
       let wf = DEFAULT_PHASE_WORKFLOW;
       if (Array.isArray(rawPhases) && rawPhases.length > 0) {
@@ -381,8 +389,15 @@ export default function RoomDetail() {
         })
       );
       setPhotos(photosWithUrls);
+
+      const floorItems = (floorRoomsRes?.data?.items || []) as RoomNavSibling[];
+      floorItems.sort((a, b) =>
+        String(a.room_number).localeCompare(String(b.room_number), undefined, { numeric: true })
+      );
+      setFloorRoomsOrdered(floorItems);
     } catch {
       toast.error('Failed to load');
+      setFloorRoomsOrdered([]);
     } finally {
       setLoading(false);
     }
@@ -1478,9 +1493,34 @@ export default function RoomDetail() {
     (boardPhaseTotalCount === 0 || boardPhaseIncompleteCount === 0) &&
     (!boardPhaseShowHeating || heatingDerived.status === 'complete');
 
+  const floorNavLabel =
+    floor?.name?.trim()
+      ? floor.name
+      : floor?.floor_number != null
+        ? `Floor ${floor.floor_number}`
+        : 'Floor';
+
+  const roomOrderIdx = floorRoomsOrdered.findIndex((r) => r.id === room.id);
+  const prevNavRoom = roomOrderIdx > 0 ? floorRoomsOrdered[roomOrderIdx - 1] : null;
+  const nextNavRoom =
+    roomOrderIdx >= 0 && roomOrderIdx < floorRoomsOrdered.length - 1
+      ? floorRoomsOrdered[roomOrderIdx + 1]
+      : null;
+
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-3 sm:px-4 sm:py-4 lg:max-w-none lg:mx-0 lg:px-6 xl:px-8">
+        {projectId && floorId ? (
+          <RoomLocationNav
+            projectId={projectId}
+            projectName={typeof project?.name === 'string' ? project.name : ''}
+            floorId={floorId}
+            floorName={floorNavLabel}
+            roomNumber={room.room_number}
+            prevRoom={prevNavRoom}
+            nextRoom={nextNavRoom}
+          />
+        ) : null}
         {!isAdmin ? (
           <>
             {(sectionVisibility.checklist || sectionVisibility.photos) && (
@@ -1494,8 +1534,6 @@ export default function RoomDetail() {
               />
             )}
             <WorkerRoomView
-              projectName={project?.name ?? ''}
-              floorName={floor?.name ?? ''}
               roomNumber={room.room_number}
               areaName={showAreasNav ? activeArea?.name ?? null : null}
               showAreasNav={showAreasNav}
