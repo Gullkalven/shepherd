@@ -887,7 +887,11 @@ export function WorkerRoomView(p: Props) {
               <Card className="p-6 text-center text-muted-foreground text-sm">No tasks for this phase.</Card>
             ) : (
               p.tasksForSelectedPhase.map((task) => {
-                const isActiveTask = !task.is_completed && task.id === firstIncompleteTaskId;
+                const showPhasePhotoHere =
+                  !task.is_completed &&
+                  task.id === firstIncompleteTaskId &&
+                  p.showPhotosSection &&
+                  p.canUploadPhoto;
                 return (
                   <Card
                     key={task.id}
@@ -895,9 +899,7 @@ export function WorkerRoomView(p: Props) {
                       'transition-colors',
                       task.is_completed
                         ? 'border-border/50 bg-emerald-50/25 shadow-none dark:bg-emerald-950/15'
-                        : isActiveTask
-                          ? 'border-[#1E3A5F]/35 bg-gradient-to-b from-[#1E3A5F]/[0.06] to-card shadow-md ring-2 ring-[#1E3A5F]/25 dark:from-blue-950/35 dark:ring-blue-600/30'
-                          : 'border-border/60 bg-card shadow-sm hover:bg-muted/25'
+                        : 'border-border/60 bg-card shadow-sm hover:bg-muted/25'
                     )}
                   >
                     <div className="flex flex-col">
@@ -905,46 +907,32 @@ export function WorkerRoomView(p: Props) {
                         type="button"
                         className={cn(
                           'flex-1 text-left flex items-start gap-4 rounded-t-lg',
-                          isActiveTask ? 'p-6 pt-6 pb-4 sm:p-7 sm:pb-5 min-h-[5.5rem]' : 'p-4 min-h-[4rem] sm:p-4 sm:min-h-[3.75rem]',
+                          'p-4 min-h-[4rem] sm:p-4 sm:min-h-[3.75rem]',
                           !p.canInteractChecklist && 'opacity-60 cursor-not-allowed'
                         )}
                         disabled={!p.canInteractChecklist}
                         onClick={() => p.onTaskClick(task)}
                       >
-                        <div className={cn('shrink-0 mt-0.5', isActiveTask && 'mt-1')}>
+                        <div className="shrink-0 mt-0.5">
                           {task.is_completed ? (
                             <CheckCircle2
-                              className={cn(
-                                'text-emerald-600 dark:text-emerald-400',
-                                isActiveTask ? 'h-10 w-10 sm:h-10 sm:w-10' : 'h-7 w-7 sm:h-7 sm:w-7'
-                              )}
+                              className="h-7 w-7 text-emerald-600 dark:text-emerald-400 sm:h-7 sm:w-7"
                               aria-hidden
                             />
                           ) : (
                             <Circle
-                              className={cn(
-                                isActiveTask
-                                  ? 'h-11 w-11 text-[#1E3A5F] dark:text-blue-400 sm:h-10 sm:w-10'
-                                  : 'h-7 w-7 text-muted-foreground/45 sm:h-7 sm:w-7'
-                              )}
+                              className="h-7 w-7 text-muted-foreground/45 sm:h-7 sm:w-7"
                               aria-hidden
                             />
                           )}
                         </div>
                         <div className="flex-1 min-w-0 space-y-1">
-                          {isActiveTask ? (
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1E3A5F]/90 dark:text-blue-300/90">
-                              Current task
-                            </p>
-                          ) : null}
                           <p
                             className={cn(
                               'font-medium leading-snug',
                               task.is_completed
                                 ? 'text-sm line-through text-muted-foreground'
-                                : isActiveTask
-                                  ? 'text-lg sm:text-xl text-foreground'
-                                  : 'text-base text-foreground'
+                                : 'text-base text-foreground'
                             )}
                           >
                             {task.name}
@@ -964,7 +952,7 @@ export function WorkerRoomView(p: Props) {
                           ) : null}
                         </div>
                       </button>
-                      {p.showPhotosSection && p.canUploadPhoto && isActiveTask ? (
+                      {showPhasePhotoHere ? (
                         <div className="border-t border-border/40 bg-muted/20 px-4 pb-4 pt-3 dark:bg-muted/10 sm:px-6 sm:pb-5">
                           <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                             Photo for this task
