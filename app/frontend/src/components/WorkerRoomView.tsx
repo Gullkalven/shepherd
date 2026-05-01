@@ -316,6 +316,11 @@ export function WorkerRoomView(p: Props) {
     };
   }, [p.phaseTabLocked, phaseTimeline]);
 
+  const firstIncompleteTaskId = useMemo(() => {
+    const t = p.tasksForSelectedPhase.find((x) => !x.is_completed);
+    return t?.id ?? null;
+  }, [p.tasksForSelectedPhase]);
+
   const compactSummaryLines = useMemo(() => {
     const lines: string[] = [];
     const tasks = p.tasksForSelectedPhase;
@@ -465,13 +470,13 @@ export function WorkerRoomView(p: Props) {
         </div>
       ) : null}
 
-      {/* Phase navigation (current board highlighted) */}
+      {/* Phase navigation — subdued so the active task stays primary */}
       {workflowKeys.length > 1 ? (
-        <div className="space-y-2">
-          <p className="hidden text-[11px] font-medium text-muted-foreground uppercase tracking-wide sm:block">
+        <div className="space-y-1.5 rounded-lg border border-border/40 bg-muted/20 px-2.5 py-2 sm:py-1.5">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/80 px-0.5">
             Phases
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1 sm:gap-1">
             {workflowKeys.map((key) => {
               const isBoard = key === p.boardPhaseKey;
               const isSel = key === p.selectedPhaseKey;
@@ -479,16 +484,26 @@ export function WorkerRoomView(p: Props) {
                 <Button
                   key={key}
                   type="button"
-                  variant={isSel ? 'secondary' : 'outline'}
+                  variant="ghost"
                   size="sm"
                   className={cn(
-                    'min-h-11 h-11 rounded-full px-4 text-sm sm:min-h-9 sm:h-9 sm:px-3 sm:text-xs',
-                    isBoard && 'ring-2 ring-amber-400/80 ring-offset-2 ring-offset-background',
-                    !isSel && !isBoard && 'opacity-80'
+                    'h-auto min-h-0 rounded-md px-2 py-1.5 text-xs font-normal sm:py-1 sm:text-[11px]',
+                    isSel
+                      ? 'bg-background/90 text-foreground shadow-sm ring-1 ring-border/60'
+                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                    !isSel && !isBoard && 'opacity-75'
                   )}
                   onClick={() => p.onPhaseSelect(key)}
                 >
-                  {phaseLabel(key, p.phaseWorkflow)}
+                  <span className="flex items-center gap-1.5">
+                    {isBoard ? (
+                      <span
+                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500/90"
+                        aria-hidden
+                      />
+                    ) : null}
+                    {phaseLabel(key, p.phaseWorkflow)}
+                  </span>
                 </Button>
               );
             })}
@@ -562,36 +577,14 @@ export function WorkerRoomView(p: Props) {
         </Card>
       ) : null}
 
-      {/* Complete phase */}
-      {showFullPhaseDetails && p.phaseCompleteEligible && !p.phaseReadOnly ? (
-        <Card className="border-emerald-200/80 bg-emerald-50/50 dark:bg-emerald-950/25 dark:border-emerald-900/50 p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <p className="font-semibold text-emerald-900 dark:text-emerald-100">Ready for handoff</p>
-              <p className="hidden text-xs text-emerald-800/90 dark:text-emerald-200/90 mt-0.5 sm:block">
-                Required work for {selectedLabel} is done. Record this so the team knows.
-              </p>
-            </div>
-            <Button
-              type="button"
-              className="h-12 min-h-12 w-full px-6 text-base font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shrink-0 sm:w-auto"
-              disabled={p.completingPhase}
-              onClick={() => p.onCompletePhase()}
-            >
-              {p.completingPhase ? 'Saving…' : 'Complete phase'}
-            </Button>
-          </div>
-        </Card>
-      ) : null}
-
       {/* Checklist — large action rows (before heating so checklist stays above long forms) */}
       {showFullPhaseDetails && p.showChecklistSection ? (
         <section aria-labelledby="worker-checklist-heading">
-          <div className="flex items-center justify-between gap-2 mb-2 px-0.5">
-            <h2 id="worker-checklist-heading" className="text-lg font-semibold tracking-tight">
+          <div className="flex items-center justify-between gap-2 mb-3 px-0.5">
+            <h2 id="worker-checklist-heading" className="text-base font-medium tracking-tight text-muted-foreground">
               {p.checklistSectionTitle}
             </h2>
-            <span className="text-sm tabular-nums text-muted-foreground font-medium">
+            <span className="text-xs tabular-nums text-muted-foreground/90 font-medium">
               {p.showHeatingModule && p.tasksForSelectedPhase.length === 0 && selectedHeatingDocProgress
                 ? `Documentation ${selectedHeatingDocProgress.complete}/${selectedHeatingDocProgress.total}`
                 : `${p.tasksForSelectedPhase.filter((t) => t.is_completed).length}/${p.tasksForSelectedPhase.length}`}
@@ -614,77 +607,145 @@ export function WorkerRoomView(p: Props) {
             </div>
           ) : null}
 
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {p.tasksForSelectedPhase.length === 0 ? (
               <Card className="p-6 text-center text-muted-foreground text-sm">No tasks for this phase.</Card>
             ) : (
-              p.tasksForSelectedPhase.map((task) => (
-                <Card
-                  key={task.id}
-                  className={cn(
-                    'border-border/60 shadow-sm transition-colors',
-                    task.is_completed ? 'bg-emerald-50/40 dark:bg-emerald-950/20' : 'bg-card hover:bg-muted/30'
-                  )}
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-stretch gap-0 sm:gap-2">
-                    <button
-                      type="button"
-                      className={cn(
-                        'flex-1 text-left p-5 flex items-start gap-4 min-h-[4.75rem] rounded-lg sm:p-4 sm:min-h-[4rem] sm:rounded-r-none',
-                        !p.canInteractChecklist && 'opacity-60 cursor-not-allowed'
-                      )}
-                      disabled={!p.canInteractChecklist}
-                      onClick={() => p.onTaskClick(task)}
-                    >
-                      <div className="shrink-0 mt-0.5">
-                        {task.is_completed ? (
-                          <CheckCircle2 className="h-9 w-9 text-emerald-600 dark:text-emerald-400 sm:h-8 sm:w-8" aria-hidden />
-                        ) : (
-                          <Circle className="h-9 w-9 text-muted-foreground/50 sm:h-8 sm:w-8" aria-hidden />
+              p.tasksForSelectedPhase.map((task) => {
+                const isActiveTask = !task.is_completed && task.id === firstIncompleteTaskId;
+                return (
+                  <Card
+                    key={task.id}
+                    className={cn(
+                      'transition-colors',
+                      task.is_completed
+                        ? 'border-border/50 bg-emerald-50/25 shadow-none dark:bg-emerald-950/15'
+                        : isActiveTask
+                          ? 'border-[#1E3A5F]/35 bg-gradient-to-b from-[#1E3A5F]/[0.06] to-card shadow-md ring-2 ring-[#1E3A5F]/25 dark:from-blue-950/35 dark:ring-blue-600/30'
+                          : 'border-border/60 bg-card shadow-sm hover:bg-muted/25'
+                    )}
+                  >
+                    <div className="flex flex-col">
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex-1 text-left flex items-start gap-4 rounded-t-lg',
+                          isActiveTask ? 'p-6 pt-6 pb-4 sm:p-7 sm:pb-5 min-h-[5.5rem]' : 'p-4 min-h-[4rem] sm:p-4 sm:min-h-[3.75rem]',
+                          !p.canInteractChecklist && 'opacity-60 cursor-not-allowed'
                         )}
-                      </div>
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <p
-                          className={cn(
-                            'text-base font-medium leading-snug',
-                            task.is_completed ? 'line-through text-muted-foreground' : 'text-foreground'
+                        disabled={!p.canInteractChecklist}
+                        onClick={() => p.onTaskClick(task)}
+                      >
+                        <div className={cn('shrink-0 mt-0.5', isActiveTask && 'mt-1')}>
+                          {task.is_completed ? (
+                            <CheckCircle2
+                              className={cn(
+                                'text-emerald-600 dark:text-emerald-400',
+                                isActiveTask ? 'h-10 w-10 sm:h-10 sm:w-10' : 'h-7 w-7 sm:h-7 sm:w-7'
+                              )}
+                              aria-hidden
+                            />
+                          ) : (
+                            <Circle
+                              className={cn(
+                                isActiveTask
+                                  ? 'h-11 w-11 text-[#1E3A5F] dark:text-blue-400 sm:h-10 sm:w-10'
+                                  : 'h-7 w-7 text-muted-foreground/45 sm:h-7 sm:w-7'
+                              )}
+                              aria-hidden
+                            />
                           )}
-                        >
-                          {task.name}
-                        </p>
-                        {task.checked_by ? (
-                          <p className="hidden text-[11px] text-muted-foreground sm:flex items-center gap-1.5">
-                            <User className="h-3 w-3" />
-                            {task.checked_by}
-                            {task.checked_at ? (
-                              <>
-                                <span className="opacity-50">·</span>
-                                <Clock className="h-3 w-3" />
-                                {formatVisitDateShort(task.checked_at)}
-                              </>
-                            ) : null}
+                        </div>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          {isActiveTask ? (
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-[#1E3A5F]/90 dark:text-blue-300/90">
+                              Current task
+                            </p>
+                          ) : null}
+                          <p
+                            className={cn(
+                              'font-medium leading-snug',
+                              task.is_completed
+                                ? 'text-sm line-through text-muted-foreground'
+                                : isActiveTask
+                                  ? 'text-lg sm:text-xl text-foreground'
+                                  : 'text-base text-foreground'
+                            )}
+                          >
+                            {task.name}
                           </p>
-                        ) : null}
-                      </div>
-                    </button>
-                    {p.showPhotosSection && p.canUploadPhoto ? (
-                      <div className="flex items-center px-4 pb-4 pt-0 sm:pt-4 sm:p-4 sm:border-l border-border/40 sm:min-w-[7.5rem]">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-12 min-h-12 w-full sm:h-11 sm:min-h-0 sm:w-auto text-sm gap-1.5"
-                          disabled={!p.canMutatePhaseMedia || p.uploadingPhoto}
-                          onClick={() => p.onGeneralPhotoClick()}
-                        >
-                          <Camera className="h-4 w-4" />
-                          Add photo
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                </Card>
-              ))
+                          {task.checked_by ? (
+                            <p className="hidden text-[11px] text-muted-foreground sm:flex items-center gap-1.5">
+                              <User className="h-3 w-3" />
+                              {task.checked_by}
+                              {task.checked_at ? (
+                                <>
+                                  <span className="opacity-50">·</span>
+                                  <Clock className="h-3 w-3" />
+                                  {formatVisitDateShort(task.checked_at)}
+                                </>
+                              ) : null}
+                            </p>
+                          ) : null}
+                        </div>
+                      </button>
+                      {p.showPhotosSection && p.canUploadPhoto && isActiveTask ? (
+                        <div className="border-t border-border/40 px-4 pb-4 pt-3 sm:px-6 sm:pb-5 bg-muted/20 dark:bg-muted/10">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-12 min-h-12 w-full text-base font-semibold gap-2 shadow-sm sm:h-11"
+                            disabled={!p.canMutatePhaseMedia || p.uploadingPhoto}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              p.onGeneralPhotoClick();
+                            }}
+                          >
+                            <Camera className="h-5 w-5 shrink-0" />
+                            Add photo
+                          </Button>
+                        </div>
+                      ) : p.showPhotosSection && p.canUploadPhoto && !task.is_completed && !isActiveTask ? (
+                        <div className="border-t border-border/30 px-4 pb-3 pt-2 sm:px-4">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-10 w-full text-xs text-muted-foreground gap-1.5"
+                            disabled={!p.canMutatePhaseMedia || p.uploadingPhoto}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              p.onGeneralPhotoClick();
+                            }}
+                          >
+                            <Camera className="h-3.5 w-3.5" />
+                            Add photo
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </Card>
+                );
+              })
             )}
+            {p.tasksForSelectedPhase.length > 0 &&
+            p.tasksForSelectedPhase.every((t) => t.is_completed) &&
+            p.showPhotosSection &&
+            p.canUploadPhoto ? (
+              <Card className="border-dashed border-border/60 bg-muted/15 p-4">
+                <p className="mb-3 text-xs font-medium text-muted-foreground">Phase documentation</p>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="h-11 w-full gap-2 font-medium"
+                  disabled={!p.canMutatePhaseMedia || p.uploadingPhoto}
+                  onClick={() => p.onGeneralPhotoClick()}
+                >
+                  <Camera className="h-4 w-4 shrink-0" />
+                  Add photo
+                </Button>
+              </Card>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -1052,6 +1113,34 @@ export function WorkerRoomView(p: Props) {
         </Card>
       ) : null}
 
+      {/* Complete phase — primary CTA after required work (checklist + heating) */}
+      {showFullPhaseDetails && p.phaseCompleteEligible && !p.phaseReadOnly ? (
+        <Card className="overflow-hidden border-2 border-emerald-500/50 bg-gradient-to-b from-emerald-50/90 to-emerald-50/40 shadow-lg dark:from-emerald-950/50 dark:to-emerald-950/25 dark:border-emerald-600/45">
+          <div className="p-5 sm:p-6 space-y-4">
+            <div className="space-y-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/90 dark:text-emerald-200/90">
+                Ready to continue
+              </p>
+              <p className="text-xl font-bold tracking-tight text-emerald-950 dark:text-emerald-50">
+                Complete this phase
+              </p>
+              <p className="text-sm text-emerald-900/85 dark:text-emerald-100/85 leading-snug">
+                Required work for {selectedLabel} is finished. Confirm handoff so the team can move on.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="lg"
+              className="h-14 min-h-14 w-full px-6 text-lg font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md sm:h-12 sm:min-h-12 sm:text-base"
+              disabled={p.completingPhase}
+              onClick={() => p.onCompletePhase()}
+            >
+              {p.completingPhase ? 'Saving…' : 'Complete phase'}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
       {/* Phase photos (compact) */}
       {showFullPhaseDetails && p.showPhotosSection && p.photosForPhase.length > 0 ? (
         <Card className="p-3 border-border/50">
@@ -1077,10 +1166,10 @@ export function WorkerRoomView(p: Props) {
 
       {/* Deviations */}
       {showFullPhaseDetails ? (
-      <Collapsible defaultOpen className="rounded-lg border border-border/50 bg-muted/15">
-        <CollapsibleTrigger className="group flex w-full min-h-[48px] cursor-pointer items-center justify-between gap-3 px-4 py-4 text-left hover:bg-muted/25 rounded-lg sm:min-h-0 sm:px-3 sm:py-3">
-          <span className="flex min-w-0 flex-1 items-center gap-3 text-base font-medium sm:gap-2 sm:text-sm">
-            <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 sm:h-4 sm:w-4" />
+      <Collapsible defaultOpen={false} className="rounded-lg border border-border/40 bg-muted/5">
+        <CollapsibleTrigger className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left text-sm text-muted-foreground hover:bg-muted/20 rounded-lg sm:min-h-0 sm:py-2.5">
+          <span className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600/90 sm:h-4 sm:w-4" />
             <span className="leading-snug">Report issue</span>
             {p.deviations.length > 0 ? (
               <Badge variant="secondary" className="text-xs sm:text-[10px]">
@@ -1137,8 +1226,8 @@ export function WorkerRoomView(p: Props) {
       ) : null}
 
       {showFullPhaseDetails ? (
-      <Collapsible className="rounded-lg border border-border/50 bg-muted/10">
-        <CollapsibleTrigger className="group flex w-full min-h-[48px] cursor-pointer items-center justify-between gap-3 px-4 py-4 text-left text-base text-muted-foreground hover:bg-muted/20 rounded-lg sm:min-h-0 sm:px-3 sm:py-2.5 sm:text-sm">
+      <Collapsible defaultOpen={false} className="rounded-lg border border-border/40 bg-muted/5">
+        <CollapsibleTrigger className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left text-sm text-muted-foreground hover:bg-muted/20 rounded-lg sm:min-h-0 sm:py-2.5">
           <span className="flex items-center gap-3 sm:gap-2">
             <History className="h-5 w-5 sm:h-4 sm:w-4" />
             Activity
