@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import {
   HEATING_CABLE_STAGES,
+  heatingDocumentationProgress,
   heatingStageHasAnyData,
   type HeatingCableDoc,
   type HeatingCableDerived,
@@ -150,6 +151,12 @@ export function WorkerRoomView(p: Props) {
   const selectedLabel = phaseLabel(p.selectedPhaseKey, p.phaseWorkflow);
   const boardLabel = phaseLabel(p.boardPhaseKey, p.phaseWorkflow);
   const viewingNonBoard = p.selectedPhaseKey !== p.boardPhaseKey;
+  const boardHeatingDocProgress = p.boardPhaseShowHeating
+    ? heatingDocumentationProgress(p.heatingCableDoc)
+    : null;
+  const selectedHeatingDocProgress = p.showHeatingModule
+    ? heatingDocumentationProgress(p.heatingCableDoc)
+    : null;
   const heatingStatusLabel: Record<string, string> = {
     not_started: 'Not started',
     partial: 'In progress',
@@ -213,7 +220,15 @@ export function WorkerRoomView(p: Props) {
           </div>
 
           <div className="rounded-xl bg-background/80 dark:bg-background/60 border border-border/50 px-3 py-2.5 space-y-1.5">
-            {p.boardPhaseTotalCount > 0 ? (
+            {p.boardPhaseShowHeating && boardHeatingDocProgress ? (
+              <p className="text-base text-foreground sm:text-sm">
+                <span className="font-semibold">Documentation</span>{' '}
+                <span className="tabular-nums font-semibold">
+                  {boardHeatingDocProgress.complete}/{boardHeatingDocProgress.total}
+                </span>
+                <span className="text-muted-foreground"> complete</span>
+              </p>
+            ) : p.boardPhaseTotalCount > 0 ? (
               <p className="text-base text-foreground sm:text-sm">
                 <span className="tabular-nums font-semibold">{p.boardPhaseIncompleteCount}</span>
                 <span className="text-muted-foreground">
@@ -228,6 +243,11 @@ export function WorkerRoomView(p: Props) {
             ) : (
               <p className="text-sm text-muted-foreground">No checklist items in this phase.</p>
             )}
+            {p.boardPhaseShowHeating && p.boardPhaseTotalCount > 0 ? (
+              <p className="text-sm text-muted-foreground tabular-nums">
+                Checklist {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/{p.boardPhaseTotalCount} done
+              </p>
+            ) : null}
             {p.boardPhaseShowHeating ? (
               <p className="text-sm flex flex-wrap items-center gap-2">
                 <span className="text-muted-foreground">Heating cable</span>
@@ -340,7 +360,9 @@ export function WorkerRoomView(p: Props) {
               {p.checklistSectionTitle}
             </h2>
             <span className="text-sm tabular-nums text-muted-foreground font-medium">
-              {p.tasksForSelectedPhase.filter((t) => t.is_completed).length}/{p.tasksForSelectedPhase.length}
+              {p.showHeatingModule && p.tasksForSelectedPhase.length === 0 && selectedHeatingDocProgress
+                ? `Documentation ${selectedHeatingDocProgress.complete}/${selectedHeatingDocProgress.total}`
+                : `${p.tasksForSelectedPhase.filter((t) => t.is_completed).length}/${p.tasksForSelectedPhase.length}`}
             </span>
           </div>
           {p.legacySavedWorkerName ? (

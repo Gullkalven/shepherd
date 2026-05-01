@@ -105,6 +105,21 @@ function stageComplete(stage: HeatingCableStage | undefined): boolean {
   );
 }
 
+/** Count of fully documented stages vs total stages (fixed three + any extra steps). */
+export function heatingDocumentationProgress(docRaw: unknown): { complete: number; total: number } {
+  const doc = normalizeHeatingCableDoc(docRaw);
+  let complete = 0;
+  for (const stage of HEATING_CABLE_STAGES) {
+    if (stageComplete(doc[stage.key])) complete++;
+  }
+  const extras = doc.extra_steps || [];
+  for (const raw of extras) {
+    if (stageComplete(normalizeStage(raw))) complete++;
+  }
+  const total = HEATING_CABLE_STAGES.length + extras.length;
+  return { complete, total };
+}
+
 export function deriveHeatingCableStatus(docRaw: unknown): HeatingCableDerived {
   const doc = normalizeHeatingCableDoc(docRaw);
   const missingStages: HeatingCableStageKey[] = [];

@@ -1486,12 +1486,17 @@ export default function RoomDetail() {
   const boardPhaseTotalCount = tasksForBoardPhase.length;
   const boardPhaseLabelForHeating = phaseLabel(areaMainPhaseNorm, phaseWorkflow);
   const boardPhaseShowHeating = isHeatingCablePhase(areaMainPhaseNorm, boardPhaseLabelForHeating);
-  const workerPhaseCompleteEligible =
-    selPhase === areaMainPhaseNorm &&
-    !editsBlocked &&
-    !phaseReadOnly &&
+  const boardPhaseWorkReady =
     (boardPhaseTotalCount === 0 || boardPhaseIncompleteCount === 0) &&
     (!boardPhaseShowHeating || heatingDerived.status === 'complete');
+  const workerPhaseCompleteEligible =
+    selPhase === areaMainPhaseNorm && !editsBlocked && !phaseReadOnly && boardPhaseWorkReady;
+
+  const workerRoomStatus =
+    room.status === 'not_started' && boardPhaseWorkReady
+      ? STATUS_OPTIONS.find((s) => s.value === (workerPhaseCompleteEligible ? 'ready_for_inspection' : 'in_progress')) ??
+        STATUS_OPTIONS[1]
+      : currentStatus;
 
   const floorNavLabel =
     floor?.name?.trim()
@@ -1586,8 +1591,8 @@ export default function RoomDetail() {
               onAddDeviation={() => void handleAddDeviation()}
               canAddDeviation={canInteractChecklist && !editsBlocked}
               savingDeviations={savingDeviations}
-              roomStatusLabel={currentStatus.label}
-              roomStatusClassName={`${currentStatus.color} border-0`}
+              roomStatusLabel={workerRoomStatus.label}
+              roomStatusClassName={`${workerRoomStatus.color} border-0`}
               blockedReason={room.status === 'blocked' ? room.blocked_reason : null}
               dueLine={dueLine}
               duePast={duePast}
