@@ -23,6 +23,7 @@ import {
 import {
   HEATING_CABLE_STAGES,
   formatHeatingCableDatetimeLocalNow,
+  formatHeatingCablePerformedShort,
   getHeatingCableFocusTarget,
   heatingCableDateForDatetimeLocalInput,
   heatingDocumentationProgress,
@@ -167,19 +168,40 @@ function formatVisitDateShort(dateStr: string): string {
   }
 }
 
-/** Registers input with parent map ref; sr-only file control + dashed upload affordance. */
-function StyledFilePhotoTrigger(props: {
-  registerInput: (el: HTMLInputElement | null) => void;
+function heatingPhotoRefKeys(stageId: string) {
+  return { gallery: `${stageId}:gallery`, camera: `${stageId}:camera` } as const;
+}
+
+/** Gallery (no `capture`) + camera — lets mobile users pick library or shoot new. */
+function HeatingStagePhotoPicker(props: {
+  registerInput: (suffix: 'gallery' | 'camera', el: HTMLInputElement | null) => void;
   disabled?: boolean;
   onFile: (file?: File) => void;
 }) {
-  const localRef = useRef<HTMLInputElement | null>(null);
+  const galleryRef = useRef<HTMLInputElement | null>(null);
+  const cameraRef = useRef<HTMLInputElement | null>(null);
+  const onPick = (e: ChangeEvent<HTMLInputElement>) => {
+    props.onFile(e.target.files?.[0]);
+    e.target.value = '';
+  };
   return (
     <>
       <input
         ref={(el) => {
-          localRef.current = el;
-          props.registerInput(el);
+          galleryRef.current = el;
+          props.registerInput('gallery', el);
+        }}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        tabIndex={-1}
+        disabled={props.disabled}
+        onChange={onPick}
+      />
+      <input
+        ref={(el) => {
+          cameraRef.current = el;
+          props.registerInput('camera', el);
         }}
         type="file"
         accept="image/*"
@@ -187,26 +209,71 @@ function StyledFilePhotoTrigger(props: {
         className="sr-only"
         tabIndex={-1}
         disabled={props.disabled}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => {
-          props.onFile(e.target.files?.[0]);
-          e.target.value = '';
-        }}
+        onChange={onPick}
       />
-      <button
-        type="button"
-        disabled={props.disabled}
-        onClick={() => localRef.current?.click()}
-        className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border/80 bg-muted/15 px-3 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 sm:gap-3 sm:py-2.5"
-      >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-background shadow-sm ring-1 ring-border/40">
-          <Camera className="h-4 w-4 text-muted-foreground" aria-hidden />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-foreground">Add photo</span>
-          <span className="mt-0.5 block text-xs text-muted-foreground">Camera or gallery</span>
-        </span>
-      </button>
+      <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full justify-center gap-2 font-normal"
+          disabled={props.disabled}
+          onClick={() => cameraRef.current?.click()}
+        >
+          <Camera className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          Take photo
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full justify-center gap-2 font-normal"
+          disabled={props.disabled}
+          onClick={() => galleryRef.current?.click()}
+        >
+          <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          Choose from gallery
+        </Button>
+      </div>
     </>
+  );
+}
+
+/** Compact “Performed: 2 May 23:06 [Edit]” + optional datetime editor. */
+function HeatingPerformedCompactRow(props: {
+  fieldId: string;
+  storedDate: string | undefined;
+  disabled: boolean;
+  onCommit: (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const display = formatHeatingCablePerformedShort(props.storedDate);
+  const inputValue = heatingCableDateForDatetimeLocalInput(props.storedDate);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm leading-snug">
+        <span className="text-muted-foreground shrink-0">Performed:</span>
+        <span className="min-w-0 font-semibold tabular-nums text-foreground">{display || '—'}</span>
+        {!props.disabled ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 shrink-0 px-2 text-xs font-medium"
+            onClick={() => setEditing((e) => !e)}
+          >
+            {editing ? 'Done' : 'Edit'}
+          </Button>
+        ) : null}
+      </div>
+      {editing ? (
+        <HeatingDatetimeField
+          id={`${props.fieldId}-when-edit`}
+          value={inputValue}
+          disabled={props.disabled}
+          onChange={props.onCommit}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -978,7 +1045,9 @@ export function WorkerRoomView(p: Props) {
                 <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:px-4 sm:py-3">
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="text-sm font-medium text-foreground">Add photos for this phase</span>
-                    <span className="text-xs text-muted-foreground">Optional — not required to finish tasks</span>
+                    <span className="text-xs text-muted-foreground">
+                      Optional — stage photos in Heating cable are the main record
+                    </span>
                   </span>
                   <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
@@ -1007,6 +1076,9 @@ export function WorkerRoomView(p: Props) {
         <Card className="overflow-hidden border-border/60 shadow-sm">
           <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1">
             <h2 className="text-lg font-semibold tracking-tight">Heating cable</h2>
+            <p className="text-xs text-muted-foreground leading-snug sm:hidden">
+              Stage photos live under each step below. Tap a stage to add readings and pictures.
+            </p>
             <p className="hidden text-xs text-muted-foreground sm:block">
               Open each stage to enter readings and photos. Completed stages stay collapsed so you can scan progress.
             </p>
@@ -1036,45 +1108,74 @@ export function WorkerRoomView(p: Props) {
                 <Collapsible
                   key={sid}
                   open={open}
-                  onOpenChange={(o) => setHeatingStageOpen(sid, o)}
+                  onOpenChange={(o) => {
+                    setHeatingStageOpen(sid, o);
+                    if (
+                      o &&
+                      p.canEditHeatingCable &&
+                      !p.savingHeatingCable &&
+                      !(row.date?.trim())
+                    ) {
+                      p.onHeatingFieldChange(stage.key, 'date', formatHeatingCableDatetimeLocalNow());
+                    }
+                  }}
                   className="rounded-xl border border-border/60 bg-muted/10 overflow-hidden"
                 >
                   <CollapsibleTrigger className="group flex w-full min-h-[52px] cursor-pointer items-start justify-between gap-2 px-3 py-3 text-left hover:bg-muted/25 sm:min-h-0 sm:items-center sm:py-2.5">
-                    <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {complete ? (
-                          <CheckCircle2
-                            className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
-                            aria-hidden
-                          />
-                        ) : (
-                          <Circle
-                            className={cn(
-                              'h-5 w-5 shrink-0',
-                              isFocus ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground/50'
-                            )}
-                            aria-hidden
-                          />
-                        )}
-                        <span className="text-sm font-semibold truncate">{stage.label}</span>
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            'text-[10px] shrink-0 font-medium sm:text-[11px]',
-                            complete &&
-                              'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200',
-                            !complete &&
-                              isFocus &&
-                              'bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100 ring-1 ring-amber-400/80'
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {complete ? (
+                            <CheckCircle2
+                              className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                              aria-hidden
+                            />
+                          ) : (
+                            <Circle
+                              className={cn(
+                                'h-5 w-5 shrink-0',
+                                isFocus ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground/50'
+                              )}
+                              aria-hidden
+                            />
                           )}
-                        >
-                          {badgeLabel}
-                        </Badge>
+                          <span className="text-sm font-semibold truncate">{stage.label}</span>
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              'text-[10px] shrink-0 font-medium sm:text-[11px]',
+                              complete &&
+                                'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200',
+                              !complete &&
+                                isFocus &&
+                                'bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100 ring-1 ring-amber-400/80'
+                            )}
+                          >
+                            {badgeLabel}
+                          </Badge>
+                        </div>
+                        {!open ? (
+                          <p className="text-xs text-muted-foreground leading-snug pl-7 sm:pl-0 line-clamp-2">
+                            {heatingStageCollapseSummary(row)}
+                          </p>
+                        ) : null}
                       </div>
-                      {!open ? (
-                        <p className="text-xs text-muted-foreground leading-snug pl-7 sm:pl-0 line-clamp-2">
-                          {heatingStageCollapseSummary(row)}
-                        </p>
+                      {Array.isArray(row.photos) && row.photos.length > 0 ? (
+                        <div className="flex items-center gap-2 pl-7 w-full min-w-0 sm:pl-0">
+                          <span className="text-[11px] font-medium tabular-nums text-muted-foreground shrink-0">
+                            {row.photos.length} photo{row.photos.length !== 1 ? 's' : ''}
+                          </span>
+                          <div className="flex gap-1 overflow-x-auto pb-0.5 min-w-0 [scrollbar-width:thin]">
+                            {row.photos.slice(0, 8).map((url, ti) => (
+                              <div
+                                key={`${sid}-hdr-${ti}`}
+                                className="pointer-events-none h-9 w-9 shrink-0 overflow-hidden rounded-md bg-slate-100 ring-1 ring-border/45 dark:bg-slate-800"
+                              >
+                                <img src={url} alt="" className="h-full w-full object-cover" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       ) : null}
                     </div>
                     <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 mt-0.5 sm:mt-0" />
@@ -1106,31 +1207,24 @@ export function WorkerRoomView(p: Props) {
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                           Recorded as
                         </p>
-                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                          <div className="space-y-1.5">
-                            <Label htmlFor={`heat-${sid}-when`} className="text-[11px] font-medium text-muted-foreground">
-                              When
-                            </Label>
-                            <HeatingDatetimeField
-                              id={`heat-${sid}-when`}
-                              value={heatingCableDateForDatetimeLocalInput(row.date)}
-                              disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                              onChange={(v) => p.onHeatingFieldChange(stage.key, 'date', v)}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label htmlFor={`heat-${sid}-by`} className="text-[11px] font-medium text-muted-foreground">
-                              Performed by
-                            </Label>
-                            <Input
-                              id={`heat-${sid}-by`}
-                              placeholder="Name"
-                              value={row.performed_by || ''}
-                              className="h-11 text-sm"
-                              disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                              onChange={(e) => p.onHeatingFieldChange(stage.key, 'performed_by', e.target.value)}
-                            />
-                          </div>
+                        <HeatingPerformedCompactRow
+                          fieldId={`heat-${sid}`}
+                          storedDate={row.date}
+                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          onCommit={(v) => p.onHeatingFieldChange(stage.key, 'date', v)}
+                        />
+                        <div className="space-y-1.5 pt-0.5">
+                          <Label htmlFor={`heat-${sid}-by`} className="text-[11px] font-medium text-muted-foreground">
+                            Performed by
+                          </Label>
+                          <Input
+                            id={`heat-${sid}-by`}
+                            placeholder="Name"
+                            value={row.performed_by || ''}
+                            className="h-11 text-sm"
+                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            onChange={(e) => p.onHeatingFieldChange(stage.key, 'performed_by', e.target.value)}
+                          />
                         </div>
                       </div>
                       <div className="space-y-1">
@@ -1144,18 +1238,18 @@ export function WorkerRoomView(p: Props) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Photos
-                        </p>
-                        <StyledFilePhotoTrigger
-                          registerInput={(el) => {
-                            p.heatingPhotoInputRefs.current[stage.key] = el;
-                          }}
-                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                          onFile={(file) => p.onHeatingStagePhotoChange(stage.key, file)}
-                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Stage photos
+                          </p>
+                          {Array.isArray(row.photos) && row.photos.length > 0 ? (
+                            <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+                              {row.photos.length} photo{row.photos.length !== 1 ? 's' : ''}
+                            </span>
+                          ) : null}
+                        </div>
                         {Array.isArray(row.photos) && row.photos.length > 0 ? (
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2">
                             {row.photos.map((url, pi) => (
                               <button
                                 key={`${stage.key}-p-${pi}`}
@@ -1168,6 +1262,14 @@ export function WorkerRoomView(p: Props) {
                             ))}
                           </div>
                         ) : null}
+                        <HeatingStagePhotoPicker
+                          registerInput={(suffix, el) => {
+                            const map = heatingPhotoRefKeys(sid);
+                            p.heatingPhotoInputRefs.current[map[suffix]] = el;
+                          }}
+                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          onFile={(file) => p.onHeatingStagePhotoChange(stage.key, file)}
+                        />
                       </div>
                     </div>
                   </CollapsibleContent>
@@ -1189,47 +1291,71 @@ export function WorkerRoomView(p: Props) {
                 <Collapsible
                   key={photoKey}
                   open={open}
-                  onOpenChange={(o) => setHeatingStageOpen(panelId, o)}
+                  onOpenChange={(o) => {
+                    setHeatingStageOpen(panelId, o);
+                    if (o && p.canEditHeatingCable && !p.savingHeatingCable && !(step.date?.trim())) {
+                      p.onExtraHeatingFieldChange(idx, 'date', formatHeatingCableDatetimeLocalNow());
+                    }
+                  }}
                   className="rounded-xl border border-border/60 bg-muted/10 overflow-hidden"
                 >
                   <CollapsibleTrigger className="group flex w-full min-h-[52px] cursor-pointer items-start justify-between gap-2 px-3 py-3 text-left hover:bg-muted/25 sm:min-h-0 sm:items-center sm:py-2.5">
-                    <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {complete ? (
-                          <CheckCircle2
-                            className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
-                            aria-hidden
-                          />
-                        ) : (
-                          <Circle
-                            className={cn(
-                              'h-5 w-5 shrink-0',
-                              isFocus ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground/50'
-                            )}
-                            aria-hidden
-                          />
-                        )}
-                        <span className="text-sm font-semibold truncate">
-                          {step.label?.trim() || `Extra step ${idx + 1}`}
-                        </span>
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            'text-[10px] shrink-0 font-medium sm:text-[11px]',
-                            complete &&
-                              'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200',
-                            !complete &&
-                              isFocus &&
-                              'bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100 ring-1 ring-amber-400/80'
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {complete ? (
+                            <CheckCircle2
+                              className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                              aria-hidden
+                            />
+                          ) : (
+                            <Circle
+                              className={cn(
+                                'h-5 w-5 shrink-0',
+                                isFocus ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground/50'
+                              )}
+                              aria-hidden
+                            />
                           )}
-                        >
-                          {badgeLabel}
-                        </Badge>
+                          <span className="text-sm font-semibold truncate">
+                            {step.label?.trim() || `Extra step ${idx + 1}`}
+                          </span>
+                          <Badge
+                            variant="secondary"
+                            className={cn(
+                              'text-[10px] shrink-0 font-medium sm:text-[11px]',
+                              complete &&
+                                'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200',
+                              !complete &&
+                                isFocus &&
+                                'bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100 ring-1 ring-amber-400/80'
+                            )}
+                          >
+                            {badgeLabel}
+                          </Badge>
+                        </div>
+                        {!open ? (
+                          <p className="text-xs text-muted-foreground leading-snug pl-7 sm:pl-0 line-clamp-2">
+                            {heatingStageCollapseSummary(step)}
+                          </p>
+                        ) : null}
                       </div>
-                      {!open ? (
-                        <p className="text-xs text-muted-foreground leading-snug pl-7 sm:pl-0 line-clamp-2">
-                          {heatingStageCollapseSummary(step)}
-                        </p>
+                      {Array.isArray(step.photos) && step.photos.length > 0 ? (
+                        <div className="flex items-center gap-2 pl-7 w-full min-w-0 sm:pl-0">
+                          <span className="text-[11px] font-medium tabular-nums text-muted-foreground shrink-0">
+                            {step.photos.length} photo{step.photos.length !== 1 ? 's' : ''}
+                          </span>
+                          <div className="flex gap-1 overflow-x-auto pb-0.5 min-w-0 [scrollbar-width:thin]">
+                            {step.photos.slice(0, 8).map((url, ti) => (
+                              <div
+                                key={`${photoKey}-hdr-${ti}`}
+                                className="pointer-events-none h-9 w-9 shrink-0 overflow-hidden rounded-md bg-slate-100 ring-1 ring-border/45 dark:bg-slate-800"
+                              >
+                                <img src={url} alt="" className="h-full w-full object-cover" />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
                       ) : null}
                     </div>
                     <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 mt-0.5 sm:mt-0" />
@@ -1261,37 +1387,27 @@ export function WorkerRoomView(p: Props) {
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                           Recorded as
                         </p>
-                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                          <div className="space-y-1.5">
-                            <Label
-                              htmlFor={`heat-extra-${photoKey}-when`}
-                              className="text-[11px] font-medium text-muted-foreground"
-                            >
-                              When
-                            </Label>
-                            <HeatingDatetimeField
-                              id={`heat-extra-${photoKey}-when`}
-                              value={heatingCableDateForDatetimeLocalInput(step.date)}
-                              disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                              onChange={(v) => p.onExtraHeatingFieldChange(idx, 'date', v)}
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label
-                              htmlFor={`heat-extra-${photoKey}-by`}
-                              className="text-[11px] font-medium text-muted-foreground"
-                            >
-                              Performed by
-                            </Label>
-                            <Input
-                              id={`heat-extra-${photoKey}-by`}
-                              placeholder="Name"
-                              value={step.performed_by || ''}
-                              className="h-11 text-sm"
-                              disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                              onChange={(e) => p.onExtraHeatingFieldChange(idx, 'performed_by', e.target.value)}
-                            />
-                          </div>
+                        <HeatingPerformedCompactRow
+                          fieldId={`heat-extra-${photoKey}`}
+                          storedDate={step.date}
+                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          onCommit={(v) => p.onExtraHeatingFieldChange(idx, 'date', v)}
+                        />
+                        <div className="space-y-1.5 pt-0.5">
+                          <Label
+                            htmlFor={`heat-extra-${photoKey}-by`}
+                            className="text-[11px] font-medium text-muted-foreground"
+                          >
+                            Performed by
+                          </Label>
+                          <Input
+                            id={`heat-extra-${photoKey}-by`}
+                            placeholder="Name"
+                            value={step.performed_by || ''}
+                            className="h-11 text-sm"
+                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            onChange={(e) => p.onExtraHeatingFieldChange(idx, 'performed_by', e.target.value)}
+                          />
                         </div>
                       </div>
                       <div className="space-y-1">
@@ -1305,18 +1421,18 @@ export function WorkerRoomView(p: Props) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                          Photos
-                        </p>
-                        <StyledFilePhotoTrigger
-                          registerInput={(el) => {
-                            p.heatingPhotoInputRefs.current[photoKey] = el;
-                          }}
-                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                          onFile={(file) => p.onHeatingStagePhotoChange(photoKey, file)}
-                        />
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                            Stage photos
+                          </p>
+                          {Array.isArray(step.photos) && step.photos.length > 0 ? (
+                            <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+                              {step.photos.length} photo{step.photos.length !== 1 ? 's' : ''}
+                            </span>
+                          ) : null}
+                        </div>
                         {Array.isArray(step.photos) && step.photos.length > 0 ? (
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2">
                             {step.photos.map((url, pi) => (
                               <button
                                 key={`${photoKey}-p-${pi}`}
@@ -1329,6 +1445,14 @@ export function WorkerRoomView(p: Props) {
                             ))}
                           </div>
                         ) : null}
+                        <HeatingStagePhotoPicker
+                          registerInput={(suffix, el) => {
+                            const map = heatingPhotoRefKeys(photoKey);
+                            p.heatingPhotoInputRefs.current[map[suffix]] = el;
+                          }}
+                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          onFile={(file) => p.onHeatingStagePhotoChange(photoKey, file)}
+                        />
                       </div>
                     </div>
                   </CollapsibleContent>

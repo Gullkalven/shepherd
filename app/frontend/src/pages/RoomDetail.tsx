@@ -1382,8 +1382,14 @@ export default function RoomDetail() {
       toast.error('Failed to upload heating module photo');
     } finally {
       setSavingHeatingCable(false);
-      const ref = heatingPhotoInputRefs.current[stageId];
-      if (ref) ref.value = '';
+      const galleryKey = `${stageId}:gallery`;
+      const cameraKey = `${stageId}:camera`;
+      const g = heatingPhotoInputRefs.current[galleryKey];
+      const c = heatingPhotoInputRefs.current[cameraKey];
+      if (g) g.value = '';
+      if (c) c.value = '';
+      const legacy = heatingPhotoInputRefs.current[stageId];
+      if (legacy) legacy.value = '';
     }
   };
 
@@ -2395,10 +2401,19 @@ export default function RoomDetail() {
                               rows={2}
                               className="text-xs"
                             />
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                               <input
                                 ref={(el) => {
-                                  heatingPhotoInputRefs.current[stage.key] = el;
+                                  heatingPhotoInputRefs.current[`${stage.key}:gallery`] = el;
+                                }}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => void handleHeatingStagePhotoInput(stage.key, e.target.files?.[0])}
+                              />
+                              <input
+                                ref={(el) => {
+                                  heatingPhotoInputRefs.current[`${stage.key}:camera`] = el;
                                 }}
                                 type="file"
                                 accept="image/*"
@@ -2406,18 +2421,31 @@ export default function RoomDetail() {
                                 className="hidden"
                                 onChange={(e) => void handleHeatingStagePhotoInput(stage.key, e.target.files?.[0])}
                               />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-[10px]"
-                                disabled={!canEditHeatingCable || savingHeatingCable}
-                                onClick={() => heatingPhotoInputRefs.current[stage.key]?.click()}
-                              >
-                                Add module photo
-                              </Button>
-                              <span className="text-[10px] text-muted-foreground">
-                                {Array.isArray(row.photos) ? row.photos.length : 0} photo(s)
+                              <div className="flex flex-1 flex-wrap gap-1.5 min-w-0">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px] shrink-0"
+                                  disabled={!canEditHeatingCable || savingHeatingCable}
+                                  onClick={() => heatingPhotoInputRefs.current[`${stage.key}:camera`]?.click()}
+                                >
+                                  Take photo
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px] shrink-0"
+                                  disabled={!canEditHeatingCable || savingHeatingCable}
+                                  onClick={() => heatingPhotoInputRefs.current[`${stage.key}:gallery`]?.click()}
+                                >
+                                  Gallery
+                                </Button>
+                              </div>
+                              <span className="text-[10px] text-muted-foreground sm:ml-auto">
+                                {Array.isArray(row.photos) ? row.photos.length : 0} stage photo
+                                {Array.isArray(row.photos) && row.photos.length !== 1 ? 's' : ''}
                               </span>
                             </div>
                           </div>
@@ -2484,10 +2512,19 @@ export default function RoomDetail() {
                               rows={2}
                               className="text-xs"
                             />
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                               <input
                                 ref={(el) => {
-                                  heatingPhotoInputRefs.current[sid] = el;
+                                  heatingPhotoInputRefs.current[`${sid}:gallery`] = el;
+                                }}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => void handleHeatingStagePhotoInput(sid, e.target.files?.[0])}
+                              />
+                              <input
+                                ref={(el) => {
+                                  heatingPhotoInputRefs.current[`${sid}:camera`] = el;
                                 }}
                                 type="file"
                                 accept="image/*"
@@ -2495,18 +2532,31 @@ export default function RoomDetail() {
                                 className="hidden"
                                 onChange={(e) => void handleHeatingStagePhotoInput(sid, e.target.files?.[0])}
                               />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-[10px]"
-                                disabled={!canEditHeatingCable || savingHeatingCable}
-                                onClick={() => heatingPhotoInputRefs.current[sid]?.click()}
-                              >
-                                Add module photo
-                              </Button>
-                              <span className="text-[10px] text-muted-foreground">
-                                {Array.isArray(step.photos) ? step.photos.length : 0} photo(s)
+                              <div className="flex flex-1 flex-wrap gap-1.5 min-w-0">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px] shrink-0"
+                                  disabled={!canEditHeatingCable || savingHeatingCable}
+                                  onClick={() => heatingPhotoInputRefs.current[`${sid}:camera`]?.click()}
+                                >
+                                  Take photo
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px] shrink-0"
+                                  disabled={!canEditHeatingCable || savingHeatingCable}
+                                  onClick={() => heatingPhotoInputRefs.current[`${sid}:gallery`]?.click()}
+                                >
+                                  Gallery
+                                </Button>
+                              </div>
+                              <span className="text-[10px] text-muted-foreground sm:ml-auto">
+                                {Array.isArray(step.photos) ? step.photos.length : 0} stage photo
+                                {Array.isArray(step.photos) && step.photos.length !== 1 ? 's' : ''}
                               </span>
                             </div>
                           </div>
