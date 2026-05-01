@@ -122,6 +122,53 @@ function roomReasonLabel(room: EnrichedRoom): string {
   }
 }
 
+/** Short lines under room cards explaining why this room is highlighted (trust / clarity). */
+function primaryContinueTrustLines(room: EnrichedRoom): string[] {
+  const lines: string[] = [];
+  const days = calendarDaysAgo(room.updated_at);
+  if (days === 0) lines.push('Worked here today');
+  else if (days === 1) lines.push('Worked here yesterday');
+  else if (days != null && days >= 2 && days <= 30) lines.push(`Last activity ${days} days ago`);
+  else lines.push('Your last opened room');
+
+  if (room.status === 'ready_for_inspection') {
+    lines.push('Priority today');
+  } else if (lines.length < 2 && room.status === 'in_progress') {
+    lines.push('Pick up where you left off');
+  }
+  return lines.slice(0, 2);
+}
+
+function primaryNextTrustLines(room: EnrichedRoom): string[] {
+  switch (room.status) {
+    case 'not_started':
+      return ['Ready to start', 'Waiting for you'];
+    case 'ready_for_inspection':
+      return ['Needs handoff', 'Priority today'];
+    case 'in_progress': {
+      const days = calendarDaysAgo(room.updated_at);
+      if (days === 0) return ['Worked here today', 'Waiting for you'];
+      if (days === 1) return ['Worked here yesterday', 'Waiting for you'];
+      return ['In progress', 'Waiting for you'];
+    }
+    default:
+      return ['Ready for work', 'Waiting for you'];
+  }
+}
+
+function alternateRoomTrustLines(room: EnrichedRoom): string[] {
+  switch (room.status) {
+    case 'not_started':
+      return ['Ready to start', 'Waiting for you'];
+    case 'ready_for_inspection':
+      return ['Needs handoff', 'Waiting for you'];
+    case 'in_progress':
+      return ['In progress', 'Next when you are ready'];
+    default:
+      return [roomReasonLabel(room)];
+  }
+}
+
 const ACTIONABLE = new Set(['not_started', 'in_progress', 'ready_for_inspection']);
 
 /** Backend rejects higher limits with 422 (see FloorDetail / routers/tasks.py). */
@@ -303,6 +350,15 @@ export default function WorkerTodayView({
 
   const greeting = displayName?.trim() ? `, ${displayName.trim()}` : '';
 
+  const primaryRoom = resumeRoom ?? fallbackReady;
+  const primaryRoomLabel =
+    resumeRoom?.label ?? primaryRoom?.room_number ?? (primaryRoom ? String(primaryRoom.id) : '');
+
+  const primaryTrustLines = useMemo(() => {
+    if (!primaryRoom) return [];
+    return resumeRoom ? primaryContinueTrustLines(primaryRoom) : primaryNextTrustLines(primaryRoom);
+  }, [primaryRoom, resumeRoom]);
+
   /** Initial sites list; avoid empty-state flash before Index finishes first fetch. */
   if (sitesLoading && sites.length === 0) {
     return (
@@ -316,10 +372,6 @@ export default function WorkerTodayView({
     const focusChecklist = r.status !== 'blocked';
     navigate(workerRoomPath(r.projectId, r.floorId, r.id, { focusChecklist }));
   };
-
-  const primaryRoom = resumeRoom ?? fallbackReady;
-  const primaryRoomLabel =
-    resumeRoom?.label ?? primaryRoom?.room_number ?? (primaryRoom ? String(primaryRoom.id) : '');
 
   const showSitesFailure = sitesLoadFailed && sites.length === 0;
 
@@ -424,14 +476,20 @@ export default function WorkerTodayView({
                 className="h-auto min-h-[5.5rem] w-full flex-row items-stretch justify-between gap-4 rounded-2xl bg-[#1E3A5F] px-5 py-5 text-left shadow-lg transition hover:bg-[#2a4f7a] dark:bg-blue-700 dark:hover:bg-blue-600"
               >
                 <div className="min-w-0 flex-1 space-y-1.5">
-                  <span className="block text-[11px] font-semibold uppercase tracking-wide text-white/75">
-                    {roomReasonLabel(primaryRoom)}
-                  </span>
                   <span className="block text-lg font-bold leading-tight text-white">
                     {resumeRoom ? 'Continue Last Room' : 'Next Ready Room'}
                   </span>
                   <span className="block text-base font-semibold text-white/95">Room {primaryRoomLabel}</span>
-                  <span className="block text-sm leading-snug text-white/80 line-clamp-2">
+                  {primaryTrustLines.length > 0 && (
+                    <div className="space-y-0.5 pt-0.5">
+                      {primaryTrustLines.map((line, i) => (
+                        <span key={`${i}-${line}`} className="block text-sm leading-snug text-white/80">
+                          {line}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <span className="block text-sm leading-snug text-white/75 line-clamp-2 border-t border-white/15 pt-1.5 mt-0.5">
                     {primaryRoom ? taskSubtitle(primaryRoom.id, tasks) : ''}
                   </span>
                 </div>
@@ -466,7 +524,13 @@ export default function WorkerTodayView({
                     <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
                       Room {alternateReady.room_number}
                     </p>
-                    <p className="text-sm text-muted-foreground">{roomReasonLabel(alternateReady)}</p>
+                    <div className="space-y-0.5 pt-0.5">
+                      {alternateRoomTrustLines(alternateReady).map((line, i) => (
+                        <p key={`${i}-${line}`} className="text-sm text-muted-foreground leading-snug">
+                          {line}
+                        </p>
+                      ))}
+                    </div>
                   </div>
                   <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
                 </div>
