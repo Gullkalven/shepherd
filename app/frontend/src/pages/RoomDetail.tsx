@@ -39,7 +39,7 @@ import {
 } from '@/lib/roomAreas';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
-import { WorkerRoomView } from '@/components/WorkerRoomView';
+import { WorkerRoomView, type WorkerTask } from '@/components/WorkerRoomView';
 import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationNav';
 import {
   HEATING_CABLE_STAGES,
@@ -251,6 +251,8 @@ export default function RoomDetail() {
   const location = useLocation();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** When set, next room photo upload gets a checklist caption (same entity as phase photos). Cleared on general phase upload. */
+  const phasePhotoTaskIdRef = useRef<number | null>(null);
   const {
     isAdmin,
     isWorker,
@@ -986,6 +988,9 @@ export default function RoomDetail() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !room) return;
+    const captionTaskId = phasePhotoTaskIdRef.current;
+    phasePhotoTaskIdRef.current = null;
+    const captionTask = captionTaskId != null ? tasks.find((t) => t.id === captionTaskId) : undefined;
     setUploading(true);
     try {
       const safeFilename = file.name.replace(/[^A-Za-z0-9._-]/g, '-');
@@ -1029,7 +1034,7 @@ export default function RoomDetail() {
           room_id: room.id,
           object_key: objectKey,
           filename: file.name,
-          caption: '',
+          caption: captionTask ? `Checklist: ${captionTask.name}` : '',
           phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
           ...taskPhotoVisitAreaPayload(),
         },
@@ -1494,6 +1499,11 @@ export default function RoomDetail() {
   const canInteractChecklist = canCheckItem && !editsBlocked && !phaseReadOnly;
   const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
   const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
+  const handleWorkerTaskPhotoClick = (task: WorkerTask) => {
+    if (!canUploadPhoto || !canMutatePhaseMedia) return;
+    phasePhotoTaskIdRef.current = task.id;
+    fileInputRef.current?.click();
+  };
   const chipUiSel = computePhaseChipUi(selPhase, areaMainPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
   const checklistLabelsMap = coerceChecklistLabels(room.checklist_labels);
   const checklistSectionTitle =
@@ -1635,7 +1645,11 @@ export default function RoomDetail() {
               canUploadPhoto={canUploadPhoto}
               canMutatePhaseMedia={canMutatePhaseMedia}
               uploadingPhoto={uploading}
-              onGeneralPhotoClick={() => fileInputRef.current?.click()}
+              onGeneralPhotoClick={() => {
+                phasePhotoTaskIdRef.current = null;
+                fileInputRef.current?.click();
+              }}
+              onTaskPhotoClick={handleWorkerTaskPhotoClick}
               photosForPhase={photosForPhase}
               legacySavedWorkerName={legacySavedWorkerName || undefined}
               onClearSavedWorkerName={legacySavedWorkerName ? handleClearSavedName : undefined}
