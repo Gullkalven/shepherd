@@ -14,6 +14,10 @@ type Props = {
   roomNumber: string;
   prevRoom: RoomNavSibling | null;
   nextRoom: RoomNavSibling | null;
+  /** Shown when Previous is disabled (tooltips + compact hint). */
+  prevUnavailableHint?: string;
+  /** Shown when Next is disabled (tooltips + compact hint). */
+  nextUnavailableHint?: string;
 };
 
 export function RoomLocationNav({
@@ -24,6 +28,8 @@ export function RoomLocationNav({
   roomNumber,
   prevRoom,
   nextRoom,
+  prevUnavailableHint,
+  nextUnavailableHint,
 }: Props) {
   const { t } = useI18n();
   const linkCls = cn(
@@ -76,7 +82,14 @@ export function RoomLocationNav({
             </Link>
           </Button>
         ) : (
-          <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5" disabled aria-label="No previous room">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1 px-2.5"
+            disabled
+            title={prevUnavailableHint}
+            aria-label={prevUnavailableHint ?? 'No previous room'}
+          >
             <ChevronLeft className="h-4 w-4 opacity-50" aria-hidden />
             <span className="hidden sm:inline">Previous room</span>
             <span className="inline sm:hidden">Prev</span>
@@ -97,7 +110,14 @@ export function RoomLocationNav({
             </Link>
           </Button>
         ) : (
-          <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5" disabled aria-label="No next room">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1 px-2.5"
+            disabled
+            title={nextUnavailableHint}
+            aria-label={nextUnavailableHint ?? 'No next room'}
+          >
             <span className="hidden sm:inline">Next room</span>
             <span className="inline sm:hidden">Next</span>
             <ChevronRight className="h-4 w-4 opacity-50" aria-hidden />

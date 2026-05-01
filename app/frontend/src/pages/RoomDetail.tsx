@@ -391,9 +391,12 @@ export default function RoomDetail() {
       setPhotos(photosWithUrls);
 
       const floorItems = (floorRoomsRes?.data?.items || []) as RoomNavSibling[];
-      floorItems.sort((a, b) =>
-        String(a.room_number).localeCompare(String(b.room_number), undefined, { numeric: true })
-      );
+      floorItems.sort((a, b) => {
+        const byNum = String(a.room_number).localeCompare(String(b.room_number), undefined, {
+          numeric: true,
+        });
+        return byNum !== 0 ? byNum : a.id - b.id;
+      });
       setFloorRoomsOrdered(floorItems);
     } catch {
       toast.error('Failed to load');
@@ -1505,12 +1508,30 @@ export default function RoomDetail() {
         ? `Floor ${floor.floor_number}`
         : 'Floor';
 
-  const roomOrderIdx = floorRoomsOrdered.findIndex((r) => r.id === room.id);
+  // Use URL room id so prev/next match the route immediately after clicking Next/Prev; `room` lags until fetch completes.
+  const navRoomIdNum = roomId != null && roomId !== '' ? Number(roomId) : NaN;
+  const navRoomIdValid = Number.isFinite(navRoomIdNum);
+  const roomOrderIdx = navRoomIdValid ? floorRoomsOrdered.findIndex((r) => r.id === navRoomIdNum) : -1;
   const prevNavRoom = roomOrderIdx > 0 ? floorRoomsOrdered[roomOrderIdx - 1] : null;
   const nextNavRoom =
     roomOrderIdx >= 0 && roomOrderIdx < floorRoomsOrdered.length - 1
       ? floorRoomsOrdered[roomOrderIdx + 1]
       : null;
+
+  const prevNavUnavailableHint = prevNavRoom
+    ? undefined
+    : floorRoomsOrdered.length === 0
+      ? 'Room list unavailable'
+      : !navRoomIdValid || roomOrderIdx < 0
+        ? 'Cannot determine position on this floor'
+        : 'First room on this floor';
+  const nextNavUnavailableHint = nextNavRoom
+    ? undefined
+    : floorRoomsOrdered.length === 0
+      ? 'Room list unavailable'
+      : !navRoomIdValid || roomOrderIdx < 0
+        ? 'Cannot determine position on this floor'
+        : 'Last room on this floor';
 
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
@@ -1524,6 +1545,8 @@ export default function RoomDetail() {
             roomNumber={room.room_number}
             prevRoom={prevNavRoom}
             nextRoom={nextNavRoom}
+            prevUnavailableHint={prevNavUnavailableHint}
+            nextUnavailableHint={nextNavUnavailableHint}
           />
         ) : null}
         {!isAdmin ? (

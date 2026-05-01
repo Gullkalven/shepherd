@@ -208,7 +208,10 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
       m.set(r.floor_id, list);
     }
     for (const list of m.values()) {
-      list.sort((a, b) => String(a.room_number).localeCompare(String(b.room_number), undefined, { numeric: true }));
+      list.sort((a, b) => {
+        const byNum = String(a.room_number).localeCompare(String(b.room_number), undefined, { numeric: true });
+        return byNum !== 0 ? byNum : a.id - b.id;
+      });
     }
     return m;
   }, [rooms]);
