@@ -1,4 +1,4 @@
-import { RefObject } from 'react';
+import { RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,10 +19,16 @@ import {
 } from 'lucide-react';
 import {
   HEATING_CABLE_STAGES,
+  formatHeatingCableDatetimeLocalNow,
+  getHeatingCableFocusTarget,
+  heatingCableDateForDatetimeLocalInput,
   heatingDocumentationProgress,
+  heatingExtraStepRowVisible,
   heatingStageHasAnyData,
+  isHeatingCableStageComplete,
   type HeatingCableDoc,
   type HeatingCableDerived,
+  type HeatingCableStage,
   type HeatingCableStageKey,
 } from '@/lib/heatingCable';
 import type { PhaseWorkflowEntry } from '@/lib/roomPhases';
@@ -99,6 +105,11 @@ type Props = {
   onSaveHeatingCable: () => void;
   onPhotoPreview: (url: string) => void;
 
+  /** Session display name — seeds empty "Performed by" / date on the active stage only. */
+  heatingDefaultPerformedBy?: string;
+  /** When this value changes (e.g. room id), one-time default seeding runs again for the new context. */
+  heatingCableSeedResetKey?: string | number;
+
   showPhotosSection: boolean;
   canUploadPhoto: boolean;
   canMutatePhaseMedia: boolean;
@@ -147,6 +158,32 @@ function formatVisitDateShort(dateStr: string): string {
   }
 }
 
+function heatingStageCollapseSummary(stage: HeatingCableStage): string {
+  const parts: string[] = [];
+  if (stage.resistance_ohm?.trim()) parts.push(`${stage.resistance_ohm.trim()} Ω`);
+  if (stage.insulation_mohm?.trim()) parts.push(`${stage.insulation_mohm.trim()} MΩ`);
+  const when = stage.date?.trim();
+  if (when) {
+    const raw = /^\d{4}-\d{2}-\d{2}$/.test(when) ? `${when}T12:00` : when.replace(' ', 'T');
+    const t = Date.parse(raw);
+    if (!Number.isNaN(t)) {
+      parts.push(
+        new Date(t).toLocaleString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      );
+    } else {
+      parts.push(when);
+    }
+  }
+  if (stage.performed_by?.trim()) parts.push(stage.performed_by.trim());
+  if (parts.length === 0) return 'No readings yet';
+  return parts.join(' · ');
+}
+
 export function WorkerRoomView(p: Props) {
   const selectedLabel = phaseLabel(p.selectedPhaseKey, p.phaseWorkflow);
   const boardLabel = phaseLabel(p.boardPhaseKey, p.phaseWorkflow);
@@ -165,6 +202,74 @@ export function WorkerRoomView(p: Props) {
   };
 
   const workflowKeys = p.phaseWorkflow.map((x) => x.key);
+
+  const focusTarget = useMemo(() => getHeatingCableFocusTarget(p.heatingCableDoc), [p.heatingCableDoc]);
+  const focusStageId = useMemo(() => {
+    if (!focusTarget) return 'all-complete';
+    return focusTarget.kind === 'main' ? focusTarget.key : `extra:${focusTarget.index}`;
+  }, [focusTarget]);
+
+  const [heatingOpenOverrides, setHeatingOpenOverrides] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (focusStageId !== 'all-complete') {
+      setHeatingOpenOverrides((prev) => ({ ...prev, [focusStageId]: true }));
+    }
+  }, [focusStageId]);
+
+  const heatingStageOpen = (id: string) => {
+    if (heatingOpenOverrides[id] !== undefined) return heatingOpenOverrides[id];
+    return id === focusStageId;
+  };
+  const setHeatingStageOpen = (id: string, open: boolean) => {
+    setHeatingOpenOverrides((prev) => ({ ...prev, [id]: open }));
+  };
+
+  const heatingSeedKeyRef = useRef<string | null>(null);
+  const heatingResetKeyRef = useRef<string | number | undefined>(p.heatingCableSeedResetKey);
+  useEffect(() => {
+    if (p.heatingCableSeedResetKey !== heatingResetKeyRef.current) {
+      heatingResetKeyRef.current = p.heatingCableSeedResetKey;
+      heatingSeedKeyRef.current = null;
+    }
+  }, [p.heatingCableSeedResetKey]);
+
+  useEffect(() => {
+    if (!p.canEditHeatingCable || !p.heatingDefaultPerformedBy?.trim()) return;
+    const ft = focusTarget;
+    if (!ft) return;
+    const sk = ft.kind === 'main' ? `main:${ft.key}` : `extra:${ft.index}`;
+    if (heatingSeedKeyRef.current === sk) return;
+    heatingSeedKeyRef.current = sk;
+
+    const def = p.heatingDefaultPerformedBy.trim();
+    const now = formatHeatingCableDatetimeLocalNow();
+
+    if (ft.kind === 'main') {
+      const row = p.heatingCableDoc[ft.key] || {};
+      if (!row.performed_by?.trim()) p.onHeatingFieldChange(ft.key, 'performed_by', def);
+      if (!row.date?.trim()) p.onHeatingFieldChange(ft.key, 'date', now);
+    } else {
+      const row = p.heatingCableDoc.extra_steps?.[ft.index];
+      if (!row?.performed_by?.trim()) p.onExtraHeatingFieldChange(ft.index, 'performed_by', def);
+      if (!row?.date?.trim()) p.onExtraHeatingFieldChange(ft.index, 'date', now);
+    }
+  }, [
+    p.canEditHeatingCable,
+    p.heatingDefaultPerformedBy,
+    focusTarget,
+    p.heatingCableDoc,
+    p.onHeatingFieldChange,
+    p.onExtraHeatingFieldChange,
+  ]);
+
+  const focusStageLabel = useMemo(() => {
+    if (!focusTarget) return null;
+    if (focusTarget.kind === 'main') {
+      return HEATING_CABLE_STAGES.find((s) => s.key === focusTarget.key)?.label ?? focusTarget.key;
+    }
+    const step = p.heatingCableDoc.extra_steps?.[focusTarget.index];
+    return step?.label?.trim() || `Extra step ${focusTarget.index + 1}`;
+  }, [focusTarget, p.heatingCableDoc.extra_steps]);
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-3 sm:px-4 sm:py-4 lg:max-w-xl">
@@ -457,169 +562,353 @@ export function WorkerRoomView(p: Props) {
         </section>
       ) : null}
 
-      {/* Heating cable — large targets */}
+      {/* Heating cable — collapsible stages, defaults on active step */}
       {p.showHeatingModule ? (
         <Card className="overflow-hidden border-border/60 shadow-sm">
-          <div className="border-b border-border/50 bg-muted/30 px-4 py-3">
+          <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1">
             <h2 className="text-lg font-semibold tracking-tight">Heating cable</h2>
-            <p className="hidden text-xs text-muted-foreground mt-0.5 sm:block">
-              Fill readings and add proof photos for each stage.
+            <p className="hidden text-xs text-muted-foreground sm:block">
+              Open each stage to enter readings and photos. Completed stages stay collapsed so you can scan progress.
             </p>
+            {focusStageLabel ? (
+              <p className="text-xs font-medium text-amber-900/90 dark:text-amber-100/90 flex items-center gap-1.5">
+                <span className="text-muted-foreground font-normal">Next up:</span>
+                <span>{focusStageLabel}</span>
+              </p>
+            ) : (
+              <p className="text-xs font-medium text-emerald-800 dark:text-emerald-200">All stages documented.</p>
+            )}
             {p.heatingLockedByAdmin ? (
-              <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">Locked by admin — view only.</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">Locked by admin — view only.</p>
             ) : null}
           </div>
-          <div className="p-4 space-y-4">
+          <div className="p-4 space-y-3">
             {HEATING_CABLE_STAGES.map((stage) => {
               const row = p.heatingCableDoc[stage.key] || {};
+              const sid = stage.key;
+              const complete = isHeatingCableStageComplete(row);
+              const isFocus = focusStageId === sid;
+              const open = heatingStageOpen(sid);
+              const started = heatingStageHasAnyData(row);
+              const badgeLabel = complete ? 'Complete' : isFocus ? 'Now' : started ? 'In progress' : 'Not started';
+
               return (
-                <div key={stage.key} className="rounded-xl border border-border/60 bg-muted/10 p-3 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{stage.label}</p>
-                    <input
-                      ref={(el) => {
-                        p.heatingPhotoInputRefs.current[stage.key] = el;
-                      }}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="hidden"
-                      onChange={(e) => p.onHeatingStagePhotoChange(stage.key, e.target.files?.[0])}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="min-h-11 h-11 px-4 text-sm gap-1.5 sm:h-10 sm:min-h-10 sm:px-3"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onClick={() => p.heatingPhotoInputRefs.current[stage.key]?.click()}
-                    >
-                      <Camera className="h-4 w-4" />
-                      Add photo
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Input
-                      placeholder="Resistance (Ω)"
-                      value={row.resistance_ohm || ''}
-                      className="h-11 text-sm"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
-                    />
-                    <Input
-                      placeholder="Insulation (MΩ)"
-                      value={row.insulation_mohm || ''}
-                      className="h-11 text-sm"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onChange={(e) => p.onHeatingFieldChange(stage.key, 'insulation_mohm', e.target.value)}
-                    />
-                    <Input
-                      type="date"
-                      value={row.date || ''}
-                      className="h-11 text-sm"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onChange={(e) => p.onHeatingFieldChange(stage.key, 'date', e.target.value)}
-                    />
-                    <Input
-                      placeholder="Performed by"
-                      value={row.performed_by || ''}
-                      className="h-11 text-sm"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onChange={(e) => p.onHeatingFieldChange(stage.key, 'performed_by', e.target.value)}
-                    />
-                  </div>
-                  <Textarea
-                    placeholder="Note (optional)"
-                    value={row.note || ''}
-                    className="text-sm min-h-[72px]"
-                    disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                    onChange={(e) => p.onHeatingFieldChange(stage.key, 'note', e.target.value)}
-                  />
-                  {Array.isArray(row.photos) && row.photos.length > 0 ? (
-                    <div className="grid grid-cols-3 gap-2">
-                      {row.photos.map((url, pi) => (
-                        <button
-                          key={`${stage.key}-p-${pi}`}
-                          type="button"
-                          className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
-                          onClick={() => p.onPhotoPreview(url)}
+                <Collapsible
+                  key={sid}
+                  open={open}
+                  onOpenChange={(o) => setHeatingStageOpen(sid, o)}
+                  className="rounded-xl border border-border/60 bg-muted/10 overflow-hidden"
+                >
+                  <CollapsibleTrigger className="group flex w-full min-h-[52px] cursor-pointer items-start justify-between gap-2 px-3 py-3 text-left hover:bg-muted/25 sm:min-h-0 sm:items-center sm:py-2.5">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {complete ? (
+                          <CheckCircle2
+                            className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                            aria-hidden
+                          />
+                        ) : (
+                          <Circle
+                            className={cn(
+                              'h-5 w-5 shrink-0',
+                              isFocus ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground/50'
+                            )}
+                            aria-hidden
+                          />
+                        )}
+                        <span className="text-sm font-semibold truncate">{stage.label}</span>
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            'text-[10px] shrink-0 font-medium sm:text-[11px]',
+                            complete &&
+                              'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200',
+                            !complete &&
+                              isFocus &&
+                              'bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100 ring-1 ring-amber-400/80'
+                          )}
                         >
-                          <img src={url} alt="" className="h-full w-full object-cover" />
-                        </button>
-                      ))}
+                          {badgeLabel}
+                        </Badge>
+                      </div>
+                      {!open ? (
+                        <p className="text-xs text-muted-foreground leading-snug pl-7 sm:pl-0 line-clamp-2">
+                          {heatingStageCollapseSummary(row)}
+                        </p>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
+                    <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 mt-0.5 sm:mt-0" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="space-y-3 border-t border-border/40 px-3 pb-3 pt-3">
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                          Measurements
+                        </p>
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                          <Input
+                            placeholder="Resistance (Ω)"
+                            value={row.resistance_ohm || ''}
+                            className="h-11 text-sm"
+                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
+                          />
+                          <Input
+                            placeholder="Insulation (MΩ)"
+                            value={row.insulation_mohm || ''}
+                            className="h-11 text-sm"
+                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            onChange={(e) => p.onHeatingFieldChange(stage.key, 'insulation_mohm', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                          Recorded as
+                        </p>
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-muted-foreground">When</span>
+                            <Input
+                              type="datetime-local"
+                              step={60}
+                              value={heatingCableDateForDatetimeLocalInput(row.date)}
+                              className="h-11 text-sm"
+                              disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                              onChange={(e) => p.onHeatingFieldChange(stage.key, 'date', e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-muted-foreground">Performed by</span>
+                            <Input
+                              placeholder="Name"
+                              value={row.performed_by || ''}
+                              className="h-11 text-sm"
+                              disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                              onChange={(e) => p.onHeatingFieldChange(stage.key, 'performed_by', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[11px] text-muted-foreground">Note (optional)</span>
+                        <Textarea
+                          placeholder="Note (optional)"
+                          value={row.note || ''}
+                          className="text-sm min-h-[56px]"
+                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          onChange={(e) => p.onHeatingFieldChange(stage.key, 'note', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                          Photos
+                        </p>
+                        <input
+                          ref={(el) => {
+                            p.heatingPhotoInputRefs.current[stage.key] = el;
+                          }}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => p.onHeatingStagePhotoChange(stage.key, e.target.files?.[0])}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="min-h-11 h-11 w-full sm:w-auto px-4 text-sm gap-1.5 sm:h-10 sm:min-h-10 sm:px-3"
+                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          onClick={() => p.heatingPhotoInputRefs.current[stage.key]?.click()}
+                        >
+                          <Camera className="h-4 w-4" />
+                          Add photo
+                        </Button>
+                        {Array.isArray(row.photos) && row.photos.length > 0 ? (
+                          <div className="grid grid-cols-3 gap-2">
+                            {row.photos.map((url, pi) => (
+                              <button
+                                key={`${stage.key}-p-${pi}`}
+                                type="button"
+                                className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
+                                onClick={() => p.onPhotoPreview(url)}
+                              >
+                                <img src={url} alt="" className="h-full w-full object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               );
             })}
             {(p.heatingCableDoc.extra_steps || []).map((step, idx) => {
-              const sid = step.id || `extra-${idx}`;
-              const has = heatingStageHasAnyData(step);
-              if (!has && !step.label?.trim()) return null;
+              const photoKey = step.id || `extra-${idx}`;
+              const visible = heatingExtraStepRowVisible(step);
+              if (!visible) return null;
+              const panelId = `extra:${idx}`;
+              const complete = isHeatingCableStageComplete(step);
+              const isFocus = focusStageId === panelId;
+              const open = heatingStageOpen(panelId);
+              const started = heatingStageHasAnyData(step);
+              const badgeLabel = complete ? 'Complete' : isFocus ? 'Now' : started ? 'In progress' : 'Not started';
+
               return (
-                <div key={sid} className="rounded-xl border border-border/60 bg-muted/10 p-3 space-y-3">
-                  <p className="text-sm font-semibold">{step.label?.trim() || `Extra step ${idx + 1}`}</p>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Input
-                      placeholder="Resistance (Ω)"
-                      value={step.resistance_ohm || ''}
-                      className="h-11 text-sm"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onChange={(e) => p.onExtraHeatingFieldChange(idx, 'resistance_ohm', e.target.value)}
-                    />
-                    <Input
-                      placeholder="Insulation (MΩ)"
-                      value={step.insulation_mohm || ''}
-                      className="h-11 text-sm"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onChange={(e) => p.onExtraHeatingFieldChange(idx, 'insulation_mohm', e.target.value)}
-                    />
-                    <Input
-                      type="date"
-                      value={step.date || ''}
-                      className="h-11 text-sm"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onChange={(e) => p.onExtraHeatingFieldChange(idx, 'date', e.target.value)}
-                    />
-                    <Input
-                      placeholder="Performed by"
-                      value={step.performed_by || ''}
-                      className="h-11 text-sm"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onChange={(e) => p.onExtraHeatingFieldChange(idx, 'performed_by', e.target.value)}
-                    />
-                  </div>
-                  <Textarea
-                    placeholder="Note (optional)"
-                    value={step.note || ''}
-                    className="text-sm min-h-[72px]"
-                    disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                    onChange={(e) => p.onExtraHeatingFieldChange(idx, 'note', e.target.value)}
-                  />
-                  <div className="flex items-center gap-2">
-                    <input
-                      ref={(el) => {
-                        p.heatingPhotoInputRefs.current[sid] = el;
-                      }}
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="hidden"
-                      onChange={(e) => p.onHeatingStagePhotoChange(sid, e.target.files?.[0])}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="min-h-11 h-11 px-4 text-sm gap-1.5 sm:h-10 sm:min-h-10 sm:px-3"
-                      disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                      onClick={() => p.heatingPhotoInputRefs.current[sid]?.click()}
-                    >
-                      <Camera className="h-4 w-4" />
-                      Add photo
-                    </Button>
-                  </div>
-                </div>
+                <Collapsible
+                  key={photoKey}
+                  open={open}
+                  onOpenChange={(o) => setHeatingStageOpen(panelId, o)}
+                  className="rounded-xl border border-border/60 bg-muted/10 overflow-hidden"
+                >
+                  <CollapsibleTrigger className="group flex w-full min-h-[52px] cursor-pointer items-start justify-between gap-2 px-3 py-3 text-left hover:bg-muted/25 sm:min-h-0 sm:items-center sm:py-2.5">
+                    <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {complete ? (
+                          <CheckCircle2
+                            className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                            aria-hidden
+                          />
+                        ) : (
+                          <Circle
+                            className={cn(
+                              'h-5 w-5 shrink-0',
+                              isFocus ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground/50'
+                            )}
+                            aria-hidden
+                          />
+                        )}
+                        <span className="text-sm font-semibold truncate">
+                          {step.label?.trim() || `Extra step ${idx + 1}`}
+                        </span>
+                        <Badge
+                          variant="secondary"
+                          className={cn(
+                            'text-[10px] shrink-0 font-medium sm:text-[11px]',
+                            complete &&
+                              'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200',
+                            !complete &&
+                              isFocus &&
+                              'bg-amber-100 text-amber-950 dark:bg-amber-950/40 dark:text-amber-100 ring-1 ring-amber-400/80'
+                          )}
+                        >
+                          {badgeLabel}
+                        </Badge>
+                      </div>
+                      {!open ? (
+                        <p className="text-xs text-muted-foreground leading-snug pl-7 sm:pl-0 line-clamp-2">
+                          {heatingStageCollapseSummary(step)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 mt-0.5 sm:mt-0" />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="space-y-3 border-t border-border/40 px-3 pb-3 pt-3">
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                          Measurements
+                        </p>
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                          <Input
+                            placeholder="Resistance (Ω)"
+                            value={step.resistance_ohm || ''}
+                            className="h-11 text-sm"
+                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            onChange={(e) => p.onExtraHeatingFieldChange(idx, 'resistance_ohm', e.target.value)}
+                          />
+                          <Input
+                            placeholder="Insulation (MΩ)"
+                            value={step.insulation_mohm || ''}
+                            className="h-11 text-sm"
+                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            onChange={(e) => p.onExtraHeatingFieldChange(idx, 'insulation_mohm', e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                          Recorded as
+                        </p>
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-muted-foreground">When</span>
+                            <Input
+                              type="datetime-local"
+                              step={60}
+                              value={heatingCableDateForDatetimeLocalInput(step.date)}
+                              className="h-11 text-sm"
+                              disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                              onChange={(e) => p.onExtraHeatingFieldChange(idx, 'date', e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[11px] text-muted-foreground">Performed by</span>
+                            <Input
+                              placeholder="Name"
+                              value={step.performed_by || ''}
+                              className="h-11 text-sm"
+                              disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                              onChange={(e) => p.onExtraHeatingFieldChange(idx, 'performed_by', e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[11px] text-muted-foreground">Note (optional)</span>
+                        <Textarea
+                          placeholder="Note (optional)"
+                          value={step.note || ''}
+                          className="text-sm min-h-[56px]"
+                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          onChange={(e) => p.onExtraHeatingFieldChange(idx, 'note', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                          Photos
+                        </p>
+                        <input
+                          ref={(el) => {
+                            p.heatingPhotoInputRefs.current[photoKey] = el;
+                          }}
+                          type="file"
+                          accept="image/*"
+                          capture="environment"
+                          className="hidden"
+                          onChange={(e) => p.onHeatingStagePhotoChange(photoKey, e.target.files?.[0])}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="min-h-11 h-11 w-full sm:w-auto px-4 text-sm gap-1.5 sm:h-10 sm:min-h-10 sm:px-3"
+                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          onClick={() => p.heatingPhotoInputRefs.current[photoKey]?.click()}
+                        >
+                          <Camera className="h-4 w-4" />
+                          Add photo
+                        </Button>
+                        {Array.isArray(step.photos) && step.photos.length > 0 ? (
+                          <div className="grid grid-cols-3 gap-2">
+                            {step.photos.map((url, pi) => (
+                              <button
+                                key={`${photoKey}-p-${pi}`}
+                                type="button"
+                                className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
+                                onClick={() => p.onPhotoPreview(url)}
+                              >
+                                <img src={url} alt="" className="h-full w-full object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               );
             })}
             {!p.heatingLockedByAdmin ? (

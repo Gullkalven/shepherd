@@ -95,7 +95,8 @@ function stageStarted(stage: HeatingCableStage | undefined): boolean {
   return heatingStageHasAnyData(stage);
 }
 
-function stageComplete(stage: HeatingCableStage | undefined): boolean {
+/** All required measurement fields present for a stage. */
+export function isHeatingCableStageComplete(stage: HeatingCableStage | undefined): boolean {
   if (!stage) return false;
   return (
     isFilled(stage.resistance_ohm) &&
@@ -105,16 +106,64 @@ function stageComplete(stage: HeatingCableStage | undefined): boolean {
   );
 }
 
+/** Value for `datetime-local` / legacy `date` inputs (local). */
+export function formatHeatingCableDatetimeLocalNow(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Normalize stored date string for HTML `datetime-local` value. */
+export function heatingCableDateForDatetimeLocalInput(stored: string | undefined): string {
+  if (!stored?.trim()) return '';
+  const s = stored.trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s)) return s.slice(0, 16);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T12:00`;
+  const parsed = Date.parse(s.replace(' ', 'T'));
+  if (!Number.isNaN(parsed)) {
+    const d = new Date(parsed);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  return s;
+}
+
+export type HeatingCableFocusTarget =
+  | { kind: 'main'; key: HeatingCableStageKey }
+  | { kind: 'extra'; index: number };
+
+/** First incomplete stage in order: three main stages, then extra steps (visible rows only). */
+export function getHeatingCableFocusTarget(doc: HeatingCableDoc): HeatingCableFocusTarget | null {
+  const normalized = normalizeHeatingCableDoc(doc);
+  for (const { key } of HEATING_CABLE_STAGES) {
+    if (!isHeatingCableStageComplete(normalized[key])) return { kind: 'main', key };
+  }
+  const extras = normalized.extra_steps || [];
+  for (let i = 0; i < extras.length; i++) {
+    const step = extras[i];
+    const visible = heatingStageHasAnyData(step) || Boolean(step.label?.trim());
+    if (!visible) continue;
+    if (!isHeatingCableStageComplete(step)) return { kind: 'extra', index: i };
+  }
+  return null;
+}
+
+/** Extra checklist rows only appear when they have data or a label. */
+export function heatingExtraStepRowVisible(step: HeatingCableStage | undefined): boolean {
+  if (!step) return false;
+  return heatingStageHasAnyData(step) || Boolean(step.label?.trim());
+}
+
 /** Count of fully documented stages vs total stages (fixed three + any extra steps). */
 export function heatingDocumentationProgress(docRaw: unknown): { complete: number; total: number } {
   const doc = normalizeHeatingCableDoc(docRaw);
   let complete = 0;
   for (const stage of HEATING_CABLE_STAGES) {
-    if (stageComplete(doc[stage.key])) complete++;
+    if (isHeatingCableStageComplete(doc[stage.key])) complete++;
   }
   const extras = doc.extra_steps || [];
   for (const raw of extras) {
-    if (stageComplete(normalizeStage(raw))) complete++;
+    if (isHeatingCableStageComplete(normalizeStage(raw))) complete++;
   }
   const total = HEATING_CABLE_STAGES.length + extras.length;
   return { complete, total };
@@ -132,7 +181,7 @@ export function deriveHeatingCableStatus(docRaw: unknown): HeatingCableDerived {
   for (const stage of HEATING_CABLE_STAGES) {
     const value = doc[stage.key];
     const started = stageStarted(value);
-    const complete = stageComplete(value);
+    const complete = isHeatingCableStageComplete(value);
     hasStartedAny = hasStartedAny || started;
     if (!complete) allComplete = false;
     if (!started) missingStages.push(stage.key);
@@ -143,7 +192,7 @@ export function deriveHeatingCableStatus(docRaw: unknown): HeatingCableDerived {
   for (const rawStage of doc.extra_steps || []) {
     const value = normalizeStage(rawStage);
     const started = stageStarted(value);
-    const complete = stageComplete(value);
+    const complete = isHeatingCableStageComplete(value);
     hasStartedAny = hasStartedAny || started;
     if (!complete) allComplete = false;
     if (started && !complete) hasMissingValues = true;

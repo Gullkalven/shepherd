@@ -1599,6 +1599,8 @@ export default function RoomDetail() {
               phaseCompleteEligible={workerPhaseCompleteEligible}
               onCompletePhase={() => void handleWorkerPhaseComplete()}
               completingPhase={completingWorkerPhase}
+              heatingDefaultPerformedBy={resolveSessionWorkerLabel(displayName)}
+              heatingCableSeedResetKey={room.id}
             />
           </>
         ) : (
