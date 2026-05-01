@@ -8,8 +8,17 @@ export type WorkerLastRoom = {
   savedAt: string;
 };
 
-export function workerRoomPath(projectId: number, floorId: number, roomId: number): string {
-  return `/project/${projectId}/floor/${floorId}/room/${roomId}`;
+/** Matches `id` on the checklist heading in `WorkerRoomView` — scroll target after navigation from Today. */
+export const WORKER_ROOM_CHECKLIST_ANCHOR = 'worker-checklist-heading';
+
+export function workerRoomPath(
+  projectId: number,
+  floorId: number,
+  roomId: number,
+  options?: { focusChecklist?: boolean }
+): string {
+  const base = `/project/${projectId}/floor/${floorId}/room/${roomId}`;
+  return options?.focusChecklist ? `${base}#${WORKER_ROOM_CHECKLIST_ANCHOR}` : base;
 }
 
 export function readWorkerLastRoom(): WorkerLastRoom | null {

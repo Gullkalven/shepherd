@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { client } from '@/lib/api';
-import { persistWorkerLastRoom } from '@/lib/workerLastRoom';
+import { persistWorkerLastRoom, WORKER_ROOM_CHECKLIST_ANCHOR } from '@/lib/workerLastRoom';
 import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -248,6 +248,7 @@ export default function RoomDetail() {
     floorId: string;
     roomId: string;
   }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const {
@@ -477,6 +478,19 @@ export default function RoomDetail() {
       roomNumber: room.room_number,
     });
   }, [permissionsLoading, isWorker, room, projectId, floorId, roomId]);
+
+  /** After opening a room from Today (`#worker-checklist-heading`), land on checklist instead of only the location chrome. */
+  useEffect(() => {
+    if (permissionsLoading || !isWorker || loading || !room) return;
+    if (location.hash !== `#${WORKER_ROOM_CHECKLIST_ANCHOR}`) return;
+    const id = requestAnimationFrame(() => {
+      document.getElementById(WORKER_ROOM_CHECKLIST_ANCHOR)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [permissionsLoading, isWorker, loading, room?.id, location.hash]);
 
   useEffect(() => {
     if (!room) return;
