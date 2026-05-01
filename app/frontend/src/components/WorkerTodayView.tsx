@@ -90,6 +90,9 @@ function sortRooms(a: EnrichedRoom, b: EnrichedRoom): number {
 
 const ACTIONABLE = new Set(['not_started', 'in_progress', 'ready_for_inspection']);
 
+/** Backend rejects higher limits with 422 (see FloorDetail / routers/tasks.py). */
+const TASKS_QUERY_LIMIT = 2000;
+
 export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
   const navigate = useNavigate();
   const { displayName } = usePermissions();
@@ -97,6 +100,10 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
   const [roomsFlat, setRoomsFlat] = useState<EnrichedRoom[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /** True when the projects/sites list request failed (distinct from “org has no sites”). */
+  const [sitesLoadError, setSitesLoadError] = useState(false);
+  /** Task checklist summary failed; rooms/sites may still be usable. */
+  const [taskSummaryUnavailable, setTaskSummaryUnavailable] = useState(false);
   const [lastLocal, setLastLocal] = useState<WorkerLastRoom | null>(() => readWorkerLastRoom());
 
   const loadTodayData = useCallback(async () => {
@@ -106,24 +113,51 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
       setProjects([]);
       setRoomsFlat([]);
       setTasks([]);
+      setSitesLoadError(false);
+      setTaskSummaryUnavailable(false);
       setLoading(false);
       return;
     }
     setLoading(true);
+    setSitesLoadError(false);
+    setTaskSummaryUnavailable(false);
+
+    const useProjectsAll = !devHost;
+    let plist: ProjectRow[] = [];
+
     try {
-      const useProjectsAll = !devHost;
       const projRes = useProjectsAll
         ? await fetchProjectsListAll()
         : await client.entities.projects.query({ sort: '-created_at' });
-      const plist = (projRes?.data?.items || []) as ProjectRow[];
+      plist = (projRes?.data?.items || []) as ProjectRow[];
       setProjects(plist);
+    } catch (err) {
+      console.error('[WorkerToday] projects load failed', err);
+      setSitesLoadError(true);
+      setProjects([]);
+      setRoomsFlat([]);
+      setTasks([]);
+      toast.error('Could not load your sites. Check connection and try again.');
+      setLoading(false);
+      return;
+    }
 
-      const tasksRes = await client.entities.tasks.query({ limit: 5000, sort: 'room_id' });
+    try {
+      const tasksRes = await client.entities.tasks.query({
+        limit: TASKS_QUERY_LIMIT,
+        sort: 'room_id',
+      });
       setTasks((tasksRes?.data?.items || []) as TaskRow[]);
+    } catch (err) {
+      console.error('[WorkerToday] tasks summary failed', err);
+      setTasks([]);
+      setTaskSummaryUnavailable(true);
+    }
 
-      const enriched: EnrichedRoom[] = [];
-      for (let i = 0; i < plist.length; i++) {
-        const p = plist[i];
+    const enriched: EnrichedRoom[] = [];
+    for (let i = 0; i < plist.length; i++) {
+      const p = plist[i];
+      try {
         const [floorsRes, roomsRes] = await Promise.all([
           client.entities.floors.query({
             query: { project_id: p.id },
@@ -153,17 +187,13 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
             updated_at: r.updated_at,
           });
         }
+      } catch (err) {
+        console.error('[WorkerToday] floors/rooms for project failed', p.id, err);
       }
-      enriched.sort(sortRooms);
-      setRoomsFlat(enriched);
-    } catch {
-      toast.error('Could not load Today');
-      setProjects([]);
-      setRoomsFlat([]);
-      setTasks([]);
-    } finally {
-      setLoading(false);
     }
+    enriched.sort(sortRooms);
+    setRoomsFlat(enriched);
+    setLoading(false);
   }, [hasUser]);
 
   useEffect(() => {
@@ -270,13 +300,32 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
           <p className="text-sm text-muted-foreground">My rooms{greeting}</p>
         </div>
 
-        {projects.length === 0 ? (
+        {sitesLoadError ? (
+          <Card className="border-amber-200/80 bg-amber-50/40 p-6 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
+            <p className="text-sm font-medium text-slate-900 dark:text-foreground">Couldn&apos;t load your sites</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Check your connection, then try again. Your sign-in is still active.
+            </p>
+            <Button
+              type="button"
+              className="mt-4 bg-[#1E3A5F] hover:bg-[#2a4f7a] dark:bg-blue-700 dark:hover:bg-blue-600"
+              onClick={() => void loadTodayData()}
+            >
+              Retry
+            </Button>
+          </Card>
+        ) : projects.length === 0 ? (
           <Card className="p-8 text-center">
             <Layers className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
             <p className="text-muted-foreground">No sites yet</p>
           </Card>
         ) : (
           <div className="space-y-3">
+            {taskSummaryUnavailable && (
+              <Card className="border-dashed border-amber-200/70 bg-amber-50/30 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100/90">
+                Checklist progress couldn&apos;t be loaded. You can still open sites and rooms below.
+              </Card>
+            )}
             {primaryRoom && (
               <Button
                 type="button"
@@ -297,6 +346,22 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
               </Button>
             )}
 
+            {!primaryRoom && primaryProject && (
+              <Button
+                type="button"
+                variant="default"
+                onClick={() => navigate(`/project/${primaryProject.id}`)}
+                className="h-auto min-h-[5rem] w-full flex-row items-stretch justify-between gap-4 rounded-2xl bg-[#1E3A5F] px-5 py-5 text-left shadow-lg transition hover:bg-[#2a4f7a] dark:bg-blue-700 dark:hover:bg-blue-600"
+              >
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <span className="block text-lg font-bold leading-tight text-white">Open site</span>
+                  <span className="block text-base font-semibold text-white/95">{primaryProject.name}</span>
+                  <span className="block text-sm leading-snug text-white/80">No rooms assigned today</span>
+                </div>
+                <ChevronRight className="h-7 w-7 shrink-0 self-center text-white/90" aria-hidden />
+              </Button>
+            )}
+
             {alternateReady && (
               <Card
                 className="shepherd-interactive-card cursor-pointer p-4 transition hover:bg-slate-50/80 dark:hover:bg-slate-900/50"
@@ -312,13 +377,6 @@ export default function WorkerTodayView({ hasUser }: WorkerTodayViewProps) {
                   </div>
                   <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground mt-0.5" />
                 </div>
-              </Card>
-            )}
-
-            {!resumeRoom && !fallbackReady && (
-              <Card className="border-dashed p-5 text-center">
-                <p className="text-sm font-medium text-slate-800 dark:text-foreground">No rooms ready right now</p>
-                <p className="mt-1 text-sm text-muted-foreground">Check blocked rooms below or open a site.</p>
               </Card>
             )}
 
