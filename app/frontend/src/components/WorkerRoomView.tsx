@@ -3,12 +3,15 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Camera,
+  Calendar,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   Circle,
   Clock,
   History,
@@ -202,6 +205,35 @@ function StyledFilePhotoTrigger(props: {
         </span>
       </button>
     </>
+  );
+}
+
+/** Wraps native `datetime-local` with spacing for a calendar affordance (still uses OS picker). */
+function HeatingDatetimeField(props: {
+  id?: string;
+  value: string;
+  disabled?: boolean;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <Calendar
+        className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        aria-hidden
+      />
+      <Input
+        id={props.id}
+        type="datetime-local"
+        step={60}
+        value={props.value}
+        disabled={props.disabled}
+        onChange={(e) => props.onChange(e.target.value)}
+        className={cn(
+          'h-11 pl-10 text-sm [color-scheme:light] dark:[color-scheme:dark]',
+          '[&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-2 [&::-webkit-calendar-picker-indicator]:top-1/2 [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:-translate-y-1/2 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70'
+        )}
+      />
+    </div>
   );
 }
 
@@ -440,173 +472,271 @@ export function WorkerRoomView(p: Props) {
     p.boardPhaseWorkReady,
   ]);
 
+  const nextStepBanner = useMemo(() => {
+    if (p.blockedReason) return null;
+    if (p.editsBlocked) {
+      return {
+        tone: 'muted' as const,
+        title: 'Next step',
+        body: 'This room is view-only - you can review details below.',
+      };
+    }
+    if (viewingNonBoard) {
+      return {
+        tone: 'neutral' as const,
+        title: 'Where you are',
+        body: `Today's work is in "${boardLabel}". Jump below when you're ready to continue there.`,
+      };
+    }
+    if (p.phaseCompleteEligible && !p.phaseReadOnly) {
+      return {
+        tone: 'success' as const,
+        title: 'Next step',
+        body: 'Complete the phase — your checklist and required documentation are done.',
+      };
+    }
+    const firstIncomplete = p.tasksForSelectedPhase.find((t) => !t.is_completed);
+    if (firstIncomplete) {
+      return {
+        tone: 'primary' as const,
+        title: 'Next step',
+        body: firstIncomplete.name,
+      };
+    }
+    if (p.boardPhaseShowHeating && !p.boardPhaseWorkReady && focusStageLabel) {
+      return {
+        tone: 'primary' as const,
+        title: 'Next step',
+        body: `Heating cable · ${focusStageLabel}`,
+      };
+    }
+    if (p.boardPhaseShowHeating && boardHeatingDocProgress && !p.boardPhaseWorkReady) {
+      return {
+        tone: 'primary' as const,
+        title: 'Next step',
+        body: `Finish heating documentation (${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages done).`,
+      };
+    }
+    return {
+      tone: 'muted' as const,
+      title: 'Status',
+      body: p.boardPhaseWorkReady
+        ? 'Required work for this phase is complete - finish below when you are ready.'
+        : 'Continue in the checklist and sections below.',
+    };
+  }, [
+    p.blockedReason,
+    p.editsBlocked,
+    viewingNonBoard,
+    boardLabel,
+    p.phaseCompleteEligible,
+    p.phaseReadOnly,
+    p.tasksForSelectedPhase,
+    p.boardPhaseShowHeating,
+    p.boardPhaseWorkReady,
+    focusStageLabel,
+    boardHeatingDocProgress,
+  ]);
+
+  const heroStatPrimary = useMemo(() => {
+    if (p.boardPhaseTotalCount > 0) {
+      return {
+        label: 'Tasks left',
+        value: String(p.boardPhaseIncompleteCount),
+        sub:
+          p.boardPhaseTotalCount > 0
+            ? `${p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/${p.boardPhaseTotalCount} done`
+            : undefined,
+      };
+    }
+    if (p.boardPhaseShowHeating && boardHeatingDocProgress) {
+      const left = boardHeatingDocProgress.total - boardHeatingDocProgress.complete;
+      return {
+        label: 'Doc stages left',
+        value: String(Math.max(0, left)),
+        sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} complete`,
+      };
+    }
+    return {
+      label: 'Tasks left',
+      value: '0',
+      sub: 'No checklist items',
+    };
+  }, [p.boardPhaseTotalCount, p.boardPhaseIncompleteCount, p.boardPhaseShowHeating, boardHeatingDocProgress]);
+
   return (
-    <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-4 sm:space-y-3 sm:px-4 sm:py-5 lg:max-w-xl">
-      {/* Room hero: status, room #, phase, work state, progress */}
-      <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.08] via-background to-background shadow-sm dark:from-blue-950/45 dark:via-background dark:to-background">
-        <div className="space-y-3 p-4 sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <Badge
-                className={cn(
-                  'border-0 text-[11px] font-semibold uppercase tracking-wide sm:text-[10px]',
-                  p.roomStatusClassName
-                )}
-              >
-                {p.roomStatusLabel}
-              </Badge>
-              <span
-                className={cn(
-                  'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium sm:text-[10px]',
-                  heroWorkState.className
-                )}
-              >
-                {heroWorkState.label}
-              </span>
-            </div>
+    <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-4 sm:space-y-4 sm:px-4 sm:py-5 lg:max-w-xl">
+      {/* Room hero — room #, phase, tasks, ready/blocked, next step */}
+      <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.09] via-background to-background shadow-md ring-1 ring-black/[0.03] dark:from-blue-950/45 dark:via-background dark:to-background dark:ring-white/[0.06]">
+        <div className="space-y-4 p-4 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+            <Badge
+              className={cn(
+                'border-0 text-[10px] font-semibold uppercase tracking-wide sm:text-[10px]',
+                p.roomStatusClassName
+              )}
+            >
+              {p.roomStatusLabel}
+            </Badge>
             {p.dueLine ? (
               <span
                 className={cn(
-                  'shrink-0 text-[11px] font-medium tabular-nums sm:text-[10px]',
-                  p.duePast ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
+                  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums sm:text-[10px]',
+                  p.duePast
+                    ? 'bg-red-500/10 text-red-700 dark:text-red-400'
+                    : 'text-muted-foreground'
                 )}
               >
+                <Clock className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
                 Due {p.dueLine}
-                {p.duePast ? (
-                  <>
-                    <span className="max-sm:hidden"> · overdue</span>
-                    <span className="sm:hidden"> · late</span>
-                  </>
-                ) : null}
+                {p.duePast ? <span className="font-semibold"> · Overdue</span> : null}
               </span>
             ) : null}
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1">
             {p.areaName ? (
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/85">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/90">
                 {p.areaName}
               </p>
             ) : null}
-            <h1 className="text-[1.75rem] font-semibold leading-none tracking-tight text-foreground sm:text-[2rem]">
+            <h1 className="text-[2rem] font-bold leading-[1.05] tracking-tight text-foreground sm:text-[2.25rem]">
               {p.roomNumber}
             </h1>
-            <div className="space-y-1 pt-1">
-              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/75">
-                Current phase
+          </div>
+
+          <div className="rounded-xl border border-border/50 bg-background/60 px-3.5 py-3 dark:bg-background/40">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Current phase
+            </p>
+            <p className="mt-1 text-lg font-semibold leading-snug text-foreground sm:text-xl">{boardLabel}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3.5 py-3 dark:bg-background/50">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                {heroStatPrimary.label}
               </p>
-              <p className="text-base font-medium leading-snug text-foreground/95 sm:text-[1.0625rem]">
-                {boardLabel}
+              <p className="mt-2 text-3xl font-bold tabular-nums tracking-tight text-foreground">
+                {heroStatPrimary.value}
               </p>
+              {heroStatPrimary.sub ? (
+                <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">{heroStatPrimary.sub}</p>
+              ) : null}
+            </div>
+            <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3.5 py-3 dark:bg-background/50">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Work status
+              </p>
+              <div className="mt-2 flex flex-1 flex-col justify-center">
+                <span
+                  className={cn(
+                    'inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-semibold',
+                    heroWorkState.className
+                  )}
+                >
+                  {heroWorkState.label}
+                </span>
+                {p.boardPhaseShowHeating ? (
+                  <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
+                    Heating ·{' '}
+                    <span className="font-medium text-foreground/90">
+                      {p.boardPhaseWorkReady ? 'Done' : heatingStatusLabel[p.heatingDerived.status]}
+                    </span>
+                  </p>
+                ) : null}
+              </div>
             </div>
           </div>
 
+          {nextStepBanner ? (
+            <div
+              className={cn(
+                'rounded-xl border px-3.5 py-3 sm:px-4 sm:py-3.5',
+                nextStepBanner.tone === 'primary' &&
+                  'border-[#1E3A5F]/35 bg-[#1E3A5F]/[0.07] dark:border-blue-600/50 dark:bg-blue-950/35',
+                nextStepBanner.tone === 'success' &&
+                  'border-emerald-400/45 bg-emerald-50/95 dark:border-emerald-700/50 dark:bg-emerald-950/40',
+                nextStepBanner.tone === 'neutral' &&
+                  'border-border/60 bg-muted/30 dark:bg-muted/20',
+                nextStepBanner.tone === 'muted' && 'border-border/50 bg-muted/20'
+              )}
+            >
+              <div className="flex items-start gap-2.5">
+                <div
+                  className={cn(
+                    'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
+                    nextStepBanner.tone === 'primary' &&
+                      'bg-[#1E3A5F]/15 text-[#1E3A5F] dark:bg-blue-500/20 dark:text-blue-200',
+                    nextStepBanner.tone === 'success' &&
+                      'bg-emerald-600/15 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100',
+                    nextStepBanner.tone === 'neutral' && 'bg-muted text-muted-foreground',
+                    nextStepBanner.tone === 'muted' && 'bg-muted/80 text-muted-foreground'
+                  )}
+                >
+                  <ChevronRight className="h-4 w-4" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p
+                    className={cn(
+                      'text-[10px] font-bold uppercase tracking-[0.14em]',
+                      nextStepBanner.tone === 'primary' && 'text-[#1E3A5F]/90 dark:text-blue-300/90',
+                      nextStepBanner.tone === 'success' && 'text-emerald-800 dark:text-emerald-200',
+                      nextStepBanner.tone === 'neutral' && 'text-muted-foreground',
+                      nextStepBanner.tone === 'muted' && 'text-muted-foreground'
+                    )}
+                  >
+                    {nextStepBanner.title}
+                  </p>
+                  <p
+                    className={cn(
+                      'text-[15px] font-semibold leading-snug sm:text-base',
+                      nextStepBanner.tone === 'primary' && 'text-foreground',
+                      nextStepBanner.tone === 'success' && 'text-emerald-950 dark:text-emerald-50',
+                      nextStepBanner.tone === 'neutral' && 'text-foreground/95',
+                      nextStepBanner.tone === 'muted' && 'text-muted-foreground'
+                    )}
+                  >
+                    {nextStepBanner.body}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {p.blockedReason ? (
-            <div className="rounded-lg border border-red-200/80 bg-red-50/90 px-3 py-2 text-sm text-red-900 dark:border-red-900/55 dark:bg-red-950/40 dark:text-red-100">
-              <span className="font-semibold">Blocked</span>
-              <p className="mt-1 text-xs leading-snug text-red-800/95 dark:text-red-100/90">
-                {p.blockedReason}
-              </p>
+            <div className="flex gap-2 rounded-xl border border-red-300/60 bg-red-50/95 px-3.5 py-3 text-sm text-red-950 dark:border-red-900/55 dark:bg-red-950/45 dark:text-red-50">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <div>
+                <span className="font-semibold">Blocked</span>
+                <p className="mt-1 text-xs leading-relaxed text-red-900/95 dark:text-red-100/90">
+                  {p.blockedReason}
+                </p>
+              </div>
             </div>
           ) : null}
 
           {p.editsBlocked ? (
-            <div className="flex items-start gap-2 rounded-lg border border-border/55 bg-muted/25 px-3 py-2 text-xs text-muted-foreground">
-              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-              <span className="leading-snug">This room is locked for editing.</span>
+            <div className="flex items-start gap-2.5 rounded-xl border border-border/55 bg-muted/25 px-3.5 py-3 text-xs text-muted-foreground">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0 opacity-80" aria-hidden />
+              <span className="leading-relaxed">This room is locked for editing.</span>
             </div>
           ) : null}
-
-          <div className="space-y-2 rounded-xl border border-border/55 bg-background/75 px-3 py-3 dark:bg-background/55">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/75">
-              Progress
-            </p>
-            {p.phaseCompleteEligible && !p.phaseReadOnly ? (
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200">
-                  Ready for handoff
-                </p>
-                <p className="text-sm leading-snug text-foreground/95">
-                  Next: <span className="font-semibold">Complete phase</span> below.
-                </p>
-                {p.boardPhaseShowHeating ? (
-                  <p className="text-xs leading-snug text-muted-foreground">
-                    Checklist and heating documentation are complete for this phase.
-                  </p>
-                ) : p.boardPhaseTotalCount > 0 ? (
-                  <p className="text-xs leading-snug text-muted-foreground">
-                    All checklist tasks for this phase are complete.
-                  </p>
-                ) : (
-                  <p className="text-xs leading-snug text-muted-foreground">
-                    Required work for this phase is complete.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {p.boardPhaseShowHeating && boardHeatingDocProgress ? (
-                  <p className="text-sm text-foreground/95">
-                    <span className="font-medium">Documentation</span>{' '}
-                    <span className="tabular-nums font-semibold">
-                      {boardHeatingDocProgress.complete}/{boardHeatingDocProgress.total}
-                    </span>
-                    <span className="text-muted-foreground"> complete</span>
-                  </p>
-                ) : p.boardPhaseTotalCount > 0 ? (
-                  <p className="text-sm text-foreground/95">
-                    <span className="tabular-nums font-semibold">{p.boardPhaseIncompleteCount}</span>
-                    <span className="text-muted-foreground">
-                      {' '}
-                      {p.boardPhaseIncompleteCount === 1 ? 'task' : 'tasks'} remaining
-                    </span>
-                    <span className="text-muted-foreground/90 max-sm:hidden"> · </span>
-                    <span className="text-xs tabular-nums text-muted-foreground max-sm:hidden">
-                      {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/{p.boardPhaseTotalCount} done
-                    </span>
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No checklist items in this phase.</p>
-                )}
-                {p.boardPhaseShowHeating && p.boardPhaseTotalCount > 0 ? (
-                  <p className="text-xs tabular-nums text-muted-foreground sm:hidden">
-                    Checklist {p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/
-                    {p.boardPhaseTotalCount} done
-                  </p>
-                ) : null}
-                {p.boardPhaseShowHeating ? (
-                  <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>Heating cable</span>
-                    <span
-                      className={cn(
-                        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
-                        p.boardPhaseWorkReady
-                          ? 'border-emerald-400/50 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100'
-                          : 'border-border/70 bg-muted/40 text-foreground/90'
-                      )}
-                    >
-                      {p.boardPhaseWorkReady ? 'Complete' : heatingStatusLabel[p.heatingDerived.status]}
-                    </span>
-                  </p>
-                ) : null}
-              </div>
-            )}
-          </div>
         </div>
       </Card>
 
-      {/* Area picker — compact chips */}
+      {/* Area picker — secondary, compact */}
       {p.showAreasNav && p.areasList.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {p.areasList.map((a) => (
             <button
               key={a.id}
               type="button"
               className={cn(
-                'min-h-10 rounded-full border px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:min-h-9 sm:py-1.5',
+                'min-h-9 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                 a.id === p.activeAreaId
                   ? 'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm dark:border-blue-600 dark:bg-blue-700'
-                  : 'border-border/55 bg-background/90 text-muted-foreground hover:border-border hover:bg-muted/35 hover:text-foreground'
+                  : 'border-border/40 bg-background/60 text-muted-foreground hover:border-border/70 hover:bg-muted/30 hover:text-foreground'
               )}
               onClick={() => p.onAreaChange(a.id)}
             >
@@ -616,14 +746,14 @@ export function WorkerRoomView(p: Props) {
         </div>
       ) : null}
 
-      {/* Phase tabs — horizontal scroll on narrow viewports */}
+      {/* Phase tabs — low visual weight, scroll on narrow viewports */}
       {workflowKeys.length > 1 ? (
-        <div className="rounded-xl border border-border/45 bg-muted/12 px-2 py-2">
-          <p className="mb-2 px-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/75">
+        <div className="rounded-lg border border-border/35 bg-muted/5 px-2 py-2 sm:py-1.5">
+          <p className="mb-1.5 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
             Phases
           </p>
-          <div className="-mx-1 overflow-x-auto overscroll-x-contain px-1 [-webkit-overflow-scrolling:touch]">
-            <div className="flex w-max max-w-none gap-2 pb-0.5">
+          <div className="-mx-0.5 overflow-x-auto overscroll-x-contain px-0.5 [-webkit-overflow-scrolling:touch]">
+            <div className="flex w-max max-w-none gap-1.5 pb-0.5">
               {workflowKeys.map((key) => {
                 const isBoard = key === p.boardPhaseKey;
                 const isSel = key === p.selectedPhaseKey;
@@ -632,11 +762,11 @@ export function WorkerRoomView(p: Props) {
                     key={key}
                     type="button"
                     className={cn(
-                      'flex max-w-[14rem] shrink-0 items-center gap-1.5 rounded-full border px-3 py-2 text-left text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:max-w-none sm:py-1.5',
+                      'flex max-w-[14rem] shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:max-w-none sm:py-1.5 sm:text-xs',
                       isSel
                         ? 'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm dark:border-blue-600 dark:bg-blue-700'
-                        : 'border-transparent bg-background/85 text-muted-foreground hover:bg-muted/45 hover:text-foreground',
-                      !isSel && !isBoard && 'opacity-[0.82]'
+                        : 'border-border/30 bg-background/80 text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+                      !isSel && !isBoard && 'opacity-80'
                     )}
                     onClick={() => p.onPhaseSelect(key)}
                   >
@@ -701,23 +831,18 @@ export function WorkerRoomView(p: Props) {
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
               <Button
                 type="button"
-                variant={nonBoardDetailsExpanded ? 'outline' : 'default'}
-                className={cn(
-                  'h-11 min-h-11 w-full sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1',
-                  !nonBoardDetailsExpanded &&
-                    'bg-[#1E3A5F] hover:bg-[#1E3A5F]/90 dark:bg-blue-700 dark:hover:bg-blue-700/90'
-                )}
-                onClick={() => setNonBoardDetailsExpanded((v) => !v)}
+                className="h-11 min-h-11 w-full bg-[#1E3A5F] hover:bg-[#1E3A5F]/90 dark:bg-blue-700 dark:hover:bg-blue-700/90 sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1"
+                onClick={() => p.onPhaseSelect(p.boardPhaseKey)}
               >
-                {nonBoardDetailsExpanded ? 'Hide details' : 'View details'}
+                Jump to active phase
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="h-11 min-h-11 w-full border-border/60 font-normal text-muted-foreground hover:bg-muted/40 hover:text-foreground sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1"
-                onClick={() => p.onPhaseSelect(p.boardPhaseKey)}
+                className="h-11 min-h-11 w-full border-border/60 sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1"
+                onClick={() => setNonBoardDetailsExpanded((v) => !v)}
               >
-                Jump to active phase
+                {nonBoardDetailsExpanded ? 'Hide details' : 'View details'}
               </Button>
             </div>
           </div>
@@ -726,11 +851,11 @@ export function WorkerRoomView(p: Props) {
 
       {/* Checklist — large action rows (before heating so checklist stays above long forms) */}
       {showFullPhaseDetails && p.showChecklistSection ? (
-        <section aria-labelledby="worker-checklist-heading">
+        <section aria-labelledby="worker-checklist-heading" className="scroll-mt-20">
           <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
             <h2
               id="worker-checklist-heading"
-              className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80"
+              className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/85"
             >
               {p.checklistSectionTitle}
             </h2>
@@ -840,11 +965,14 @@ export function WorkerRoomView(p: Props) {
                         </div>
                       </button>
                       {p.showPhotosSection && p.canUploadPhoto && isActiveTask ? (
-                        <div className="border-t border-border/40 px-4 pb-4 pt-3 sm:px-6 sm:pb-5 bg-muted/20 dark:bg-muted/10">
+                        <div className="border-t border-border/40 bg-muted/20 px-4 pb-4 pt-3 dark:bg-muted/10 sm:px-6 sm:pb-5">
+                          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            Photo for this task
+                          </p>
                           <Button
                             type="button"
                             variant="secondary"
-                            className="h-12 min-h-12 w-full text-base font-semibold gap-2 shadow-sm sm:h-11"
+                            className="h-12 min-h-12 w-full gap-2 text-base font-semibold shadow-sm sm:h-11"
                             disabled={!p.canMutatePhaseMedia || p.uploadingPhoto}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -852,23 +980,6 @@ export function WorkerRoomView(p: Props) {
                             }}
                           >
                             <Camera className="h-5 w-5 shrink-0" />
-                            Add photo
-                          </Button>
-                        </div>
-                      ) : p.showPhotosSection && p.canUploadPhoto && !task.is_completed && !isActiveTask ? (
-                        <div className="border-t border-border/30 px-4 pb-3 pt-2 sm:px-4">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-10 w-full text-xs text-muted-foreground gap-1.5"
-                            disabled={!p.canMutatePhaseMedia || p.uploadingPhoto}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              p.onGeneralPhotoClick();
-                            }}
-                          >
-                            <Camera className="h-3.5 w-3.5" />
                             Add photo
                           </Button>
                         </div>
@@ -1005,20 +1116,23 @@ export function WorkerRoomView(p: Props) {
                           Recorded as
                         </p>
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-muted-foreground">When</span>
-                            <Input
-                              type="datetime-local"
-                              step={60}
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`heat-${sid}-when`} className="text-[11px] font-medium text-muted-foreground">
+                              When
+                            </Label>
+                            <HeatingDatetimeField
+                              id={`heat-${sid}-when`}
                               value={heatingCableDateForDatetimeLocalInput(row.date)}
-                              className="h-11 text-sm"
                               disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                              onChange={(e) => p.onHeatingFieldChange(stage.key, 'date', e.target.value)}
+                              onChange={(v) => p.onHeatingFieldChange(stage.key, 'date', v)}
                             />
                           </div>
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-muted-foreground">Performed by</span>
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`heat-${sid}-by`} className="text-[11px] font-medium text-muted-foreground">
+                              Performed by
+                            </Label>
                             <Input
+                              id={`heat-${sid}-by`}
                               placeholder="Name"
                               value={row.performed_by || ''}
                               className="h-11 text-sm"
@@ -1157,20 +1271,29 @@ export function WorkerRoomView(p: Props) {
                           Recorded as
                         </p>
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-muted-foreground">When</span>
-                            <Input
-                              type="datetime-local"
-                              step={60}
+                          <div className="space-y-1.5">
+                            <Label
+                              htmlFor={`heat-extra-${photoKey}-when`}
+                              className="text-[11px] font-medium text-muted-foreground"
+                            >
+                              When
+                            </Label>
+                            <HeatingDatetimeField
+                              id={`heat-extra-${photoKey}-when`}
                               value={heatingCableDateForDatetimeLocalInput(step.date)}
-                              className="h-11 text-sm"
                               disabled={!p.canEditHeatingCable || p.savingHeatingCable}
-                              onChange={(e) => p.onExtraHeatingFieldChange(idx, 'date', e.target.value)}
+                              onChange={(v) => p.onExtraHeatingFieldChange(idx, 'date', v)}
                             />
                           </div>
-                          <div className="space-y-1">
-                            <span className="text-[11px] text-muted-foreground">Performed by</span>
+                          <div className="space-y-1.5">
+                            <Label
+                              htmlFor={`heat-extra-${photoKey}-by`}
+                              className="text-[11px] font-medium text-muted-foreground"
+                            >
+                              Performed by
+                            </Label>
                             <Input
+                              id={`heat-extra-${photoKey}-by`}
                               placeholder="Name"
                               value={step.performed_by || ''}
                               className="h-11 text-sm"
@@ -1237,8 +1360,11 @@ export function WorkerRoomView(p: Props) {
 
       {/* Complete phase — primary CTA after required work (checklist + heating) */}
       {showFullPhaseDetails && p.phaseCompleteEligible && !p.phaseReadOnly ? (
-        <Card className="overflow-hidden border-2 border-emerald-500/50 bg-gradient-to-b from-emerald-50/90 to-emerald-50/40 shadow-lg dark:from-emerald-950/50 dark:to-emerald-950/25 dark:border-emerald-600/45">
-          <div className="p-5 sm:p-6 space-y-4">
+        <Card
+          id="worker-complete-phase"
+          className="scroll-mt-20 overflow-hidden border-2 border-emerald-500/50 bg-gradient-to-b from-emerald-50/90 to-emerald-50/40 shadow-lg dark:from-emerald-950/50 dark:to-emerald-950/25 dark:border-emerald-600/45"
+        >
+          <div className="space-y-4 p-5 sm:p-6">
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/90 dark:text-emerald-200/90">
                 Ready to continue
@@ -1246,8 +1372,8 @@ export function WorkerRoomView(p: Props) {
               <p className="text-xl font-bold tracking-tight text-emerald-950 dark:text-emerald-50">
                 Complete this phase
               </p>
-              <p className="text-sm text-emerald-900/85 dark:text-emerald-100/85 leading-snug">
-                Required work for {selectedLabel} is finished. Confirm handoff so the team can move on.
+              <p className="text-sm leading-snug text-emerald-900/85 dark:text-emerald-100/85">
+                Everything required for {selectedLabel} is done. Confirm to hand off.
               </p>
             </div>
             <Button
@@ -1265,8 +1391,10 @@ export function WorkerRoomView(p: Props) {
 
       {/* Phase photos (compact) */}
       {showFullPhaseDetails && p.showPhotosSection && p.photosForPhase.length > 0 ? (
-        <Card className="p-3 border-border/50">
-          <p className="mb-2 hidden text-xs font-medium text-muted-foreground sm:block">Photos this phase</p>
+        <Card className="border-border/50 p-3">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Photos this phase
+          </p>
           <div className="grid grid-cols-3 gap-2">
             {p.photosForPhase.map((photo) => (
               <button
@@ -1286,93 +1414,101 @@ export function WorkerRoomView(p: Props) {
         </Card>
       ) : null}
 
-      {/* Deviations */}
+      {/* Issues & activity — single secondary card */}
       {showFullPhaseDetails ? (
-      <Collapsible defaultOpen={false} className="rounded-lg border border-border/40 bg-muted/5">
-        <CollapsibleTrigger className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left text-sm text-muted-foreground hover:bg-muted/20 rounded-lg sm:min-h-0 sm:py-2.5">
-          <span className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600/90 sm:h-4 sm:w-4" />
-            <span className="leading-snug">Report issue</span>
-            {p.deviations.length > 0 ? (
-              <Badge variant="secondary" className="text-xs sm:text-[10px]">
-                {p.deviations.length}
-              </Badge>
-            ) : null}
-          </span>
-          <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 sm:h-4 sm:w-4" />
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="px-3 pb-3 pt-0 space-y-2 border-t border-border/40">
-            {p.deviations.length > 0 ? (
-              <ul className="space-y-2 pt-2">
-                {p.deviations.map((d) => (
-                  <li
-                    key={d.id}
-                    className={cn(
-                      'rounded-md border px-2.5 py-2 text-sm',
-                      d.status === 'resolved' ? 'border-border/60 bg-muted/20' : 'border-amber-200/70 bg-amber-50/50 dark:bg-amber-950/25'
-                    )}
-                  >
-                    {d.text}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-muted-foreground pt-2">No issues logged for this phase.</p>
-            )}
-            {p.canAddDeviation ? (
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch pt-2">
-                <Input
-                  placeholder="Describe the issue…"
-                  value={p.newDeviationText}
-                  onChange={(e) => p.onNewDeviationChange(e.target.value)}
-                  className="h-12 min-h-12 text-base sm:h-11 sm:min-h-11 sm:text-sm"
-                  disabled={p.savingDeviations}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') p.onAddDeviation();
-                  }}
-                />
-                <Button
-                  type="button"
-                  className="h-12 min-h-12 w-full shrink-0 sm:h-11 sm:min-h-11 sm:w-auto"
-                  disabled={!p.newDeviationText.trim() || p.savingDeviations}
-                  onClick={() => p.onAddDeviation()}
-                >
-                  Add
-                </Button>
+        <Card className="overflow-hidden border-border/30 bg-muted/[0.06] shadow-none">
+          <p className="border-b border-border/25 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
+            More on this phase
+          </p>
+          <Collapsible defaultOpen={false}>
+            <CollapsibleTrigger className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted/25 sm:min-h-0">
+              <span className="flex min-w-0 flex-1 items-center gap-2.5">
+                <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600/90" />
+                <span className="leading-snug">Report issue</span>
+                {p.deviations.length > 0 ? (
+                  <Badge variant="secondary" className="text-[10px]">
+                    {p.deviations.length}
+                  </Badge>
+                ) : null}
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="space-y-2 border-t border-border/25 px-3 pb-3 pt-2">
+                {p.deviations.length > 0 ? (
+                  <ul className="space-y-2">
+                    {p.deviations.map((d) => (
+                      <li
+                        key={d.id}
+                        className={cn(
+                          'rounded-md border px-2.5 py-2 text-sm',
+                          d.status === 'resolved'
+                            ? 'border-border/60 bg-muted/20'
+                            : 'border-amber-200/70 bg-amber-50/50 dark:bg-amber-950/25'
+                        )}
+                      >
+                        {d.text}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No issues logged for this phase.</p>
+                )}
+                {p.canAddDeviation ? (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch pt-1">
+                    <Input
+                      placeholder="Describe the issue…"
+                      value={p.newDeviationText}
+                      onChange={(e) => p.onNewDeviationChange(e.target.value)}
+                      className="h-12 min-h-12 text-base sm:h-11 sm:min-h-11 sm:text-sm"
+                      disabled={p.savingDeviations}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') p.onAddDeviation();
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="h-12 min-h-12 w-full shrink-0 sm:h-11 sm:min-h-11 sm:w-auto"
+                      disabled={!p.newDeviationText.trim() || p.savingDeviations}
+                      onClick={() => p.onAddDeviation()}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-      ) : null}
-
-      {showFullPhaseDetails ? (
-      <Collapsible defaultOpen={false} className="rounded-lg border border-border/40 bg-muted/5">
-        <CollapsibleTrigger className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left text-sm text-muted-foreground hover:bg-muted/20 rounded-lg sm:min-h-0 sm:py-2.5">
-          <span className="flex items-center gap-3 sm:gap-2">
-            <History className="h-5 w-5 sm:h-4 sm:w-4" />
-            Activity
-          </span>
-          <ChevronDown className="h-5 w-5 shrink-0 transition-transform group-data-[state=open]:rotate-180 sm:h-4 sm:w-4" />
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <div className="px-3 pb-3 max-h-48 overflow-y-auto space-y-1.5 text-xs border-t border-border/40 pt-2">
-            {p.activityEntries.length === 0 ? (
-              <p className="text-muted-foreground py-1">Nothing logged for this phase yet.</p>
-            ) : (
-              p.activityEntries.map((row, i) => (
-                <div key={`${row.t}-${i}`} className="flex gap-2 border-b border-border/30 pb-1.5 last:border-0">
-                  <span className="text-muted-foreground whitespace-nowrap shrink-0 w-14">
-                    {p.formatActivityWhen(row.t)}
-                  </span>
-                  <span className="min-w-0 leading-snug">{row.msg}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+            </CollapsibleContent>
+          </Collapsible>
+          <Collapsible defaultOpen={false}>
+            <CollapsibleTrigger className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 border-t border-border/25 px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted/25 sm:min-h-0">
+              <span className="flex items-center gap-2.5">
+                <History className="h-4 w-4 shrink-0 opacity-80" />
+                Activity
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="max-h-48 space-y-1.5 overflow-y-auto border-t border-border/25 px-3 pb-3 pt-2 text-xs">
+                {p.activityEntries.length === 0 ? (
+                  <p className="text-muted-foreground py-1">Nothing logged for this phase yet.</p>
+                ) : (
+                  p.activityEntries.map((row, i) => (
+                    <div
+                      key={`${row.t}-${i}`}
+                      className="flex gap-2 border-b border-border/25 pb-1.5 last:border-0"
+                    >
+                      <span className="w-14 shrink-0 whitespace-nowrap text-muted-foreground">
+                        {p.formatActivityWhen(row.t)}
+                      </span>
+                      <span className="min-w-0 leading-snug">{row.msg}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        </Card>
       ) : null}
     </div>
   );
