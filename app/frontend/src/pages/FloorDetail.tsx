@@ -23,6 +23,15 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Plus,
   DoorOpen,
   LayoutGrid,
@@ -86,7 +95,7 @@ function logTemplateDebug(phase: string, payload: Record<string, unknown>) {
 export default function FloorDetail() {
   const { projectId, floorId } = useParams<{ projectId: string; floorId: string }>();
   const navigate = useNavigate();
-  const { canCreateRoom, canDeleteRoom, canChangeStatus, canMovePhase, canEdit } = usePermissions();
+  const { canCreateRoom, canDeleteRoom, canChangeStatus, canMovePhase, canEdit, isAdmin } = usePermissions();
   const [project, setProject] = useState<any>(null);
   const [floor, setFloor] = useState<any>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -124,6 +133,9 @@ export default function FloorDetail() {
   const [templateName, setTemplateName] = useState('');
   const [templateItemsText, setTemplateItemsText] = useState('');
   const [savingTemplate, setSavingTemplate] = useState(false);
+  const [syncingRoomsFromTemplate, setSyncingRoomsFromTemplate] = useState(false);
+  const [showDeleteTemplateConfirm, setShowDeleteTemplateConfirm] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
   /** Guards template editor loads so a slow response cannot overwrite a newer selection. */
   const templateEditRequestIdRef = useRef(0);
   /**
@@ -704,6 +716,7 @@ export default function FloorDetail() {
   };
 
   const handleSaveTemplate = async () => {
+    if (!isAdmin) return;
     const name = templateName.trim();
     const itemNames = templateItemsText.split('\n').map((i) => i.trim()).filter(Boolean);
     if (!name || itemNames.length === 0) {
@@ -767,7 +780,7 @@ export default function FloorDetail() {
         )
       );
 
-      toast.success('Template saved');
+      toast.success(`Template saved: "${name}"`);
       const savedIdStr = String(templateId);
       selectedTemplateIdRef.current = savedIdStr;
       setEditingTemplateId(savedIdStr);
@@ -781,34 +794,65 @@ export default function FloorDetail() {
   };
 
   const handleSyncTemplate = async () => {
+    if (!isAdmin) return;
     const syncId = selectedTemplateIdRef.current || editingTemplateId;
     if (!syncId) {
       toast.error('Select a template first');
       return;
     }
+    setSyncingRoomsFromTemplate(true);
     try {
       const res = await client.apiCall.invoke({
         url: `/api/v1/entities/checklist_templates/${syncId}/sync-rooms`,
         method: 'POST',
         data: {},
       });
-      const summary = res?.data;
-      toast.success(
-        `Synced rooms: +${summary?.added ?? 0} updated ${summary?.updated ?? 0} removed ${summary?.removed ?? 0}`
-      );
+      const summary = res?.data as
+        | {
+            rooms_affected?: number;
+            added?: number;
+            updated?: number;
+            removed?: number;
+            message?: string;
+          }
+        | undefined;
+      const rooms = Number(summary?.rooms_affected ?? 0);
+      const added = Number(summary?.added ?? 0);
+      const updated = Number(summary?.updated ?? 0);
+      const removed = Number(summary?.removed ?? 0);
+      if (rooms === 0) {
+        toast.success('Update finished. No rooms use this template yet, so nothing was changed.');
+      } else {
+        toast.success(
+          `Rooms updated from template: ${rooms}. Checklist lines — added ${added}, updated ${updated}, removed ${removed}.`
+        );
+      }
     } catch {
-      toast.error('Failed to sync rooms from template');
+      toast.error('Could not update rooms from template. Try again or check your connection.');
+    } finally {
+      setSyncingRoomsFromTemplate(false);
     }
   };
 
-  const handleDeleteTemplate = async () => {
+  const openDeleteTemplateConfirm = () => {
+    if (!isAdmin) return;
     const templateId = selectedTemplateIdRef.current || editingTemplateId;
     if (!templateId) {
       toast.error('Select a template first');
       return;
     }
-    if (!confirm('Are you sure you want to delete this template?')) return;
+    setShowDeleteTemplateConfirm(true);
+  };
 
+  const confirmDeleteTemplate = async () => {
+    if (!isAdmin) return;
+    const templateId = selectedTemplateIdRef.current || editingTemplateId;
+    if (!templateId) {
+      toast.error('Select a template first');
+      return;
+    }
+
+    setDeletingTemplate(true);
     try {
       await client.apiCall.invoke({
         url: `/api/v1/entities/checklist_templates/${templateId}`,
@@ -821,6 +865,7 @@ export default function FloorDetail() {
       setEditingTemplateId('');
       setTemplateName('');
       setTemplateItemsText('');
+      setShowDeleteTemplateConfirm(false);
       toast.success('Template deleted');
     } catch (e: unknown) {
       const err = e as { data?: { detail?: string }; response?: { data?: { detail?: string } }; message?: string };
@@ -830,6 +875,8 @@ export default function FloorDetail() {
       } else {
         toast.error('Failed to delete template');
       }
+    } finally {
+      setDeletingTemplate(false);
     }
   };
 
@@ -1036,13 +1083,15 @@ export default function FloorDetail() {
                   Phases
                 </Button>
               )}
-              <Button
-                variant="outline"
-                onClick={() => setShowTemplatesDialog(true)}
-                className="h-10 rounded-xl"
-              >
-                Templates
-              </Button>
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowTemplatesDialog(true)}
+                  className="h-10 rounded-xl"
+                >
+                  Templates
+                </Button>
+              )}
               <Button
                 variant="outline"
                 onClick={() => setShowBulkCreate(true)}
@@ -1527,75 +1576,114 @@ export default function FloorDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Checklist Templates Dialog */}
-      <Dialog open={showTemplatesDialog} onOpenChange={setShowTemplatesDialog}>
-        <DialogContent className="max-w-lg mx-4">
-          <DialogForm onSubmit={(e) => { e.preventDefault(); handleSaveTemplate(); }}>
-          <DialogHeader>
-            <DialogTitle>Checklist Templates</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <select
-              value={editingTemplateId}
-              onChange={(e) => {
-                const v = e.target.value;
-                selectedTemplateIdRef.current = v;
-                logTemplateDebug('select_dom', { value: v });
-                void loadTemplateForEdit(v);
-              }}
-              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="">New template</option>
-              {templates.map((t) => (
-                <option key={t.id} value={String(t.id)}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <Input
-              placeholder="Template name"
-              value={templateName}
-              onChange={(e) => setTemplateName(e.target.value)}
-              className="h-10"
-            />
-            <textarea
-              value={templateItemsText}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  handleSaveTemplate();
-                }
-              }}
-              onChange={(e) => setTemplateItemsText(e.target.value)}
-              rows={10}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              placeholder={"Cable routing\nInstall wall boxes\nHeating cable installation"}
-            />
-            <p className="text-xs text-muted-foreground">One checklist item per line.</p>
-            <p className="text-xs text-muted-foreground">
-              Deleting a template removes this template and its line list. Existing room checklists are not deleted.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleSyncTemplate} disabled={!editingTemplateId || savingTemplate}>
-              Update rooms from template
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleDeleteTemplate}
-              disabled={!editingTemplateId || savingTemplate}
-              className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
-            >
-              Delete Template
-            </Button>
-            <Button type="submit" disabled={savingTemplate}>
-              {savingTemplate ? 'Saving...' : 'Save Template'}
-            </Button>
-          </DialogFooter>
-          </DialogForm>
-        </DialogContent>
-      </Dialog>
+      {/* Checklist Templates Dialog — admins only (destructive / sync actions) */}
+      {isAdmin && (
+        <>
+          <Dialog
+            open={showTemplatesDialog}
+            onOpenChange={(open) => {
+              setShowTemplatesDialog(open);
+              if (!open) setShowDeleteTemplateConfirm(false);
+            }}
+          >
+            <DialogContent className="max-w-lg mx-4">
+              <DialogForm onSubmit={(e) => { e.preventDefault(); handleSaveTemplate(); }}>
+                <DialogHeader>
+                  <DialogTitle>Checklist Templates</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3">
+                  <select
+                    value={editingTemplateId}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      selectedTemplateIdRef.current = v;
+                      logTemplateDebug('select_dom', { value: v });
+                      void loadTemplateForEdit(v);
+                    }}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">New template</option>
+                    {templates.map((t) => (
+                      <option key={t.id} value={String(t.id)}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    placeholder="Template name"
+                    value={templateName}
+                    onChange={(e) => setTemplateName(e.target.value)}
+                    className="h-10"
+                  />
+                  <textarea
+                    value={templateItemsText}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        handleSaveTemplate();
+                      }
+                    }}
+                    onChange={(e) => setTemplateItemsText(e.target.value)}
+                    rows={10}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    placeholder={'Cable routing\nInstall wall boxes\nHeating cable installation'}
+                  />
+                  <p className="text-xs text-muted-foreground">One checklist item per line.</p>
+                </div>
+                <DialogFooter className="flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  {editingTemplateId ? (
+                    <>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void handleSyncTemplate()}
+                        disabled={savingTemplate || syncingRoomsFromTemplate || deletingTemplate}
+                      >
+                        {syncingRoomsFromTemplate ? 'Updating…' : 'Update rooms from template'}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => openDeleteTemplateConfirm()}
+                        disabled={savingTemplate || syncingRoomsFromTemplate || deletingTemplate}
+                        className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
+                      >
+                        Delete Template
+                      </Button>
+                    </>
+                  ) : null}
+                  <Button type="submit" disabled={savingTemplate || syncingRoomsFromTemplate}>
+                    {savingTemplate ? 'Saving...' : 'Save Template'}
+                  </Button>
+                </DialogFooter>
+              </DialogForm>
+            </DialogContent>
+          </Dialog>
+
+          <AlertDialog open={showDeleteTemplateConfirm} onOpenChange={setShowDeleteTemplateConfirm}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete this template?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This removes the template &quot;{templateName.trim() || 'Untitled'}&quot; and its line list from your
+                  library. Existing room checklists are not deleted.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={deletingTemplate}>Cancel</AlertDialogCancel>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={deletingTemplate}
+                  onClick={() => void confirmDeleteTemplate()}
+                >
+                  {deletingTemplate ? 'Deleting…' : 'Delete template'}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
 
       {/* Project workflow phases — admin only */}
       <Dialog open={showWorkflowDialog} onOpenChange={setShowWorkflowDialog}>

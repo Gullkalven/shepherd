@@ -44,6 +44,7 @@ import {
   deriveHeatingCableStatus,
   isHeatingCablePhase,
   type HeatingCableDoc,
+  type HeatingCableStage,
   type HeatingCableStageKey,
 } from '@/lib/heatingCable';
 
@@ -56,6 +57,18 @@ const STATUS_OPTIONS = [
 ];
 
 const WORKER_NAME_KEY = 'trello_v2_worker_name';
+
+/** Prefer signed-in display name; legacy localStorage only when the profile has no name. */
+function resolveSessionWorkerLabel(displayName: string | null | undefined): string {
+  const fromSession = displayName?.trim();
+  if (fromSession) return fromSession;
+  try {
+    return localStorage.getItem(WORKER_NAME_KEY)?.trim() || '';
+  } catch {
+    return '';
+  }
+}
+
 interface Task {
   id: number;
   name: string;
@@ -238,6 +251,8 @@ export default function RoomDetail() {
     canEditRoom, canDeleteRoom, canChangeStatus, canAddChecklistItem, canDeleteChecklistItem,
     canCheckItem, canUploadPhoto, canDeletePhoto, canMovePhase,
     sectionVisibility,
+    displayName,
+    loading: permissionsLoading,
   } = usePermissions();
 
   const [project, setProject] = useState<any>(null);
@@ -261,10 +276,22 @@ export default function RoomDetail() {
   const [newDeviationText, setNewDeviationText] = useState('');
   const [savingDeviations, setSavingDeviations] = useState(false);
 
-  // Checklist identity state
+  // Checklist identity state (dialog only when profile + legacy name are both unavailable)
   const [showCheckNameDialog, setShowCheckNameDialog] = useState(false);
   const [checkWorkerName, setCheckWorkerName] = useState('');
   const [pendingTask, setPendingTask] = useState<Task | null>(null);
+  /** Bumps when legacy localStorage worker name changes so the optional banner re-reads storage. */
+  const [workerFallbackRevision, setWorkerFallbackRevision] = useState(0);
+
+  const legacySavedWorkerName = useMemo(() => {
+    void workerFallbackRevision;
+    if (displayName?.trim()) return '';
+    try {
+      return localStorage.getItem(WORKER_NAME_KEY)?.trim() || '';
+    } catch {
+      return '';
+    }
+  }, [displayName, workerFallbackRevision]);
 
   // Add checklist item state
   const [showAddTask, setShowAddTask] = useState(false);
@@ -528,13 +555,15 @@ export default function RoomDetail() {
   const handleTaskClick = (task: Task) => {
     if (!canCheckItem) return;
     if (room?.is_locked && !canEdit) return;
-    const savedName = localStorage.getItem(WORKER_NAME_KEY);
-    if (savedName) {
-      executeToggleTask(task, savedName);
-    } else {
-      setPendingTask(task);
-      setShowCheckNameDialog(true);
+    const label = resolveSessionWorkerLabel(displayName);
+    if (label) {
+      executeToggleTask(task, label);
+      return;
     }
+    if (permissionsLoading) return;
+    setPendingTask(task);
+    setCheckWorkerName(localStorage.getItem(WORKER_NAME_KEY) || '');
+    setShowCheckNameDialog(true);
   };
 
   const executeToggleTask = async (task: Task, workerName: string) => {
@@ -568,6 +597,7 @@ export default function RoomDetail() {
     if (!checkWorkerName.trim() || !pendingTask) return;
     const name = checkWorkerName.trim();
     localStorage.setItem(WORKER_NAME_KEY, name);
+    setWorkerFallbackRevision((r) => r + 1);
     setShowCheckNameDialog(false);
     executeToggleTask(pendingTask, name);
     setPendingTask(null);
@@ -576,6 +606,7 @@ export default function RoomDetail() {
   const handleClearSavedName = () => {
     localStorage.removeItem(WORKER_NAME_KEY);
     setCheckWorkerName('');
+    setWorkerFallbackRevision((r) => r + 1);
     toast.success('Saved name cleared');
   };
 
@@ -1062,20 +1093,33 @@ export default function RoomDetail() {
     field: 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
     value: string
   ) => {
-    setHeatingCableDoc((prev) => ({
-      ...prev,
-      [stageKey]: {
+    const defaultPerformer = resolveSessionWorkerLabel(displayName);
+    setHeatingCableDoc((prev) => {
+      const row: HeatingCableStage = {
         ...(prev[stageKey] || {}),
         [field]: value,
-      },
-    }));
+      };
+      const measurementKeys = ['resistance_ohm', 'insulation_mohm', 'date'] as const;
+      if (
+        defaultPerformer &&
+        (measurementKeys as readonly string[]).includes(field) &&
+        value.trim() &&
+        !(row.performed_by?.trim())
+      ) {
+        row.performed_by = defaultPerformer;
+      }
+      return {
+        ...prev,
+        [stageKey]: row,
+      };
+    });
   };
 
   const saveHeatingCableDoc = async () => {
     if (!room) return;
     setSavingHeatingCable(true);
     try {
-      const savedName = (localStorage.getItem(WORKER_NAME_KEY) || '').trim();
+      const performerFallback = resolveSessionWorkerLabel(displayName);
       const normalizedWithWorker: HeatingCableDoc = {
         ...heatingCableDoc,
       };
@@ -1086,12 +1130,25 @@ export default function RoomDetail() {
           Boolean(row.insulation_mohm?.trim()) ||
           Boolean(row.date?.trim()) ||
           Boolean(row.note?.trim());
-        if (hasAnyValue && !row.performed_by?.trim() && savedName) {
+        if (hasAnyValue && !row.performed_by?.trim() && performerFallback) {
           normalizedWithWorker[stage.key] = {
             ...row,
-            performed_by: savedName,
+            performed_by: performerFallback,
           };
         }
+      }
+      if (Array.isArray(normalizedWithWorker.extra_steps) && performerFallback) {
+        normalizedWithWorker.extra_steps = normalizedWithWorker.extra_steps.map((row) => {
+          const hasAnyValue =
+            Boolean(row.resistance_ohm?.trim()) ||
+            Boolean(row.insulation_mohm?.trim()) ||
+            Boolean(row.date?.trim()) ||
+            Boolean(row.note?.trim());
+          if (hasAnyValue && !row.performed_by?.trim()) {
+            return { ...row, performed_by: performerFallback };
+          }
+          return row;
+        });
       }
       const payload: HeatingCableDoc = {
         ...normalizedWithWorker,
@@ -1132,10 +1189,20 @@ export default function RoomDetail() {
     field: 'label' | 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
     value: string
   ) => {
+    const defaultPerformer = resolveSessionWorkerLabel(displayName);
     setHeatingCableDoc((prev) => {
       const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
-      const step = extra[stepIndex] || {};
-      extra[stepIndex] = { ...step, [field]: value };
+      const step: HeatingCableStage = { ...(extra[stepIndex] || {}), [field]: value };
+      const measurementKeys = ['resistance_ohm', 'insulation_mohm', 'date'] as const;
+      if (
+        defaultPerformer &&
+        (measurementKeys as readonly string[]).includes(field) &&
+        value.trim() &&
+        !(step.performed_by?.trim())
+      ) {
+        step.performed_by = defaultPerformer;
+      }
+      extra[stepIndex] = step;
       return { ...prev, extra_steps: extra };
     });
   };
@@ -1320,7 +1387,6 @@ export default function RoomDetail() {
 
   const currentStatus = STATUS_OPTIONS.find((s) => s.value === room.status) || STATUS_OPTIONS[0];
   const uniqueWorkers = [...new Set(visits.map((v) => v.worker_name))];
-  const savedWorkerName = localStorage.getItem(WORKER_NAME_KEY);
   const editsBlocked = Boolean(room.is_locked) && !canEdit;
   const boardPhaseNorm = normalizeRoomPhase(areasList[0]?.phase ?? room.phase, phaseWorkflow);
   const areaMainPhaseNorm = normalizeRoomPhase(activeArea?.phase ?? room.phase, phaseWorkflow);
@@ -2107,12 +2173,12 @@ export default function RoomDetail() {
                       </div>
                       <div className="p-1.5 sm:p-2 pt-1.5">
 
-                      {savedWorkerName && (
+                      {legacySavedWorkerName ? (
                         <div className="flex items-center justify-between gap-2 rounded-md border border-border/50 bg-muted/20 px-1.5 py-1 mb-1.5">
                           <div className="flex items-center gap-1.5 min-w-0">
                             <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                             <span className="text-[10px] text-muted-foreground truncate">
-                              As <strong className="text-foreground/90">{savedWorkerName}</strong>
+                              Using saved name <strong className="text-foreground/90">{legacySavedWorkerName}</strong>
                             </span>
                           </div>
                           <button
@@ -2120,10 +2186,10 @@ export default function RoomDetail() {
                             className="text-[10px] text-muted-foreground hover:text-foreground hover:underline shrink-0"
                             onClick={handleClearSavedName}
                           >
-                            Change
+                            Clear
                           </button>
                         </div>
-                      )}
+                      ) : null}
 
                       <div className="divide-y divide-border/50 rounded-md border border-border/50 bg-background dark:bg-background/80">
                         {tasksForPhase.length === 0 ? (
@@ -2636,7 +2702,7 @@ export default function RoomDetail() {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Enter your name so we can track who checked this item. Your name will be remembered for future checks.
+              Your account has no display name set. Enter a name once here to record checklist actions on this device, or set your name in your profile.
             </p>
             <Input
               placeholder="e.g., John Smith"
