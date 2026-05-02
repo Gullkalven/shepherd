@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import {
   HEATING_CABLE_STAGES,
+  HEATING_CABLE_DERIVED_STATUS_LABEL,
   formatHeatingCableDatetimeLocalNow,
   formatHeatingCablePerformedShort,
   getHeatingCableFocusTarget,
@@ -349,13 +350,6 @@ export function WorkerRoomView(p: Props) {
   const selectedHeatingDocProgress = p.showHeatingModule
     ? heatingDocumentationProgress(p.heatingCableDoc)
     : null;
-  const heatingStatusLabel: Record<string, string> = {
-    not_started: 'Not started',
-    partial: 'In progress',
-    complete: 'Complete',
-    has_deviation_missing: 'Needs attention',
-  };
-
   const workflowKeys = p.phaseWorkflow.map((x) => x.key);
 
   const focusTarget = useMemo(() => getHeatingCableFocusTarget(p.heatingCableDoc), [p.heatingCableDoc]);
@@ -512,7 +506,7 @@ export function WorkerRoomView(p: Props) {
     }
     if (p.phaseCompleteEligible && !p.phaseReadOnly) {
       return {
-        label: 'Ready',
+        label: 'Ready for handoff',
         className:
           'border-emerald-400/55 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-50',
       };
@@ -541,43 +535,43 @@ export function WorkerRoomView(p: Props) {
     if (p.editsBlocked) {
       return {
         tone: 'muted' as const,
-        title: 'Next step',
-        body: 'This room is view-only - you can review details below.',
+        title: 'Next action',
+        body: 'This room is view-only — review sections below.',
       };
     }
     if (viewingNonBoard) {
       return {
         tone: 'neutral' as const,
-        title: 'Where you are',
-        body: `Today's work is in "${boardLabel}". Jump below when you're ready to continue there.`,
+        title: 'Current focus',
+        body: `Active work is in "${boardLabel}". Switch below when you’re ready to continue there.`,
       };
     }
     if (p.phaseCompleteEligible && !p.phaseReadOnly) {
       return {
         tone: 'success' as const,
-        title: 'Next step',
-        body: 'Complete the phase — your checklist and required documentation are done.',
+        title: 'Next action',
+        body: 'Complete this phase — checklist and required documentation are done.',
       };
     }
     const firstIncomplete = p.tasksForSelectedPhase.find((t) => !t.is_completed);
     if (firstIncomplete) {
       return {
         tone: 'primary' as const,
-        title: 'Next step',
+        title: 'Next action',
         body: firstIncomplete.name,
       };
     }
     if (p.boardPhaseShowHeating && !p.boardPhaseWorkReady && focusStageLabel) {
       return {
         tone: 'primary' as const,
-        title: 'Next step',
+        title: 'Next action',
         body: `Heating cable · ${focusStageLabel}`,
       };
     }
     if (p.boardPhaseShowHeating && boardHeatingDocProgress && !p.boardPhaseWorkReady) {
       return {
         tone: 'primary' as const,
-        title: 'Next step',
+        title: 'Next action',
         body: `Finish heating documentation (${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages done).`,
       };
     }
@@ -605,7 +599,7 @@ export function WorkerRoomView(p: Props) {
   const heroStatPrimary = useMemo(() => {
     if (p.boardPhaseTotalCount > 0) {
       return {
-        label: 'Tasks left',
+        label: 'Checklist',
         value: String(p.boardPhaseIncompleteCount),
         sub:
           p.boardPhaseTotalCount > 0
@@ -616,23 +610,23 @@ export function WorkerRoomView(p: Props) {
     if (p.boardPhaseShowHeating && boardHeatingDocProgress) {
       const left = boardHeatingDocProgress.total - boardHeatingDocProgress.complete;
       return {
-        label: 'Doc stages left',
+        label: 'Heating docs',
         value: String(Math.max(0, left)),
-        sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} complete`,
+        sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages done`,
       };
     }
     return {
-      label: 'Tasks left',
+      label: 'Checklist',
       value: '0',
-      sub: 'No checklist items',
+      sub: 'No items this phase',
     };
   }, [p.boardPhaseTotalCount, p.boardPhaseIncompleteCount, p.boardPhaseShowHeating, boardHeatingDocProgress]);
 
   return (
-    <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-4 sm:space-y-4 sm:px-4 sm:py-5 lg:max-w-xl">
-      {/* Room hero — room #, phase, tasks, ready/blocked, next step */}
+    <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4 lg:max-w-xl">
+      {/* Room hero — room #, phase, progress, next action */}
       <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.09] via-background to-background shadow-md ring-1 ring-black/[0.03] dark:from-blue-950/45 dark:via-background dark:to-background dark:ring-white/[0.06]">
-        <div className="space-y-4 p-4 sm:p-6">
+        <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
             <Badge
               className={cn(
@@ -658,57 +652,67 @@ export function WorkerRoomView(p: Props) {
             ) : null}
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             {p.areaName ? (
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/90">
                 {p.areaName}
               </p>
             ) : null}
-            <h1 className="text-[2rem] font-bold leading-[1.05] tracking-tight text-foreground sm:text-[2.25rem]">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Room</p>
+            <h1 className="text-[1.85rem] font-bold leading-[1.08] tracking-tight text-foreground sm:text-[2.1rem]">
               {p.roomNumber}
             </h1>
           </div>
 
-          <div className="rounded-xl border border-border/50 bg-background/60 px-3.5 py-3 dark:bg-background/40">
+          <div className="rounded-xl border border-border/50 bg-background/60 px-3.5 py-2.5 dark:bg-background/40">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Current phase
             </p>
-            <p className="mt-1 text-lg font-semibold leading-snug text-foreground sm:text-xl">{boardLabel}</p>
+            <p className="mt-0.5 text-lg font-semibold leading-snug text-foreground sm:text-xl">{boardLabel}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3.5 py-3 dark:bg-background/50">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                {heroStatPrimary.label}
-              </p>
-              <p className="mt-2 text-3xl font-bold tabular-nums tracking-tight text-foreground">
-                {heroStatPrimary.value}
-              </p>
-              {heroStatPrimary.sub ? (
-                <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">{heroStatPrimary.sub}</p>
-              ) : null}
-            </div>
-            <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3.5 py-3 dark:bg-background/50">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Work status
-              </p>
-              <div className="mt-2 flex flex-1 flex-col justify-center">
-                <span
-                  className={cn(
-                    'inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-semibold',
-                    heroWorkState.className
-                  )}
-                >
-                  {heroWorkState.label}
-                </span>
-                {p.boardPhaseShowHeating ? (
-                  <p className="mt-2 text-[11px] leading-snug text-muted-foreground">
-                    Heating ·{' '}
-                    <span className="font-medium text-foreground/90">
-                      {p.boardPhaseWorkReady ? 'Done' : heatingStatusLabel[p.heatingDerived.status]}
-                    </span>
+          <div className="space-y-2">
+            <p className="px-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Progress
+            </p>
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+              <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  {heroStatPrimary.label}
+                </p>
+                <p className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-3xl">
+                  {heroStatPrimary.value}
+                </p>
+                {heroStatPrimary.sub ? (
+                  <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground sm:text-xs">
+                    {heroStatPrimary.sub}
                   </p>
                 ) : null}
+              </div>
+              <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Status
+                </p>
+                <div className="mt-1.5 flex flex-1 flex-col justify-center">
+                  <span
+                    className={cn(
+                      'inline-flex w-fit max-w-full items-center rounded-full border px-2 py-1 text-[11px] font-semibold leading-tight sm:text-xs',
+                      heroWorkState.className
+                    )}
+                  >
+                    {heroWorkState.label}
+                  </span>
+                  {p.boardPhaseShowHeating ? (
+                    <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+                      Heating ·{' '}
+                      <span className="font-medium text-foreground/90">
+                        {p.boardPhaseWorkReady
+                          ? 'Complete'
+                          : HEATING_CABLE_DERIVED_STATUS_LABEL[p.heatingDerived.status]}
+                      </span>
+                    </p>
+                  ) : null}
+                </div>
               </div>
             </div>
           </div>
@@ -789,67 +793,82 @@ export function WorkerRoomView(p: Props) {
         </div>
       </Card>
 
-      {/* Area picker — secondary, compact */}
+      {/* Area picker — secondary */}
       {p.showAreasNav && p.areasList.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {p.areasList.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              className={cn(
-                'min-h-9 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-                a.id === p.activeAreaId
-                  ? 'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm dark:border-blue-600 dark:bg-blue-700'
-                  : 'border-border/40 bg-background/60 text-muted-foreground hover:border-border/70 hover:bg-muted/30 hover:text-foreground'
-              )}
-              onClick={() => p.onAreaChange(a.id)}
-            >
-              {a.name}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1.5 rounded-lg border border-border/20 bg-muted/[0.03] px-2 py-2">
+          <span className="w-full text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75 px-0.5">
+            Area
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {p.areasList.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className={cn(
+                  'min-h-9 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                  a.id === p.activeAreaId
+                    ? 'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm dark:border-blue-600 dark:bg-blue-700'
+                    : 'border-border/40 bg-background/60 text-muted-foreground hover:border-border/70 hover:bg-muted/30 hover:text-foreground'
+                )}
+                onClick={() => p.onAreaChange(a.id)}
+              >
+                {a.name}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
 
-      {/* Phase tabs — low visual weight, scroll on narrow viewports */}
+      {/* Phase switcher — collapsed by default to keep the hero action-first */}
       {workflowKeys.length > 1 ? (
-        <div className="rounded-lg border border-border/35 bg-muted/5 px-2 py-2 sm:py-1.5">
-          <p className="mb-1.5 px-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-            Phases
-          </p>
-          <div className="-mx-0.5 overflow-x-auto overscroll-x-contain px-0.5 [-webkit-overflow-scrolling:touch]">
-            <div className="flex w-max max-w-none gap-1.5 pb-0.5">
-              {workflowKeys.map((key) => {
-                const isBoard = key === p.boardPhaseKey;
-                const isSel = key === p.selectedPhaseKey;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    className={cn(
-                      'flex max-w-[14rem] shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:max-w-none sm:py-1.5 sm:text-xs',
-                      isSel
-                        ? 'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm dark:border-blue-600 dark:bg-blue-700'
-                        : 'border-border/30 bg-background/80 text-muted-foreground hover:bg-muted/40 hover:text-foreground',
-                      !isSel && !isBoard && 'opacity-80'
-                    )}
-                    onClick={() => p.onPhaseSelect(key)}
-                  >
-                    {isBoard ? (
-                      <span
+        <Collapsible defaultOpen={false} className="rounded-lg border border-border/25 bg-muted/[0.04]">
+          <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:py-2">
+            <span className="min-w-0">
+              <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
+                Phase view
+              </span>
+              <span className="mt-0.5 block truncate text-sm font-medium text-foreground">{selectedLabel}</span>
+            </span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="border-t border-border/20 px-2 pb-2 pt-1">
+              <div className="-mx-0.5 overflow-x-auto overscroll-x-contain px-0.5 [-webkit-overflow-scrolling:touch]">
+                <div className="flex w-max max-w-none gap-1.5 pb-1">
+                  {workflowKeys.map((key) => {
+                    const isBoard = key === p.boardPhaseKey;
+                    const isSel = key === p.selectedPhaseKey;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
                         className={cn(
-                          'h-1.5 w-1.5 shrink-0 rounded-full',
-                          isSel ? 'bg-amber-300' : 'bg-amber-500/90'
+                          'flex max-w-[14rem] shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:max-w-none sm:py-1.5 sm:text-xs',
+                          isSel
+                            ? 'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm dark:border-blue-600 dark:bg-blue-700'
+                            : 'border-border/30 bg-background/80 text-muted-foreground hover:bg-muted/40 hover:text-foreground',
+                          !isSel && !isBoard && 'opacity-80'
                         )}
-                        aria-hidden
-                      />
-                    ) : null}
-                    <span className="truncate">{phaseLabel(key, p.phaseWorkflow)}</span>
-                  </button>
-                );
-              })}
+                        onClick={() => p.onPhaseSelect(key)}
+                      >
+                        {isBoard ? (
+                          <span
+                            className={cn(
+                              'h-1.5 w-1.5 shrink-0 rounded-full',
+                              isSel ? 'bg-amber-300' : 'bg-amber-500/90'
+                            )}
+                            aria-hidden
+                          />
+                        ) : null}
+                        <span className="truncate">{phaseLabel(key, p.phaseWorkflow)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
 
       {viewingNonBoard ? (
@@ -1074,13 +1093,10 @@ export function WorkerRoomView(p: Props) {
       {/* Heating cable — collapsible stages, defaults on active step */}
       {showFullPhaseDetails && p.showHeatingModule ? (
         <Card className="overflow-hidden border-border/60 shadow-sm">
-          <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1">
-            <h2 className="text-lg font-semibold tracking-tight">Heating cable</h2>
-            <p className="text-xs text-muted-foreground leading-snug sm:hidden">
-              Stage photos live under each step below. Tap a stage to add readings and pictures.
-            </p>
-            <p className="hidden text-xs text-muted-foreground sm:block">
-              Open each stage to enter readings and photos. Completed stages stay collapsed so you can scan progress.
+          <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1.5">
+            <h2 className="text-base font-semibold tracking-tight sm:text-lg">Heating cable</h2>
+            <p className="text-xs text-muted-foreground leading-snug">
+              Open each stage for readings and photos. Completed stages stay collapsed for a quick scan.
             </p>
             {focusStageLabel ? (
               <p className="text-xs font-medium text-amber-900/90 dark:text-amber-100/90 flex items-center gap-1.5">
@@ -1504,35 +1520,47 @@ export function WorkerRoomView(p: Props) {
         </Card>
       ) : null}
 
-      {/* Phase photos (compact) */}
+      {/* Phase photos — collapsed by default */}
       {showFullPhaseDetails && p.showPhotosSection && p.photosForPhase.length > 0 ? (
-        <Card className="border-border/50 p-3">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            Photos this phase
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {p.photosForPhase.map((photo) => (
-              <button
-                key={photo.id}
-                type="button"
-                className="relative aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800"
-                onClick={() => photo.downloadUrl && p.onPhotoPreview(photo.downloadUrl)}
-              >
-                {photo.downloadUrl ? (
-                  <img src={photo.downloadUrl} alt="" className="w-full h-full object-cover" />
-                ) : (
-                  <ImageIcon className="h-8 w-8 m-auto text-muted-foreground/40" />
-                )}
-              </button>
-            ))}
-          </div>
-        </Card>
+        <Collapsible defaultOpen={false} className="rounded-xl border border-border/40 bg-card shadow-sm">
+          <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:px-4 sm:py-3">
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Photos this phase
+              </span>
+              <span className="text-sm font-medium text-foreground">
+                {p.photosForPhase.length} photo{p.photosForPhase.length === 1 ? '' : 's'}
+              </span>
+            </span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="border-t border-border/35 px-3 pb-3 pt-2 sm:px-4">
+              <div className="grid grid-cols-3 gap-2">
+                {p.photosForPhase.map((photo) => (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
+                    onClick={() => photo.downloadUrl && p.onPhotoPreview(photo.downloadUrl)}
+                  >
+                    {photo.downloadUrl ? (
+                      <img src={photo.downloadUrl} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <ImageIcon className="m-auto h-8 w-8 text-muted-foreground/40" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       ) : null}
 
-      {/* Issues & activity — single secondary card */}
+      {/* Issues & activity — secondary */}
       {showFullPhaseDetails ? (
-        <Card className="overflow-hidden border-border/30 bg-muted/[0.06] shadow-none">
-          <p className="border-b border-border/25 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
+        <Card className="overflow-hidden border-border/20 bg-muted/[0.04] shadow-none">
+          <p className="border-b border-border/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
             More on this phase
           </p>
           <Collapsible defaultOpen={false}>

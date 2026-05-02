@@ -16,7 +16,7 @@ import {
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import { taskCountsForFloorBoard } from '@/lib/roomAreas';
-import { deriveHeatingCableStatus } from '@/lib/heatingCable';
+import { deriveHeatingCableStatus, HEATING_CABLE_DERIVED_STATUS_LABEL } from '@/lib/heatingCable';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -1230,12 +1230,6 @@ export default function FloorDetail() {
                 const total = summary?.total ?? 0;
                 const rp = normalizeRoomPhase(room.phase, phaseWorkflow);
                 const heatingStatus = deriveHeatingCableStatus(room.heating_cable_doc);
-                const heatingStatusLabel: Record<string, string> = {
-                  not_started: 'Not started',
-                  partial: 'Partial',
-                  complete: 'Complete',
-                  has_deviation_missing: 'Deviation/missing',
-                };
                 return (
                   <RoomFloorCardContextMenu
                     key={room.id}
@@ -1259,7 +1253,7 @@ export default function FloorDetail() {
                       assignedWorker={room.assigned_worker}
                       updatedAt={room.updated_at}
                       deadlineAt={room.deadline_at}
-                      heatingCableStatusLabel={heatingStatusLabel[heatingStatus.status]}
+                      heatingCableStatusLabel={HEATING_CABLE_DERIVED_STATUS_LABEL[heatingStatus.status]}
                       onClick={() =>
                         selectionMode
                           ? toggleRoomSelection(room.id)

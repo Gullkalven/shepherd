@@ -38,6 +38,14 @@ export interface HeatingCableDerived {
   performedBy: string;
 }
 
+/** UI copy for `deriveHeatingCableStatus` — use everywhere to avoid mismatched labels. */
+export const HEATING_CABLE_DERIVED_STATUS_LABEL: Record<HeatingCableRoomStatus, string> = {
+  not_started: 'Not started',
+  partial: 'In progress',
+  complete: 'Complete',
+  has_deviation_missing: 'Needs attention',
+};
+
 export const HEATING_CABLE_STAGES: { key: HeatingCableStageKey; label: string }[] = [
   { key: 'before_installation', label: 'Before installation' },
   { key: 'after_cable_laid', label: 'After cable laid' },

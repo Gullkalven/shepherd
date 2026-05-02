@@ -43,6 +43,7 @@ import { WorkerRoomView, type WorkerTask } from '@/components/WorkerRoomView';
 import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationNav';
 import {
   HEATING_CABLE_STAGES,
+  HEATING_CABLE_DERIVED_STATUS_LABEL,
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
   heatingStageHasAnyData,
@@ -1521,13 +1522,6 @@ export default function RoomDetail() {
   const canEditHeatingCable = !editsBlocked && (!heatingLockedByAdmin || canEdit);
   const selectedPhaseLabel = phaseLabel(selPhase, phaseWorkflow);
   const showHeatingCableModule = isHeatingCablePhase(selPhase, selectedPhaseLabel);
-  const heatingStatusLabel: Record<string, string> = {
-    not_started: 'Not started',
-    partial: 'Partially documented',
-    complete: 'Complete',
-    has_deviation_missing: 'Has deviation/missing values',
-  };
-
   const tasksForBoardPhase = tasksInArea.filter(
     (t) => storedChecklistPhase(t.phase, phaseWorkflow) === areaMainPhaseNorm
   );
@@ -2136,7 +2130,7 @@ export default function RoomDetail() {
                     {showHeatingCableModule ? (
                       <span className="text-muted-foreground">
                         Cable docs:{' '}
-                        <span className="font-medium text-foreground">{heatingStatusLabel[heatingDerived.status]}</span>
+                        <span className="font-medium text-foreground">{HEATING_CABLE_DERIVED_STATUS_LABEL[heatingDerived.status]}</span>
                       </span>
                     ) : null}
                   </div>
@@ -2181,7 +2175,7 @@ export default function RoomDetail() {
                           Heating cable documentation
                         </h3>
                         <Badge variant="secondary" className="text-[10px]">
-                          {heatingStatusLabel[heatingDerived.status]}
+                          {HEATING_CABLE_DERIVED_STATUS_LABEL[heatingDerived.status]}
                         </Badge>
                       </div>
                       <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
@@ -2326,7 +2320,7 @@ export default function RoomDetail() {
                         </h3>
                         <div className="flex items-center gap-1.5">
                           <Badge variant="secondary" className="text-[10px]">
-                            {heatingStatusLabel[heatingDerived.status]}
+                            {HEATING_CABLE_DERIVED_STATUS_LABEL[heatingDerived.status]}
                           </Badge>
                           {canEdit ? (
                             <Button
