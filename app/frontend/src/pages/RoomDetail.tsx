@@ -6,7 +6,6 @@ import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -443,6 +442,8 @@ export default function RoomDetail() {
   const heatingSaveUiIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipHeatingDocSyncRef = useRef(false);
   const heatingPhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  /** Prevents duplicate checklist toggles (nested control + double activation) from stacking toasts/API calls. */
+  const checklistToggleInFlightRef = useRef<Set<number>>(new Set());
   const [completingWorkerPhase, setCompletingWorkerPhase] = useState(false);
   const [phaseToolsSaving, setPhaseToolsSaving] = useState(false);
   const [floorRoomsOrdered, setFloorRoomsOrdered] = useState<RoomNavSibling[]>([]);
@@ -807,11 +808,13 @@ export default function RoomDetail() {
   };
 
   const executeToggleTask = async (task: Task, workerName: string) => {
+    if (checklistToggleInFlightRef.current.has(task.id)) return;
+    checklistToggleInFlightRef.current.add(task.id);
     try {
       const newCompleted = !task.is_completed;
       const now = new Date();
       const checkedAt = now.toISOString().replace('T', ' ').substring(0, 19);
-      await client.entities.tasks.update({
+      const res = await client.entities.tasks.update({
         id: String(task.id),
         data: {
           is_completed: newCompleted,
@@ -819,18 +822,38 @@ export default function RoomDetail() {
           checked_at: checkedAt,
         },
       });
+      const updated = res?.data as Task | undefined;
+      const finalCompleted =
+        typeof updated?.is_completed === 'boolean' ? updated.is_completed : newCompleted;
+      const finalCheckedBy =
+        typeof updated?.checked_by === 'string' && updated.checked_by.trim()
+          ? updated.checked_by.trim()
+          : workerName;
+      const finalCheckedAt =
+        typeof updated?.checked_at === 'string' && updated.checked_at.trim()
+          ? updated.checked_at.trim()
+          : checkedAt;
       setTasks((prev) =>
         prev.map((t) =>
           t.id === task.id
-            ? { ...t, is_completed: newCompleted, checked_by: workerName, checked_at: checkedAt }
+            ? {
+                ...t,
+                is_completed: finalCompleted,
+                checked_by: finalCheckedBy,
+                checked_at: finalCheckedAt,
+              }
             : t
         )
       );
       await refreshRoom();
-      const action = newCompleted ? 'checked' : 'unchecked';
-      toast.success(`${workerName} ${action} "${task.name}"`);
+      const verb = finalCompleted ? 'checked' : 'unchecked';
+      toast.success(`${workerName} ${verb} "${task.name}"`, {
+        id: `checklist-toggle-${task.id}`,
+      });
     } catch {
       toast.error('Failed to update task');
+    } finally {
+      checklistToggleInFlightRef.current.delete(task.id);
     }
   };
 
@@ -3256,12 +3279,16 @@ export default function RoomDetail() {
                                     onClick={() => handleTaskClick(task)}
                                     disabled={!canInteractChecklist}
                                   >
-                                    <Checkbox
-                                      checked={task.is_completed}
-                                      className="h-6 w-6 rounded-md mt-0.5 shrink-0 pointer-events-none"
-                                      onCheckedChange={() => {}}
-                                      disabled={!canInteractChecklist}
-                                    />
+                                    <div
+                                      className="mt-0.5 shrink-0 pointer-events-none"
+                                      aria-hidden
+                                    >
+                                      {task.is_completed ? (
+                                        <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                                      ) : (
+                                        <Circle className="h-6 w-6 text-muted-foreground/45" />
+                                      )}
+                                    </div>
                                     <div className="flex-1 min-w-0 pt-px">
                                       <div className="flex items-center gap-1.5 group/tname">
                                         <span
