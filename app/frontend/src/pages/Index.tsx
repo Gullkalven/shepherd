@@ -27,6 +27,7 @@ import {
   getAuthMeEpoch,
   isClientLogoutGateActive,
 } from '@/lib/appLogout';
+import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 
 interface Project {
   id: number;
@@ -69,6 +70,7 @@ function IndexContent({
   // Inline edit state
   const [editingProjectId, setEditingProjectId] = useState<number | null>(null);
   const [editProjectName, setEditProjectName] = useState('');
+  const desktopAutoFocus = useDesktopAutoFocus();
 
   const checkAuth = useCallback(async () => {
     ensureDemoBearerToken();
@@ -370,8 +372,8 @@ function IndexContent({
                         <Input
                           value={editProjectName}
                           onChange={(e) => setEditProjectName(e.target.value)}
-                          className="h-9 text-sm font-semibold"
-                          autoFocus
+                          className="h-9 text-base sm:text-sm font-semibold"
+                          {...(desktopAutoFocus ? { autoFocus: true } : {})}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') saveProjectName(project.id);
                             if (e.key === 'Escape') cancelEditProject();

@@ -22,6 +22,7 @@ import {
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import { taskCountsForFloorBoard } from '@/lib/roomAreas';
+import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { deriveHeatingCableStatus, HEATING_CABLE_DERIVED_STATUS_LABEL } from '@/lib/heatingCable';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -101,6 +102,7 @@ function logTemplateDebug(phase: string, payload: Record<string, unknown>) {
 }
 
 export default function FloorDetail() {
+  const desktopAutoFocus = useDesktopAutoFocus();
   const { projectId, floorId } = useParams<{ projectId: string; floorId: string }>();
   const navigate = useNavigate();
   const { canCreateRoom, canDeleteRoom, canChangeStatus, canMovePhase, canEdit, isAdmin } = usePermissions();
@@ -1053,7 +1055,7 @@ export default function FloorDetail() {
                 value={editFloorNameVal}
                 onChange={(e) => setEditFloorNameVal(e.target.value)}
                 className="h-9 text-lg font-bold"
-                autoFocus
+                {...(desktopAutoFocus ? { autoFocus: true } : {})}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') saveFloorName();
                   if (e.key === 'Escape') setEditingFloorName(false);
@@ -1289,7 +1291,7 @@ export default function FloorDetail() {
             />
           </div>
         ) : (
-          <div className="mx-auto min-h-0 w-full max-w-lg flex-1 overflow-y-auto px-4 pb-4 max-lg:scroll-pb-[max(5.5rem,30dvh)] lg:mx-0 lg:max-w-none lg:px-6 xl:px-8">
+          <div className="mx-auto min-h-0 w-full max-w-lg flex-1 overflow-y-auto px-4 pb-4 lg:mx-0 lg:max-w-none lg:px-6 xl:px-8">
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-3 lg:grid-cols-3 lg:gap-3 xl:grid-cols-4">
               {rooms.map((room) => {
                 const summary = checklistByRoomId[room.id];
@@ -1733,7 +1735,7 @@ export default function FloorDetail() {
                       logTemplateDebug('select_dom', { value: v });
                       void loadTemplateForEdit(v);
                     }}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-base sm:text-sm"
                   >
                     <option value="">New template</option>
                     {templates.map((t) => (
@@ -1758,7 +1760,7 @@ export default function FloorDetail() {
                     }}
                     onChange={(e) => setTemplateItemsText(e.target.value)}
                     rows={10}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm"
                     placeholder={'Cable routing\nInstall wall boxes\nHeating cable installation'}
                   />
                   <p className="text-xs text-muted-foreground">One checklist item per line.</p>

@@ -47,6 +47,7 @@ import {
   type RoomArea,
 } from '@/lib/roomAreas';
 import { cn } from '@/lib/utils';
+import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { useI18n } from '@/lib/i18n';
 import { WorkerRoomView, type WorkerTask } from '@/components/WorkerRoomView';
 import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationNav';
@@ -333,6 +334,7 @@ function formatVisitDate(dateStr: string): string {
 }
 
 export default function RoomDetail() {
+  const desktopAutoFocus = useDesktopAutoFocus();
   const { projectId, floorId, roomId } = useParams<{
     projectId: string;
     floorId: string;
@@ -2707,7 +2709,7 @@ export default function RoomDetail() {
                                 onChange={(e) =>
                                   updateHeatingStageField(stage.key, 'resistance_ohm', e.target.value)
                                 }
-                                className="h-8 text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                               <Input
                                 type="number"
@@ -2719,14 +2721,14 @@ export default function RoomDetail() {
                                 onChange={(e) =>
                                   updateHeatingStageField(stage.key, 'insulation_mohm', e.target.value)
                                 }
-                                className="h-8 text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                               <Input
                                 type="date"
                                 value={row.date || ''}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateHeatingStageField(stage.key, 'date', e.target.value)}
-                                className="h-8 text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                               <Input
                                 placeholder="Performed by"
@@ -2735,7 +2737,7 @@ export default function RoomDetail() {
                                 onChange={(e) =>
                                   updateHeatingStageField(stage.key, 'performed_by', e.target.value)
                                 }
-                                className="h-8 text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                             </div>
                             <Textarea
@@ -2744,7 +2746,7 @@ export default function RoomDetail() {
                               disabled={!canEditHeatingCable || heatingCableBlocking}
                               onChange={(e) => updateHeatingStageField(stage.key, 'note', e.target.value)}
                               rows={2}
-                              className="text-xs"
+                              className="text-base sm:text-xs"
                             />
                             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                               <input
@@ -2806,7 +2808,7 @@ export default function RoomDetail() {
                                 value={step.label || ''}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'label', e.target.value)}
-                                className="h-8 text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                               <Button
                                 type="button"
@@ -2828,7 +2830,7 @@ export default function RoomDetail() {
                                 value={step.resistance_ohm || ''}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'resistance_ohm', e.target.value)}
-                                className="h-8 text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                               <Input
                                 type="number"
@@ -2838,21 +2840,21 @@ export default function RoomDetail() {
                                 value={step.insulation_mohm || ''}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'insulation_mohm', e.target.value)}
-                                className="h-8 text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                               <Input
                                 type="date"
                                 value={step.date || ''}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'date', e.target.value)}
-                                className="h-8 text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                               <Input
                                 placeholder="Performed by"
                                 value={step.performed_by || ''}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'performed_by', e.target.value)}
-                                className="h-8 text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                             </div>
                             <Textarea
@@ -2861,7 +2863,7 @@ export default function RoomDetail() {
                               disabled={!canEditHeatingCable || heatingCableBlocking}
                               onChange={(e) => updateExtraHeatingStepField(idx, 'note', e.target.value)}
                               rows={2}
-                              className="text-xs"
+                              className="text-base sm:text-xs"
                             />
                             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                               <input
@@ -2918,7 +2920,7 @@ export default function RoomDetail() {
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-8 text-xs"
+                          className="h-9 sm:h-8 text-base sm:text-xs"
                           onClick={addExtraHeatingStep}
                           disabled={!canEditHeatingCable || heatingCableBlocking}
                         >
@@ -2936,7 +2938,7 @@ export default function RoomDetail() {
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="h-8 text-xs"
+                          className="h-9 sm:h-8 text-base sm:text-xs"
                           onClick={() => void saveHeatingCableDoc()}
                           disabled={!canEditHeatingCable || heatingCableBlocking || heatingCableSaveUi === 'saving'}
                         >
@@ -3042,8 +3044,8 @@ export default function RoomDetail() {
                                   <Input
                                     value={checklistTitleDraft}
                                     onChange={(e) => setChecklistTitleDraft(e.target.value)}
-                                    className="h-8 text-sm flex-1 min-w-0"
-                                    autoFocus
+                                    className="h-8 text-base sm:text-sm flex-1 min-w-0"
+                                    {...(desktopAutoFocus ? { autoFocus: true } : {})}
                                     disabled={savingChecklistTitle}
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter') void commitChecklistSectionTitle();
@@ -3153,8 +3155,8 @@ export default function RoomDetail() {
                                   <Input
                                     value={editTaskName}
                                     onChange={(e) => setEditTaskName(e.target.value)}
-                                    className="h-9 text-sm flex-1"
-                                    autoFocus
+                                    className="h-9 text-base sm:text-sm flex-1"
+                                    {...(desktopAutoFocus ? { autoFocus: true } : {})}
                                     onKeyDown={(e) => {
                                       if (e.key === 'Enter') saveTaskName(task.id);
                                       if (e.key === 'Escape') cancelEditTask();
@@ -3272,7 +3274,7 @@ export default function RoomDetail() {
                                 value={newTaskName}
                                 onChange={(e) => setNewTaskName(e.target.value)}
                                 className="h-10 flex-1"
-                                autoFocus
+                                {...(desktopAutoFocus ? { autoFocus: true } : {})}
                                 disabled={addingTask}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter' && newTaskName.trim()) handleAddTask();

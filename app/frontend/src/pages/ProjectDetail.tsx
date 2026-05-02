@@ -17,6 +17,7 @@ import {
 } from '@/lib/roomPhases';
 import { taskCountsForFloorBoard } from '@/lib/roomAreas';
 import { useI18n } from '@/lib/i18n';
+import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 
 /** Compact labels for default phases; other keys use first letter */
 function phaseProgressLetter(key: string): string {
@@ -60,6 +61,7 @@ interface Project {
 }
 
 export default function ProjectDetail() {
+  const desktopAutoFocus = useDesktopAutoFocus();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { canCreateFloor, canDeleteFloor, canEdit } = usePermissions();
@@ -280,7 +282,7 @@ export default function ProjectDetail() {
                 value={editProjectNameVal}
                 onChange={(e) => setEditProjectNameVal(e.target.value)}
                 className="h-9 text-lg font-bold"
-                autoFocus
+                {...(desktopAutoFocus ? { autoFocus: true } : {})}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') saveProjectName();
                   if (e.key === 'Escape') setEditingProjectName(false);
@@ -355,8 +357,8 @@ export default function ProjectDetail() {
                           <Input
                             value={editFloorName}
                             onChange={(e) => setEditFloorName(e.target.value)}
-                            className="h-9 text-sm font-semibold"
-                            autoFocus
+                            className="h-9 text-base sm:text-sm font-semibold"
+                            {...(desktopAutoFocus ? { autoFocus: true } : {})}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') saveFloorName(floor.id);
                               if (e.key === 'Escape') cancelEditFloor();

@@ -306,7 +306,7 @@ function HeatingDatetimeField(props: {
         disabled={props.disabled}
         onChange={(e) => props.onChange(e.target.value)}
         className={cn(
-          'h-11 pl-10 text-sm [color-scheme:light] dark:[color-scheme:dark]',
+          'h-11 pl-10 text-base sm:text-sm [color-scheme:light] dark:[color-scheme:dark]',
           '[&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-2 [&::-webkit-calendar-picker-indicator]:top-1/2 [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:-translate-y-1/2 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70'
         )}
       />
@@ -1292,7 +1292,7 @@ export function WorkerRoomView(p: Props) {
                             step="any"
                             placeholder="Resistance (Ω)"
                             value={row.resistance_ohm || ''}
-                            className="h-11 text-sm"
+                            className="h-11 text-base sm:text-sm"
                             disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
                           />
@@ -1302,7 +1302,7 @@ export function WorkerRoomView(p: Props) {
                             step="any"
                             placeholder="Insulation (MΩ)"
                             value={row.insulation_mohm || ''}
-                            className="h-11 text-sm"
+                            className="h-11 text-base sm:text-sm"
                             disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'insulation_mohm', e.target.value)}
                           />
@@ -1326,7 +1326,7 @@ export function WorkerRoomView(p: Props) {
                             id={`heat-${sid}-by`}
                             placeholder="Name"
                             value={row.performed_by || ''}
-                            className="h-11 text-sm"
+                            className="h-11 text-base sm:text-sm"
                             disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'performed_by', e.target.value)}
                           />
@@ -1337,7 +1337,7 @@ export function WorkerRoomView(p: Props) {
                         <Textarea
                           placeholder="Note (optional)"
                           value={row.note || ''}
-                          className="text-sm min-h-[56px]"
+                          className="text-base sm:text-sm min-h-[56px]"
                           disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onChange={(e) => p.onHeatingFieldChange(stage.key, 'note', e.target.value)}
                         />
@@ -1478,7 +1478,7 @@ export function WorkerRoomView(p: Props) {
                             step="any"
                             placeholder="Resistance (Ω)"
                             value={step.resistance_ohm || ''}
-                            className="h-11 text-sm"
+                            className="h-11 text-base sm:text-sm"
                             disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onExtraHeatingFieldChange(idx, 'resistance_ohm', e.target.value)}
                           />
@@ -1488,7 +1488,7 @@ export function WorkerRoomView(p: Props) {
                             step="any"
                             placeholder="Insulation (MΩ)"
                             value={step.insulation_mohm || ''}
-                            className="h-11 text-sm"
+                            className="h-11 text-base sm:text-sm"
                             disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onExtraHeatingFieldChange(idx, 'insulation_mohm', e.target.value)}
                           />
@@ -1515,7 +1515,7 @@ export function WorkerRoomView(p: Props) {
                             id={`heat-extra-${photoKey}-by`}
                             placeholder="Name"
                             value={step.performed_by || ''}
-                            className="h-11 text-sm"
+                            className="h-11 text-base sm:text-sm"
                             disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onExtraHeatingFieldChange(idx, 'performed_by', e.target.value)}
                           />
@@ -1526,7 +1526,7 @@ export function WorkerRoomView(p: Props) {
                         <Textarea
                           placeholder="Note (optional)"
                           value={step.note || ''}
-                          className="text-sm min-h-[56px]"
+                          className="text-base sm:text-sm min-h-[56px]"
                           disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onChange={(e) => p.onExtraHeatingFieldChange(idx, 'note', e.target.value)}
                         />
