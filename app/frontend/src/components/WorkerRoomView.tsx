@@ -1269,6 +1269,9 @@ export function WorkerRoomView(p: Props) {
                         </p>
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                           <Input
+                            type="number"
+                            inputMode="decimal"
+                            step="any"
                             placeholder="Resistance (Ω)"
                             value={row.resistance_ohm || ''}
                             className="h-11 text-sm"
@@ -1276,6 +1279,9 @@ export function WorkerRoomView(p: Props) {
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
                           />
                           <Input
+                            type="number"
+                            inputMode="decimal"
+                            step="any"
                             placeholder="Insulation (MΩ)"
                             value={row.insulation_mohm || ''}
                             className="h-11 text-sm"
@@ -1449,6 +1455,9 @@ export function WorkerRoomView(p: Props) {
                         </p>
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                           <Input
+                            type="number"
+                            inputMode="decimal"
+                            step="any"
                             placeholder="Resistance (Ω)"
                             value={step.resistance_ohm || ''}
                             className="h-11 text-sm"
@@ -1456,6 +1465,9 @@ export function WorkerRoomView(p: Props) {
                             onChange={(e) => p.onExtraHeatingFieldChange(idx, 'resistance_ohm', e.target.value)}
                           />
                           <Input
+                            type="number"
+                            inputMode="decimal"
+                            step="any"
                             placeholder="Insulation (MΩ)"
                             value={step.insulation_mohm || ''}
                             className="h-11 text-sm"

@@ -2489,6 +2489,9 @@ export default function RoomDetail() {
                             <p className="text-xs font-semibold text-foreground">{stage.label}</p>
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <Input
+                                type="number"
+                                inputMode="decimal"
+                                step="any"
                                 placeholder="Resistance (Ohm)"
                                 value={row.resistance_ohm || ''}
                                 disabled={!canEditHeatingCable || savingHeatingCable}
@@ -2498,6 +2501,9 @@ export default function RoomDetail() {
                                 className="h-8 text-xs"
                               />
                               <Input
+                                type="number"
+                                inputMode="decimal"
+                                step="any"
                                 placeholder="Insulation (MΩ)"
                                 value={row.insulation_mohm || ''}
                                 disabled={!canEditHeatingCable || savingHeatingCable}
@@ -2606,6 +2612,9 @@ export default function RoomDetail() {
                             </div>
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <Input
+                                type="number"
+                                inputMode="decimal"
+                                step="any"
                                 placeholder="Resistance (Ohm)"
                                 value={step.resistance_ohm || ''}
                                 disabled={!canEditHeatingCable || savingHeatingCable}
@@ -2613,6 +2622,9 @@ export default function RoomDetail() {
                                 className="h-8 text-xs"
                               />
                               <Input
+                                type="number"
+                                inputMode="decimal"
+                                step="any"
                                 placeholder="Insulation (MΩ)"
                                 value={step.insulation_mohm || ''}
                                 disabled={!canEditHeatingCable || savingHeatingCable}
