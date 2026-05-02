@@ -1725,7 +1725,6 @@ export default function RoomDetail() {
   const phaseToolOverrides = coercePhaseToolOverrides(room.phase_tool_overrides);
   const phaseWfEntry = (k: string) => phaseWorkflow.find((p) => p.key === k);
   const toolsSel = resolvePhaseTools(phaseWfEntry(selPhase), phaseToolOverrides[selPhase]);
-  const toolsBoard = resolvePhaseTools(phaseWfEntry(focusPhaseKey), phaseToolOverrides[focusPhaseKey]);
   const chipUiSel = computePhaseChipUi(
     selPhase,
     resolvedPhaseStatuses,
@@ -1746,15 +1745,6 @@ export default function RoomDetail() {
   const canEditHeatingCable = !editsBlocked && (!heatingLockedByAdmin || canEdit);
   const selectedPhaseLabel = phaseLabel(selPhase, phaseWorkflow);
   const showHeatingCableModule = toolsSel.heating_cable;
-  const tasksForBoardPhase = tasksInArea.filter(
-    (t) => storedChecklistPhase(t.phase, phaseWorkflow) === focusPhaseKey
-  );
-  const boardPhaseIncompleteCount = tasksForBoardPhase.filter((t) => !t.is_completed).length;
-  const boardPhaseTotalCount = tasksForBoardPhase.length;
-  const boardPhaseShowHeating = toolsBoard.heating_cable;
-  const boardPhaseWorkReady =
-    (!toolsBoard.checklist || boardPhaseTotalCount === 0 || boardPhaseIncompleteCount === 0) &&
-    (!boardPhaseShowHeating || heatingDerived.status === 'complete');
   const selectedPhaseWorkReady =
     (!toolsSel.checklist || totalForPhase === 0 || completedForPhase === totalForPhase) &&
     (!toolsSel.heating_cable || heatingDerived.status === 'complete');
@@ -1840,10 +1830,6 @@ export default function RoomDetail() {
               selectedPhaseStepStatus={resolvedPhaseStatuses[selPhase] ?? 'not_started'}
               selectedPhaseKey={selPhase}
               onPhaseSelect={setPhaseTab}
-              boardPhaseIncompleteCount={boardPhaseIncompleteCount}
-              boardPhaseTotalCount={boardPhaseTotalCount}
-              boardPhaseShowHeating={boardPhaseShowHeating}
-              boardPhaseWorkReady={boardPhaseWorkReady}
               heatingDerived={heatingDerived}
               phaseReadOnly={phaseReadOnly}
               phaseTabLocked={phaseWorkerLocked}

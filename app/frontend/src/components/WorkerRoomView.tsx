@@ -98,12 +98,6 @@ type Props = {
   selectedPhaseKey: string;
   onPhaseSelect: (key: string) => void;
 
-  /** Hero metrics: tasks for the board phase */
-  boardPhaseIncompleteCount: number;
-  boardPhaseTotalCount: number;
-  boardPhaseShowHeating: boolean;
-  /** True when checklist + heating (if applicable) for the board phase are satisfied. */
-  boardPhaseWorkReady: boolean;
   heatingDerived: HeatingCableDerived;
 
   phaseReadOnly: boolean;
@@ -420,9 +414,6 @@ export function WorkerRoomView(p: Props) {
     return phaseLabel(keys[i + 1], p.phaseWorkflow);
   }, [p.phaseWorkflow, p.selectedPhaseKey]);
   const showFullPhaseDetails = !viewingNonBoard || nonBoardDetailsExpanded;
-  const boardHeatingDocProgress = p.boardPhaseShowHeating
-    ? heatingDocumentationProgress(p.heatingCableDoc)
-    : null;
   const selectedHeatingDocProgress = p.showHeatingModule
     ? heatingDocumentationProgress(p.heatingCableDoc)
     : null;
@@ -611,22 +602,25 @@ export function WorkerRoomView(p: Props) {
   );
 
   const heroStatPrimary = useMemo(() => {
-    if (p.boardPhaseTotalCount > 0) {
+    const checklistTotal = p.showChecklistSection ? p.tasksForSelectedPhase.length : 0;
+    const checklistDone = p.showChecklistSection
+      ? p.tasksForSelectedPhase.filter((t) => t.is_completed).length
+      : 0;
+    const checklistIncomplete = Math.max(0, checklistTotal - checklistDone);
+
+    if (checklistTotal > 0) {
       return {
         label: 'Open work',
-        value: String(p.boardPhaseIncompleteCount),
-        sub:
-          p.boardPhaseTotalCount > 0
-            ? `${p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/${p.boardPhaseTotalCount} done`
-            : undefined,
+        value: String(checklistIncomplete),
+        sub: `${checklistDone}/${checklistTotal} done`,
       };
     }
-    if (p.boardPhaseShowHeating && boardHeatingDocProgress) {
-      const left = boardHeatingDocProgress.total - boardHeatingDocProgress.complete;
+    if (p.showHeatingModule && selectedHeatingDocProgress) {
+      const left = selectedHeatingDocProgress.total - selectedHeatingDocProgress.complete;
       return {
         label: 'Open work',
         value: String(Math.max(0, left)),
-        sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} heating stages done`,
+        sub: `${selectedHeatingDocProgress.complete}/${selectedHeatingDocProgress.total} documented`,
       };
     }
     return {
@@ -634,7 +628,7 @@ export function WorkerRoomView(p: Props) {
       value: '0',
       sub: 'Nothing queued this phase',
     };
-  }, [p.boardPhaseTotalCount, p.boardPhaseIncompleteCount, p.boardPhaseShowHeating, boardHeatingDocProgress]);
+  }, [p.showChecklistSection, p.tasksForSelectedPhase, p.showHeatingModule, selectedHeatingDocProgress]);
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4 lg:max-w-xl">
