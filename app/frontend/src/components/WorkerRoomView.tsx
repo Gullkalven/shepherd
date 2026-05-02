@@ -7,6 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Camera,
   Calendar,
   CheckCircle2,
@@ -37,6 +45,8 @@ import {
 } from '@/lib/heatingCable';
 import type { PhaseStepStatus, PhaseWorkflowEntry } from '@/lib/roomPhases';
 import {
+  normalizeRoomPhase,
+  phaseKeys,
   phaseLabel,
   phaseTabReadOnlyForWorker,
   phaseTimelineFromStepStatus,
@@ -248,26 +258,26 @@ function HeatingStagePhotoPicker(props: {
         disabled={props.disabled}
         onChange={onPick}
       />
-      <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
+      <div className="grid grid-cols-2 gap-2">
         <Button
           type="button"
           variant="outline"
-          className="h-11 w-full justify-center gap-2 font-normal"
+          className="h-auto min-h-11 w-full flex-col gap-1 px-2 py-2.5 text-center text-sm font-normal leading-snug whitespace-normal sm:flex-row sm:gap-2 sm:py-2.5"
           disabled={props.disabled}
           onClick={() => cameraRef.current?.click()}
         >
           <Camera className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-          Take photo
+          <span className="max-w-full">Take photo</span>
         </Button>
         <Button
           type="button"
           variant="outline"
-          className="h-11 w-full justify-center gap-2 font-normal"
+          className="h-auto min-h-11 w-full flex-col gap-1 px-2 py-2.5 text-center text-sm font-normal leading-snug whitespace-normal sm:flex-row sm:gap-2 sm:py-2.5"
           disabled={props.disabled}
           onClick={() => galleryRef.current?.click()}
         >
           <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-          Choose from gallery
+          <span className="max-w-full">Choose from gallery</span>
         </Button>
       </div>
     </>
@@ -387,9 +397,28 @@ export function WorkerRoomView(p: Props) {
       : phaseTimelineState(p.boardPhaseKey, p.selectedPhaseKey, p.phaseWorkflow);
 
   const [nonBoardDetailsExpanded, setNonBoardDetailsExpanded] = useState(false);
+  const [phaseHandoffDialogOpen, setPhaseHandoffDialogOpen] = useState(false);
+  const sawCompletingPhaseRef = useRef(false);
   useEffect(() => {
     setNonBoardDetailsExpanded(false);
+    setPhaseHandoffDialogOpen(false);
   }, [p.selectedPhaseKey]);
+  useEffect(() => {
+    if (p.completingPhase) {
+      sawCompletingPhaseRef.current = true;
+    } else if (sawCompletingPhaseRef.current && phaseHandoffDialogOpen) {
+      setPhaseHandoffDialogOpen(false);
+      sawCompletingPhaseRef.current = false;
+    }
+  }, [p.completingPhase, phaseHandoffDialogOpen]);
+
+  const nextPhaseLabelAfterHandoff = useMemo(() => {
+    const keys = phaseKeys(p.phaseWorkflow);
+    const cur = normalizeRoomPhase(p.selectedPhaseKey, p.phaseWorkflow);
+    const i = keys.indexOf(cur);
+    if (i < 0 || i >= keys.length - 1) return null;
+    return phaseLabel(keys[i + 1], p.phaseWorkflow);
+  }, [p.phaseWorkflow, p.selectedPhaseKey]);
   const showFullPhaseDetails = !viewingNonBoard || nonBoardDetailsExpanded;
   const boardHeatingDocProgress = p.boardPhaseShowHeating
     ? heatingDocumentationProgress(p.heatingCableDoc)
@@ -1495,13 +1524,75 @@ export function WorkerRoomView(p: Props) {
               size="lg"
               className="h-14 min-h-14 w-full px-6 text-lg font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md sm:h-12 sm:min-h-12 sm:text-base"
               disabled={p.completingPhase}
-              onClick={() => p.onCompletePhase()}
+              onClick={() => setPhaseHandoffDialogOpen(true)}
             >
-              {p.completingPhase ? 'Saving…' : 'Mark phase complete'}
+              Mark phase complete
             </Button>
           </div>
         </Card>
       ) : null}
+
+      <Dialog
+        open={phaseHandoffDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && p.completingPhase) return;
+          setPhaseHandoffDialogOpen(open);
+        }}
+      >
+        <DialogContent className="max-w-md gap-4 px-5 pb-6 pt-6 max-sm:fixed max-sm:bottom-0 max-sm:left-0 max-sm:right-0 max-sm:top-auto max-sm:max-h-[min(88dvh,560px)] max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-x-0 max-sm:border-b-0 max-sm:overflow-y-auto sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%]">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle className="text-xl leading-snug">Confirm phase handoff</DialogTitle>
+            <DialogDescription className="text-left text-base leading-relaxed text-muted-foreground">
+              You are confirming that work for{' '}
+              <span className="font-medium text-foreground">{selectedLabel}</span> is complete and correct
+              on site.
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="space-y-2.5 text-sm leading-snug text-foreground/90">
+            <li className="flex gap-2.5">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span>
+                This phase will lock—you won't change checklist or heating documentation here anymore.
+              </span>
+            </li>
+            <li className="flex gap-2.5">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
+              <span>
+                {nextPhaseLabelAfterHandoff ? (
+                  <>
+                    Handoff is recorded for admin review. The board moves forward to{' '}
+                    <span className="font-medium text-foreground">{nextPhaseLabelAfterHandoff}</span> when
+                    the project advances.
+                  </>
+                ) : (
+                  <>
+                    Handoff is recorded for admin review. This was the last workflow step for this room.
+                  </>
+                )}
+              </span>
+            </li>
+          </ul>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full sm:w-auto"
+              disabled={p.completingPhase}
+              onClick={() => setPhaseHandoffDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="w-full bg-emerald-600 text-white hover:bg-emerald-700 sm:w-auto"
+              disabled={p.completingPhase}
+              onClick={() => p.onCompletePhase()}
+            >
+              {p.completingPhase ? 'Recording…' : 'Confirm handoff'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Phase photos — collapsed by default */}
       {showFullPhaseDetails && p.showPhotosSection && p.photosForPhase.length > 0 ? (
