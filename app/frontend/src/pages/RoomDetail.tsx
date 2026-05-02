@@ -57,6 +57,10 @@ import {
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
   heatingStageHasAnyData,
+  heatingCableStageCaption,
+  isHeatingCablePhase,
+  parseHeatingCableStageFromCaption,
+  resolveHeatingCablePhotoDownloadUrl,
   type HeatingCableDoc,
   type HeatingCableStage,
   type HeatingCableStageKey,
@@ -1566,7 +1570,7 @@ export default function RoomDetail() {
         room_id: room.id,
         object_key: objectKey,
         filename: file.name,
-        caption: `Heating cable module photo (${stageId})`,
+        caption: heatingCableStageCaption(stageId),
         phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
         ...taskPhotoVisitAreaPayload(),
       },
@@ -1704,12 +1708,18 @@ export default function RoomDetail() {
     resolvedPhaseStatuses
   );
   const phaseReadOnly = !canEdit && phaseWorkerLocked;
+  const phaseToolOverrides = coercePhaseToolOverrides(room.phase_tool_overrides);
+  const phaseWfEntry = (k: string) => phaseWorkflow.find((p) => p.key === k);
+  const toolsSel = resolvePhaseTools(phaseWfEntry(selPhase), phaseToolOverrides[selPhase]);
+  const heatingCablePhasePrimaryDocs =
+    toolsSel.heating_cable && isHeatingCablePhase(selPhase, phaseLabel(selPhase, phaseWorkflow));
   const tasksInArea = tasks.filter((t) => taskBelongsToArea(t.area_id, activeAreaId, primaryAreaId));
   const tasksForPhase = tasksInArea.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === selPhase);
   const photosForPhase = photos.filter(
     (p) =>
       taskBelongsToArea(p.area_id, activeAreaId, primaryAreaId) &&
-      photoMatchesPhase(p.phase, selPhase, phaseWorkflow)
+      photoMatchesPhase(p.phase, selPhase, phaseWorkflow) &&
+      !(heatingCablePhasePrimaryDocs && parseHeatingCableStageFromCaption(p.caption))
   );
   const completedForPhase = tasksForPhase.filter((t) => t.is_completed).length;
   const totalForPhase = tasksForPhase.length;
@@ -1722,9 +1732,6 @@ export default function RoomDetail() {
     phasePhotoTaskIdRef.current = task.id;
     fileInputRef.current?.click();
   };
-  const phaseToolOverrides = coercePhaseToolOverrides(room.phase_tool_overrides);
-  const phaseWfEntry = (k: string) => phaseWorkflow.find((p) => p.key === k);
-  const toolsSel = resolvePhaseTools(phaseWfEntry(selPhase), phaseToolOverrides[selPhase]);
   const chipUiSel = computePhaseChipUi(
     selPhase,
     resolvedPhaseStatuses,
@@ -1856,6 +1863,8 @@ export default function RoomDetail() {
               canUploadPhoto={canUploadPhoto}
               canMutatePhaseMedia={canMutatePhaseMedia}
               uploadingPhoto={uploading}
+              hideGenericPhasePhotoUpload={heatingCablePhasePrimaryDocs}
+              resolvedRoomPhotos={photos}
               onGeneralPhotoClick={() => {
                 phasePhotoTaskIdRef.current = null;
                 fileInputRef.current?.click();
@@ -2531,20 +2540,22 @@ export default function RoomDetail() {
                                 ) : null}
                                 {Array.isArray(row.photos) && row.photos.length > 0 ? (
                                   <div className="grid grid-cols-3 gap-2">
-                                    {row.photos.map((url, pi) => (
+                                    {row.photos.map((url, pi) => {
+                                      const src = resolveHeatingCablePhotoDownloadUrl(url, photos);
+                                      return (
                                       <button
                                         key={`${stage.key}-p-${pi}`}
                                         type="button"
                                         className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
-                                        onClick={() => setShowPhotoPreview(url)}
+                                        onClick={() => setShowPhotoPreview(src || url)}
                                       >
                                         <img
-                                          src={url}
+                                          src={src || url}
                                           alt=""
                                           className="h-full w-full object-cover"
                                         />
                                       </button>
-                                    ))}
+                                    );})}
                                   </div>
                                 ) : null}
                               </>
@@ -2597,16 +2608,18 @@ export default function RoomDetail() {
                                 ) : null}
                                 {Array.isArray(step.photos) && step.photos.length > 0 ? (
                                   <div className="grid grid-cols-3 gap-2">
-                                    {step.photos.map((url, pi) => (
+                                    {step.photos.map((url, pi) => {
+                                      const src = resolveHeatingCablePhotoDownloadUrl(url, photos);
+                                      return (
                                       <button
                                         key={`${sid}-p-${pi}`}
                                         type="button"
                                         className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
-                                        onClick={() => setShowPhotoPreview(url)}
+                                        onClick={() => setShowPhotoPreview(src || url)}
                                       >
-                                        <img src={url} alt="" className="h-full w-full object-cover" />
+                                        <img src={src || url} alt="" className="h-full w-full object-cover" />
                                       </button>
-                                    ))}
+                                    );})}
                                   </div>
                                 ) : null}
                               </>

@@ -30,6 +30,7 @@ import {
 import {
   HEATING_CABLE_STAGES,
   HEATING_CABLE_DERIVED_STATUS_LABEL,
+  buildHeatingCableGallerySections,
   formatHeatingCableDatetimeLocalNow,
   formatHeatingCablePerformedShort,
   getHeatingCableFocusTarget,
@@ -37,6 +38,7 @@ import {
   heatingDocumentationProgress,
   heatingExtraStepRowVisible,
   heatingStageHasAnyData,
+  isHeatingCablePhase,
   isHeatingCableStageComplete,
   type HeatingCableDoc,
   type HeatingCableDerived,
@@ -66,6 +68,7 @@ export type WorkerPhoto = {
   id: number;
   filename: string;
   downloadUrl?: string;
+  caption?: string | null;
 };
 
 export type WorkerDeviation = {
@@ -143,6 +146,17 @@ type Props = {
   canUploadPhoto: boolean;
   canMutatePhaseMedia: boolean;
   uploadingPhoto: boolean;
+  /** When true (Varmekabel + heating module), hide the generic “add phase photo” control — uploads belong under stages. */
+  hideGenericPhasePhotoUpload?: boolean;
+  /** Room photos with signed URLs — resolves heating cable object keys and builds the gallery below stages. */
+  resolvedRoomPhotos?: Array<{
+    id: number;
+    object_key: string;
+    filename?: string;
+    caption?: string | null;
+    downloadUrl?: string;
+    created_at?: string | null;
+  }>;
   onGeneralPhotoClick: () => void;
   /** Optional: upload a phase photo with checklist context (caption); does not run when checking tasks off. */
   onTaskPhotoClick?: (task: WorkerTask) => void;
@@ -488,6 +502,16 @@ export function WorkerRoomView(p: Props) {
     const step = p.heatingCableDoc.extra_steps?.[focusTarget.index];
     return step?.label?.trim() || `Extra step ${focusTarget.index + 1}`;
   }, [focusTarget, p.heatingCableDoc.extra_steps]);
+
+  const heatingCablePhasePrimary =
+    p.showHeatingModule && isHeatingCablePhase(p.selectedPhaseKey, selectedLabel);
+  const heatingGallerySections = useMemo(
+    () =>
+      p.showHeatingModule
+        ? buildHeatingCableGallerySections(p.heatingCableDoc, p.resolvedRoomPhotos ?? [])
+        : [],
+    [p.showHeatingModule, p.heatingCableDoc, p.resolvedRoomPhotos]
+  );
 
   const nonBoardFocus = useMemo(() => {
     const st = p.selectedPhaseStepStatus;
@@ -1046,13 +1070,13 @@ export function WorkerRoomView(p: Props) {
                 );
               })
             )}
-            {p.showPhotosSection && p.canUploadPhoto ? (
+            {p.showPhotosSection && p.canUploadPhoto && !p.hideGenericPhasePhotoUpload ? (
               <Collapsible defaultOpen={false} className="rounded-xl border border-dashed border-border/55 bg-muted/10">
                 <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:px-4 sm:py-3">
                   <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground">Upload documentation</span>
-                    <span className="text-xs text-muted-foreground">
-                      Optional phase photos — heating cable stages are the main record
+                    <span className="text-sm font-medium text-foreground">Other phase photos</span>
+                    <span className="text-xs text-muted-foreground leading-snug">
+                      Optional documentation for this workflow step — not used for heating cable stage records.
                     </span>
                   </span>
                   <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
@@ -1182,23 +1206,6 @@ export function WorkerRoomView(p: Props) {
                           </p>
                         ) : null}
                       </div>
-                      {Array.isArray(row.photos) && row.photos.length > 0 ? (
-                        <div className="flex items-center gap-2 pl-7 w-full min-w-0 sm:pl-0">
-                          <span className="text-[11px] font-medium tabular-nums text-muted-foreground shrink-0">
-                            {row.photos.length} photo{row.photos.length !== 1 ? 's' : ''}
-                          </span>
-                          <div className="flex gap-1 overflow-x-auto pb-0.5 min-w-0 [scrollbar-width:thin]">
-                            {row.photos.slice(0, 8).map((url, ti) => (
-                              <div
-                                key={`${sid}-hdr-${ti}`}
-                                className="pointer-events-none h-9 w-9 shrink-0 overflow-hidden rounded-md bg-slate-100 ring-1 ring-border/45 dark:bg-slate-800"
-                              >
-                                <img src={url} alt="" className="h-full w-full object-cover" />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                     <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 mt-0.5 sm:mt-0" />
                   </CollapsibleTrigger>
@@ -1266,30 +1273,14 @@ export function WorkerRoomView(p: Props) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="space-y-1">
                           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Stage photos
+                            Documentation photo for this stage
                           </p>
-                          {Array.isArray(row.photos) && row.photos.length > 0 ? (
-                            <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
-                              {row.photos.length} photo{row.photos.length !== 1 ? 's' : ''}
-                            </span>
-                          ) : null}
+                          <p className="text-[11px] text-muted-foreground leading-snug">
+                            Saved photos appear in the heating cable gallery below.
+                          </p>
                         </div>
-                        {Array.isArray(row.photos) && row.photos.length > 0 ? (
-                          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2">
-                            {row.photos.map((url, pi) => (
-                              <button
-                                key={`${stage.key}-p-${pi}`}
-                                type="button"
-                                className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
-                                onClick={() => p.onPhotoPreview(url)}
-                              >
-                                <img src={url} alt="" className="h-full w-full object-cover" />
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
                         <HeatingStagePhotoPicker
                           registerInput={(suffix, el) => {
                             const map = heatingPhotoRefKeys(sid);
@@ -1368,23 +1359,6 @@ export function WorkerRoomView(p: Props) {
                           </p>
                         ) : null}
                       </div>
-                      {Array.isArray(step.photos) && step.photos.length > 0 ? (
-                        <div className="flex items-center gap-2 pl-7 w-full min-w-0 sm:pl-0">
-                          <span className="text-[11px] font-medium tabular-nums text-muted-foreground shrink-0">
-                            {step.photos.length} photo{step.photos.length !== 1 ? 's' : ''}
-                          </span>
-                          <div className="flex gap-1 overflow-x-auto pb-0.5 min-w-0 [scrollbar-width:thin]">
-                            {step.photos.slice(0, 8).map((url, ti) => (
-                              <div
-                                key={`${photoKey}-hdr-${ti}`}
-                                className="pointer-events-none h-9 w-9 shrink-0 overflow-hidden rounded-md bg-slate-100 ring-1 ring-border/45 dark:bg-slate-800"
-                              >
-                                <img src={url} alt="" className="h-full w-full object-cover" />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ) : null}
                     </div>
                     <ChevronDown className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180 mt-0.5 sm:mt-0" />
                   </CollapsibleTrigger>
@@ -1455,30 +1429,14 @@ export function WorkerRoomView(p: Props) {
                         />
                       </div>
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
+                        <div className="space-y-1">
                           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Stage photos
+                            Documentation photo for this stage
                           </p>
-                          {Array.isArray(step.photos) && step.photos.length > 0 ? (
-                            <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
-                              {step.photos.length} photo{step.photos.length !== 1 ? 's' : ''}
-                            </span>
-                          ) : null}
+                          <p className="text-[11px] text-muted-foreground leading-snug">
+                            Saved photos appear in the heating cable gallery below.
+                          </p>
                         </div>
-                        {Array.isArray(step.photos) && step.photos.length > 0 ? (
-                          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-3 sm:gap-2">
-                            {step.photos.map((url, pi) => (
-                              <button
-                                key={`${photoKey}-p-${pi}`}
-                                type="button"
-                                className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
-                                onClick={() => p.onPhotoPreview(url)}
-                              >
-                                <img src={url} alt="" className="h-full w-full object-cover" />
-                              </button>
-                            ))}
-                          </div>
-                        ) : null}
                         <HeatingStagePhotoPicker
                           registerInput={(suffix, el) => {
                             const map = heatingPhotoRefKeys(photoKey);
@@ -1493,6 +1451,42 @@ export function WorkerRoomView(p: Props) {
                 </Collapsible>
               );
             })}
+            {heatingGallerySections.length > 0 ? (
+              <div className="space-y-4 rounded-xl border border-border/55 bg-muted/[0.06] px-3 py-4 sm:px-4">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold text-foreground">Heating cable photos</p>
+                  <p className="text-[11px] text-muted-foreground leading-snug">
+                    Grouped by stage. Tap a thumbnail to view the full image.
+                  </p>
+                </div>
+                <div className="space-y-5">
+                  {heatingGallerySections.map((sec) => (
+                    <div key={sec.stageId} className="space-y-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {sec.label}
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {sec.items.map((item) => (
+                          <button
+                            key={`${sec.stageId}-${item.objectKey}`}
+                            type="button"
+                            className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 ring-1 ring-border/40 dark:bg-slate-800"
+                            disabled={!item.displayUrl}
+                            onClick={() => item.displayUrl && p.onPhotoPreview(item.displayUrl)}
+                          >
+                            {item.displayUrl ? (
+                              <img src={item.displayUrl} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <ImageIcon className="m-auto h-8 w-8 text-muted-foreground/35" aria-hidden />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {!p.heatingLockedByAdmin ? (
               <Button
                 type="button"
@@ -1610,35 +1604,50 @@ export function WorkerRoomView(p: Props) {
         </DialogContent>
       </Dialog>
 
-      {/* Phase photos — collapsed by default */}
+      {/* Phase photos — collapsed by default (excludes heating stage uploads when Varmekabel is primary) */}
       {showFullPhaseDetails && p.showPhotosSection && p.photosForPhase.length > 0 ? (
         <Collapsible defaultOpen={false} className="rounded-xl border border-border/40 bg-card shadow-sm">
           <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:px-4 sm:py-3">
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Photos this phase
+                {heatingCablePhasePrimary ? 'Other photos this phase' : 'Photos this phase'}
               </span>
               <span className="text-sm font-medium text-foreground">
                 {p.photosForPhase.length} photo{p.photosForPhase.length === 1 ? '' : 's'}
               </span>
+              {heatingCablePhasePrimary ? (
+                <span className="text-xs text-muted-foreground leading-snug pt-0.5">
+                  Read-only summary of general uploads for this step — heating cable documentation lives in the gallery
+                  above.
+                </span>
+              ) : null}
             </span>
             <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="border-t border-border/35 px-3 pb-3 pt-2 sm:px-4">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {p.photosForPhase.map((photo) => (
                   <button
                     key={photo.id}
                     type="button"
-                    className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
+                    className="flex gap-2 rounded-lg border border-border/35 bg-muted/10 p-2 text-left hover:bg-muted/20"
                     onClick={() => photo.downloadUrl && p.onPhotoPreview(photo.downloadUrl)}
                   >
-                    {photo.downloadUrl ? (
-                      <img src={photo.downloadUrl} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <ImageIcon className="m-auto h-8 w-8 text-muted-foreground/40" />
-                    )}
+                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
+                      {photo.downloadUrl ? (
+                        <img src={photo.downloadUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <ImageIcon className="m-auto h-6 w-6 text-muted-foreground/40" />
+                      )}
+                    </div>
+                    <span className="min-w-0 flex-1 text-[11px] text-muted-foreground leading-snug">
+                      {photo.caption?.trim()
+                        ? photo.caption.trim()
+                        : photo.filename
+                          ? photo.filename
+                          : 'Phase photo'}
+                    </span>
                   </button>
                 ))}
               </div>
