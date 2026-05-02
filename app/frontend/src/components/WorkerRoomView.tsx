@@ -636,15 +636,9 @@ export function WorkerRoomView(p: Props) {
     };
   }, [p.boardPhaseTotalCount, p.boardPhaseIncompleteCount, p.boardPhaseShowHeating, boardHeatingDocProgress]);
 
-  const lastActivityHero = useMemo(() => {
-    const row = p.activityEntries[0];
-    if (!row) return null;
-    return { when: p.formatActivityWhen(row.t), msg: row.msg };
-  }, [p.activityEntries, p.formatActivityWhen]);
-
   return (
     <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4 lg:max-w-xl">
-      {/* Room hero — information only: room, status, due, open work, phases, optional last update */}
+      {/* Room hero — decision-critical: room, status, due, open work, phases */}
       <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.09] via-background to-background shadow-md ring-1 ring-black/[0.03] dark:from-blue-950/45 dark:via-background dark:to-background dark:ring-white/[0.06]">
         <div className="space-y-3 p-4 sm:space-y-3.5 sm:p-5">
           <div className="flex flex-col gap-3 min-[400px]:flex-row min-[400px]:items-start min-[400px]:justify-between min-[400px]:gap-4">
@@ -800,19 +794,6 @@ export function WorkerRoomView(p: Props) {
               ) : null}
             </div>
           )}
-
-          {lastActivityHero ? (
-            <div className="flex gap-2 border-t border-border/25 pt-3 text-xs leading-snug text-muted-foreground">
-              <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-              <div className="min-w-0">
-                <span className="font-medium text-foreground/90">Last update</span>
-                <span className="mx-1.5 text-muted-foreground/45">·</span>
-                <span className="tabular-nums">{lastActivityHero.when}</span>
-                <span className="mx-1.5 text-muted-foreground/45">·</span>
-                <span className="text-foreground/85">{lastActivityHero.msg}</span>
-              </div>
-            </div>
-          ) : null}
         </div>
       </Card>
 
