@@ -42,7 +42,6 @@ import {
   phaseTimelineFromStepStatus,
   phaseTimelineState,
 } from '@/lib/roomPhases';
-import { WORKER_ROOM_CHECKLIST_ANCHOR } from '@/lib/workerLastRoom';
 import { cn } from '@/lib/utils';
 
 export type WorkerTask = {
@@ -371,7 +370,6 @@ function heatingStageCollapseSummary(stage: HeatingCableStage): string {
 }
 
 export function WorkerRoomView(p: Props) {
-  const [reportIssueOpen, setReportIssueOpen] = useState(false);
   const selectedLabel = phaseLabel(p.selectedPhaseKey, p.phaseWorkflow);
   const inProgressKeys =
     p.inProgressPhaseKeys && p.inProgressPhaseKeys.length > 0
@@ -586,7 +584,7 @@ export function WorkerRoomView(p: Props) {
   const heroStatPrimary = useMemo(() => {
     if (p.boardPhaseTotalCount > 0) {
       return {
-        label: 'Open items',
+        label: 'Open work',
         value: String(p.boardPhaseIncompleteCount),
         sub:
           p.boardPhaseTotalCount > 0
@@ -597,50 +595,27 @@ export function WorkerRoomView(p: Props) {
     if (p.boardPhaseShowHeating && boardHeatingDocProgress) {
       const left = boardHeatingDocProgress.total - boardHeatingDocProgress.complete;
       return {
-        label: 'Open items',
+        label: 'Open work',
         value: String(Math.max(0, left)),
         sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} heating stages done`,
       };
     }
     return {
-      label: 'Open items',
+      label: 'Open work',
       value: '0',
       sub: 'Nothing queued this phase',
     };
   }, [p.boardPhaseTotalCount, p.boardPhaseIncompleteCount, p.boardPhaseShowHeating, boardHeatingDocProgress]);
 
-  const scrollToWorkAnchor = () => {
-    const checklistEl = document.getElementById(WORKER_ROOM_CHECKLIST_ANCHOR);
-    const heatingEl = document.getElementById('worker-heating-block');
-    const completeEl = document.getElementById('worker-complete-phase');
-    const el =
-      p.showChecklistSection && checklistEl
-        ? checklistEl
-        : p.showHeatingModule && heatingEl
-          ? heatingEl
-          : completeEl ?? checklistEl ?? heatingEl;
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  const onContinueWork = () => {
-    if (viewingNonBoard) {
-      p.onPhaseSelect(p.boardPhaseKey);
-      window.setTimeout(() => scrollToWorkAnchor(), 260);
-      return;
-    }
-    scrollToWorkAnchor();
-  };
-
-  const onReportIssueClick = () => {
-    setReportIssueOpen(true);
-    window.requestAnimationFrame(() => {
-      document.getElementById('worker-report-issue')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  };
+  const lastActivityHero = useMemo(() => {
+    const row = p.activityEntries[0];
+    if (!row) return null;
+    return { when: p.formatActivityWhen(row.t), msg: row.msg };
+  }, [p.activityEntries, p.formatActivityWhen]);
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4 lg:max-w-xl">
-      {/* Room hero — minimal scan: room, status, due, open count, phase chips, actions */}
+      {/* Room hero — information only: room, status, due, open work, phases, optional last update */}
       <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.09] via-background to-background shadow-md ring-1 ring-black/[0.03] dark:from-blue-950/45 dark:via-background dark:to-background dark:ring-white/[0.06]">
         <div className="space-y-3 p-4 sm:space-y-3.5 sm:p-5">
           <div className="flex flex-col gap-3 min-[400px]:flex-row min-[400px]:items-start min-[400px]:justify-between min-[400px]:gap-4">
@@ -693,7 +668,7 @@ export function WorkerRoomView(p: Props) {
           {workflowKeys.length > 1 ? (
             <div className="space-y-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                {inProgressKeys.length > 1 ? 'Active phases' : 'Phase'}
+                Phases
               </p>
               <div className="-mx-0.5 overflow-x-auto overscroll-x-contain px-0.5 [-webkit-overflow-scrolling:touch]">
                 <div className="flex w-max max-w-none gap-2 pb-0.5">
@@ -750,24 +725,6 @@ export function WorkerRoomView(p: Props) {
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-            <Button
-              type="button"
-              className="h-12 min-h-12 w-full bg-[#1E3A5F] text-base font-semibold hover:bg-[#1E3A5F]/90 dark:bg-blue-700 dark:hover:bg-blue-700/90 sm:h-11 sm:min-h-11 sm:flex-1 sm:text-sm"
-              onClick={() => onContinueWork()}
-            >
-              Continue work
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 min-h-12 w-full border-border/60 text-base font-medium sm:h-11 sm:min-h-11 sm:flex-1 sm:text-sm"
-              onClick={() => onReportIssueClick()}
-            >
-              Report issue
-            </Button>
-          </div>
-
           {(p.blockedReason || openDeviationsCount > 0) && (
             <div
               className={cn(
@@ -814,6 +771,19 @@ export function WorkerRoomView(p: Props) {
               ) : null}
             </div>
           )}
+
+          {lastActivityHero ? (
+            <div className="flex gap-2 border-t border-border/25 pt-3 text-xs leading-snug text-muted-foreground">
+              <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              <div className="min-w-0">
+                <span className="font-medium text-foreground/90">Last update</span>
+                <span className="mx-1.5 text-muted-foreground/45">·</span>
+                <span className="tabular-nums">{lastActivityHero.when}</span>
+                <span className="mx-1.5 text-muted-foreground/45">·</span>
+                <span className="text-foreground/85">{lastActivityHero.msg}</span>
+              </div>
+            </div>
+          ) : null}
         </div>
       </Card>
 
@@ -1576,14 +1546,14 @@ export function WorkerRoomView(p: Props) {
           <p className="border-b border-border/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
             More on this phase
           </p>
-          <Collapsible open={reportIssueOpen} onOpenChange={setReportIssueOpen}>
+          <Collapsible defaultOpen={false}>
             <CollapsibleTrigger
               id="worker-report-issue"
               className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted/25 sm:min-h-0"
             >
               <span className="flex min-w-0 flex-1 items-center gap-2.5">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600/90" />
-                <span className="leading-snug">Issue details</span>
+                <span className="leading-snug">Report issue</span>
                 {p.deviations.length > 0 ? (
                   <Badge variant="secondary" className="text-[10px]">
                     {p.deviations.length}
