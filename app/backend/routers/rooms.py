@@ -36,6 +36,11 @@ from dependencies.phase_edit import (
     ensure_worker_may_update_room_gated_content,
 )
 from models.projects import Projects
+from services.room_activity import (
+    append_room_activity,
+    append_room_patch_activity,
+    maybe_backfill_legacy_visits_photos,
+)
 from services.room_visits import Room_visitsService
 from sqlalchemy import select
 
@@ -161,6 +166,7 @@ class RoomsResponse(BaseModel):
     heating_cable_doc: Optional[Dict[str, Any]] = None
     phase_tool_overrides: Optional[Dict[str, Any]] = None
     phase_statuses: Optional[Dict[str, Any]] = None
+    activity_log: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -404,7 +410,11 @@ async def get_rooms(
         if not result:
             logger.warning(f"Rooms with id {id} not found")
             raise HTTPException(status_code=404, detail="Rooms not found")
-        
+
+        merged = await maybe_backfill_legacy_visits_photos(db, result, str(current_user.id))
+        if merged is not None:
+            result = merged
+
         return result
     except HTTPException:
         raise
@@ -475,7 +485,20 @@ async def worker_phase_handoff(
     result = await service.update(id, lock_part, user_id=str(current_user.id))
     if not result:
         raise HTTPException(status_code=404, detail="Rooms not found")
-    return result
+
+    await append_room_activity(
+        db,
+        id,
+        str(current_user.id),
+        kind="phase_handoff",
+        actor=name,
+        phase_key=phase_n,
+        phase_label=label,
+        area_id=aid,
+        meta={"detail": visit_data["action"]},
+    )
+    refreshed = await service.get_by_id(id, user_id=str(current_user.id))
+    return refreshed if refreshed else result
 
 
 @router.post("", response_model=RoomsResponse, status_code=201)
@@ -569,12 +592,21 @@ async def update_roomss_batch(
             validate_blocked_reason(item.updates.status, item.updates.blocked_reason)
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
+            update_dict.pop("activity_log", None)
             existing_b = await service.get_by_id(item.id, user_id=str(current_user.id))
             if existing_b:
                 _prepare_room_update_dict(existing_b, update_dict, app_role)
                 await _sync_phase_statuses_on_update(db, existing_b, update_dict)
             result = await service.update(item.id, update_dict, user_id=str(current_user.id))
             if result:
+                if existing_b:
+                    await append_room_patch_activity(
+                        db,
+                        existing_b,
+                        update_dict,
+                        current_user,
+                        str(current_user.id),
+                    )
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} roomss successfully")
@@ -607,6 +639,7 @@ async def update_rooms(
                 update_dict[k] = v
             elif k in ("deadline_at", "checklist_labels", "heating_cable_doc", "phase_tool_overrides"):
                 update_dict[k] = None
+        update_dict.pop("activity_log", None)
         existing = await service.get_by_id(id, user_id=str(current_user.id))
         if not existing:
             logger.warning(f"Rooms with id {id} not found for update")
@@ -640,8 +673,11 @@ async def update_rooms(
             logger.warning(f"Rooms with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Rooms not found")
 
+        await append_room_patch_activity(db, existing, update_dict, current_user, str(current_user.id))
+
         logger.info(f"Rooms {id} updated successfully")
-        return result
+        refreshed = await service.get_by_id(id, user_id=str(current_user.id))
+        return refreshed if refreshed else result
     except HTTPException:
         raise
     except ValueError as e:

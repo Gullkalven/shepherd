@@ -33,5 +33,7 @@ class Rooms(Base):
     heating_cable_doc = Column(JSON, nullable=True)
     # Per-phase tool visibility overrides: { phase_key: { checklist?: bool, heating_cable?: bool } }; merged with project workflow
     phase_tool_overrides = Column(JSON, nullable=True)
+    # Append-only audit entries for room-wide Activity (never mutate prior rows from the API)
+    activity_log = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

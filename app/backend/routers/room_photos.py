@@ -18,6 +18,7 @@ from dependencies.phase_edit import (
     ensure_room_phase_editable_for_worker,
     workflow_keys_for_room,
 )
+from services.room_activity import actor_display, append_room_activity, phase_display_label
 from dependencies.room_areas import norm_area_id, room_phase_for_area
 from dependencies.room_lock import ensure_room_mutable
 from dependencies.roles import get_current_app_role
@@ -226,6 +227,31 @@ async def create_room_photos(
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create room_photos")
+
+        if room_obj:
+            keys = await workflow_keys_for_room(db, room_obj)
+            aid = norm_area_id(data.area_id)
+            area_rp = room_phase_for_area(room_obj, aid, keys)
+            phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+            eff = effective_media_phase(data.phase, area_rp, keys, phase_statuses_raw)
+            plab = await phase_display_label(db, room_obj, eff)
+            created_iso = None
+            ca = getattr(result, "created_at", None)
+            if hasattr(ca, "isoformat"):
+                created_iso = ca.isoformat()
+            await append_room_activity(
+                db,
+                data.room_id,
+                str(current_user.id),
+                kind="photo_uploaded",
+                actor=actor_display(current_user),
+                phase_key=eff,
+                phase_label=plab,
+                area_id=aid,
+                photo_id=getattr(result, "id", None),
+                at_iso=created_iso,
+                meta={"filename": getattr(result, "filename", None)},
+            )
         
         logger.info(f"Room_photos created successfully with id: {result.id}")
         return result
@@ -268,6 +294,28 @@ async def create_room_photoss_batch(
                 )
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
+                if room_obj:
+                    keys = await workflow_keys_for_room(db, room_obj)
+                    aid = norm_area_id(item_data.area_id)
+                    area_rp = room_phase_for_area(room_obj, aid, keys)
+                    phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+                    eff = effective_media_phase(item_data.phase, area_rp, keys, phase_statuses_raw)
+                    plab = await phase_display_label(db, room_obj, eff)
+                    ca = getattr(result, "created_at", None)
+                    created_iso = ca.isoformat() if hasattr(ca, "isoformat") else None
+                    await append_room_activity(
+                        db,
+                        item_data.room_id,
+                        str(current_user.id),
+                        kind="photo_uploaded",
+                        actor=actor_display(current_user),
+                        phase_key=eff,
+                        phase_label=plab,
+                        area_id=aid,
+                        photo_id=getattr(result, "id", None),
+                        at_iso=created_iso,
+                        meta={"filename": getattr(result, "filename", None)},
+                    )
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} room_photoss successfully")
@@ -416,6 +464,19 @@ async def delete_room_photoss_batch(
                 await ensure_room_phase_editable_for_worker(
                     db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
+                plab = await phase_display_label(db, room_obj, eff)
+                await append_room_activity(
+                    db,
+                    row.room_id,
+                    str(current_user.id),
+                    kind="photo_deleted",
+                    actor=actor_display(current_user),
+                    phase_key=eff,
+                    phase_label=plab,
+                    area_id=aid,
+                    photo_id=getattr(row, "id", None),
+                    meta={"filename": getattr(row, "filename", None)},
+                )
             success = await service.delete(item_id, user_id=str(current_user.id))
             if success:
                 deleted_count += 1
@@ -460,6 +521,19 @@ async def delete_room_photos(
             )
             await ensure_room_phase_editable_for_worker(
                 db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
+            )
+            plab = await phase_display_label(db, room_obj, eff)
+            await append_room_activity(
+                db,
+                row.room_id,
+                str(current_user.id),
+                kind="photo_deleted",
+                actor=actor_display(current_user),
+                phase_key=eff,
+                phase_label=plab,
+                area_id=aid,
+                photo_id=getattr(row, "id", None),
+                meta={"filename": getattr(row, "filename", None)},
             )
         success = await service.delete(id, user_id=str(current_user.id))
         if not success:

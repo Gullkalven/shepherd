@@ -18,6 +18,7 @@ from dependencies.phase_edit import (
     ensure_room_phase_editable_for_worker,
     workflow_keys_for_room,
 )
+from services.room_activity import append_room_activity, phase_display_label
 from dependencies.room_areas import norm_area_id, room_phase_for_area
 from dependencies.room_lock import ensure_room_mutable
 from dependencies.roles import get_current_app_role
@@ -223,6 +224,31 @@ async def create_room_visits(
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create room_visits")
+
+        if room_obj:
+            keys = await workflow_keys_for_room(db, room_obj)
+            aid = norm_area_id(data.area_id)
+            area_rp = room_phase_for_area(room_obj, aid, keys)
+            phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+            eff = effective_media_phase(data.phase, area_rp, keys, phase_statuses_raw)
+            plab = await phase_display_label(db, room_obj, eff)
+            visited_iso = None
+            va = getattr(result, "visited_at", None)
+            if hasattr(va, "isoformat"):
+                visited_iso = va.isoformat()
+            actor_v = (data.worker_name or "").strip() or "Someone"
+            await append_room_activity(
+                db,
+                data.room_id,
+                str(current_user.id),
+                kind="room_visit",
+                actor=actor_v,
+                phase_key=eff,
+                phase_label=plab,
+                area_id=aid,
+                at_iso=visited_iso,
+                meta={"action": data.action, "visit_id": getattr(result, "id", None)},
+            )
         
         logger.info(f"Room_visits created successfully with id: {result.id}")
         return result
@@ -265,6 +291,28 @@ async def create_room_visitss_batch(
                 )
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
+                if room_obj:
+                    keys = await workflow_keys_for_room(db, room_obj)
+                    aid = norm_area_id(item_data.area_id)
+                    area_rp = room_phase_for_area(room_obj, aid, keys)
+                    phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+                    eff = effective_media_phase(item_data.phase, area_rp, keys, phase_statuses_raw)
+                    plab = await phase_display_label(db, room_obj, eff)
+                    va = getattr(result, "visited_at", None)
+                    visited_iso = va.isoformat() if hasattr(va, "isoformat") else None
+                    actor_v = (item_data.worker_name or "").strip() or "Someone"
+                    await append_room_activity(
+                        db,
+                        item_data.room_id,
+                        str(current_user.id),
+                        kind="room_visit",
+                        actor=actor_v,
+                        phase_key=eff,
+                        phase_label=plab,
+                        area_id=aid,
+                        at_iso=visited_iso,
+                        meta={"action": item_data.action, "visit_id": getattr(result, "id", None)},
+                    )
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} room_visitss successfully")

@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import List, Optional
+from types import SimpleNamespace
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -20,11 +21,125 @@ from dependencies.room_areas import norm_area_id, room_phase_for_area
 from dependencies.room_lock import ensure_room_mutable
 from dependencies.roles import get_current_app_role
 from schemas.auth import UserResponse
+from services.room_activity import actor_display, append_room_activity, phase_display_label
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/entities/tasks", tags=["tasks"])
+
+
+async def _append_task_create_activity(
+    db: AsyncSession,
+    *,
+    room_obj: Rooms,
+    task_row: Any,
+    user_id: str,
+    current_user: UserResponse,
+) -> None:
+    keys = await workflow_keys_for_room(db, room_obj)
+    aid = norm_area_id(getattr(task_row, "area_id", None))
+    area_rp = room_phase_for_area(room_obj, aid, keys)
+    phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+    eff = effective_task_phase(getattr(task_row, "phase", None), area_rp, keys, phase_statuses_raw)
+    plab = await phase_display_label(db, room_obj, eff)
+    await append_room_activity(
+        db,
+        getattr(task_row, "room_id"),
+        user_id,
+        kind="checklist_item_added",
+        actor=actor_display(current_user),
+        phase_key=eff,
+        phase_label=plab,
+        area_id=aid,
+        item_name=getattr(task_row, "name", None),
+        task_id=getattr(task_row, "id", None),
+    )
+
+
+async def _append_task_change_activity(
+    db: AsyncSession,
+    *,
+    task_before: Any,
+    update_dict: Dict[str, Any],
+    room_obj: Rooms,
+    user_id: str,
+    current_user: UserResponse,
+) -> None:
+    keys = await workflow_keys_for_room(db, room_obj)
+    merged_phase = update_dict.get("phase", getattr(task_before, "phase", None))
+    aid_u = norm_area_id(update_dict.get("area_id", getattr(task_before, "area_id", None)))
+    area_rp = room_phase_for_area(room_obj, aid_u, keys)
+    phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+    eff = effective_task_phase(merged_phase, area_rp, keys, phase_statuses_raw)
+    plab = await phase_display_label(db, room_obj, eff)
+    aid_str = norm_area_id(getattr(task_before, "area_id", None))
+    old_name = getattr(task_before, "name", "") or ""
+    old_completed = bool(getattr(task_before, "is_completed", False))
+    tid = getattr(task_before, "id", None)
+    rid = getattr(task_before, "room_id")
+    actor_toggle = (
+        (update_dict.get("checked_by") or getattr(task_before, "checked_by", None) or "").strip()
+        or actor_display(current_user)
+    )
+
+    if "name" in update_dict and update_dict["name"] != old_name:
+        await append_room_activity(
+            db,
+            rid,
+            user_id,
+            kind="checklist_item_renamed",
+            actor=actor_display(current_user),
+            phase_key=eff,
+            phase_label=plab,
+            area_id=aid_str,
+            item_name=old_name,
+            task_id=tid,
+            meta={"new_name": update_dict.get("name")},
+        )
+
+    if "is_completed" in update_dict and bool(update_dict["is_completed"]) != old_completed:
+        kind = "checklist_checked" if update_dict["is_completed"] else "checklist_unchecked"
+        await append_room_activity(
+            db,
+            rid,
+            user_id,
+            kind=kind,
+            actor=actor_toggle,
+            phase_key=eff,
+            phase_label=plab,
+            area_id=aid_str,
+            item_name=old_name,
+            task_id=tid,
+        )
+
+
+async def _append_task_delete_activity(
+    db: AsyncSession,
+    *,
+    task_before: Any,
+    room_obj: Rooms,
+    user_id: str,
+    current_user: UserResponse,
+) -> None:
+    keys = await workflow_keys_for_room(db, room_obj)
+    aid = norm_area_id(getattr(task_before, "area_id", None))
+    area_rp = room_phase_for_area(room_obj, aid, keys)
+    phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+    eff = effective_task_phase(getattr(task_before, "phase", None), area_rp, keys, phase_statuses_raw)
+    plab = await phase_display_label(db, room_obj, eff)
+    await append_room_activity(
+        db,
+        getattr(task_before, "room_id"),
+        user_id,
+        kind="checklist_item_deleted",
+        actor=actor_display(current_user),
+        phase_key=eff,
+        phase_label=plab,
+        area_id=aid,
+        item_name=getattr(task_before, "name", None),
+        task_id=getattr(task_before, "id", None),
+    )
 
 
 # ---------- Pydantic Schemas ----------
@@ -243,7 +358,15 @@ async def create_tasks(
         result = await service.create(payload, user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create tasks")
-        
+
+        await _append_task_create_activity(
+            db,
+            room_obj=room_obj,
+            task_row=result,
+            user_id=str(current_user.id),
+            current_user=current_user,
+        )
+
         logger.info(f"Tasks created successfully with id: {result.id}")
         return result
     except HTTPException:
@@ -289,6 +412,13 @@ async def create_taskss_batch(
             )
             result = await service.create(payload, user_id=str(current_user.id))
             if result:
+                await _append_task_create_activity(
+                    db,
+                    room_obj=room_obj,
+                    task_row=result,
+                    user_id=str(current_user.id),
+                    current_user=current_user,
+                )
                 results.append(result)
         
         logger.info(f"Batch created {len(results)} taskss successfully")
@@ -338,8 +468,26 @@ async def update_taskss_batch(
                 await ensure_room_phase_editable_for_worker(
                     db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
+            snap = SimpleNamespace(
+                id=getattr(task, "id", None),
+                room_id=getattr(task, "room_id", None),
+                name=getattr(task, "name", "") or "",
+                is_completed=bool(getattr(task, "is_completed", False)),
+                checked_by=getattr(task, "checked_by", None),
+                phase=getattr(task, "phase", None),
+                area_id=getattr(task, "area_id", None),
+            )
             result = await service.update(item.id, update_dict, user_id=str(current_user.id))
             if result:
+                if room_obj:
+                    await _append_task_change_activity(
+                        db,
+                        task_before=snap,
+                        update_dict=update_dict,
+                        room_obj=room_obj,
+                        user_id=str(current_user.id),
+                        current_user=current_user,
+                    )
                 results.append(result)
         
         logger.info(f"Batch updated {len(results)} taskss successfully")
@@ -388,10 +536,29 @@ async def update_tasks(
             await ensure_room_phase_editable_for_worker(
                 db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
+        snap = SimpleNamespace(
+            id=getattr(task, "id", None),
+            room_id=getattr(task, "room_id", None),
+            name=getattr(task, "name", "") or "",
+            is_completed=bool(getattr(task, "is_completed", False)),
+            checked_by=getattr(task, "checked_by", None),
+            phase=getattr(task, "phase", None),
+            area_id=getattr(task, "area_id", None),
+        )
         result = await service.update(id, update_dict, user_id=str(current_user.id))
         if not result:
             logger.warning(f"Tasks with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Tasks not found")
+
+        if room_obj:
+            await _append_task_change_activity(
+                db,
+                task_before=snap,
+                update_dict=update_dict,
+                room_obj=room_obj,
+                user_id=str(current_user.id),
+                current_user=current_user,
+            )
 
         logger.info(f"Tasks {id} updated successfully")
         return result
@@ -437,6 +604,14 @@ async def delete_taskss_batch(
                 await ensure_room_phase_editable_for_worker(
                     db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
+            if room_obj:
+                await _append_task_delete_activity(
+                    db,
+                    task_before=task,
+                    room_obj=room_obj,
+                    user_id=str(current_user.id),
+                    current_user=current_user,
+                )
             success = await service.delete(item_id, user_id=str(current_user.id))
             if success:
                 deleted_count += 1
@@ -481,6 +656,14 @@ async def delete_tasks(
             )
             await ensure_room_phase_editable_for_worker(
                 db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
+            )
+        if room_obj:
+            await _append_task_delete_activity(
+                db,
+                task_before=task,
+                room_obj=room_obj,
+                user_id=str(current_user.id),
+                current_user=current_user,
             )
         success = await service.delete(id, user_id=str(current_user.id))
         if not success:

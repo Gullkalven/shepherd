@@ -30,7 +30,6 @@ import {
   phaseTabReadOnlyForWorker,
   phaseTimelineFromStepStatus,
   storedChecklistPhase,
-  visitMatchesPhase,
   photoMatchesPhase,
   coercePhaseToolOverrides,
   computePhaseChipUi,
@@ -46,6 +45,7 @@ import {
   taskBelongsToArea,
   type RoomArea,
 } from '@/lib/roomAreas';
+import { buildActivityRows } from '@/lib/roomActivity';
 import { cn } from '@/lib/utils';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { useI18n } from '@/lib/i18n';
@@ -213,6 +213,8 @@ interface Room {
   phase_statuses?: Record<string, string> | null;
   /** Optional overrides merged with project workflow for checklist/heating visibility */
   phase_tool_overrides?: Record<string, PhaseToolOverride> | unknown | null;
+  /** Append-only audit log from API */
+  activity_log?: unknown;
   floor_id: number;
   project_id: number;
 }
@@ -520,6 +522,22 @@ export default function RoomDetail() {
     }
   }, [projectId, floorId, roomId]);
 
+  const refreshRoom = useCallback(async () => {
+    if (!roomId) return;
+    try {
+      const roomRes = await client.entities.rooms.get({ id: roomId });
+      const roomData = roomRes?.data as Room | undefined;
+      if (roomData) {
+        setRoom({
+          ...roomData,
+          phase_lock_overrides: coercePhaseLockOverrides(roomData.phase_lock_overrides),
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [roomId]);
+
   const areasList = useMemo(() => {
     if (!room) return [];
     return normalizeRoomAreas(
@@ -796,6 +814,7 @@ export default function RoomDetail() {
             : t
         )
       );
+      await refreshRoom();
       const action = newCompleted ? 'checked' : 'unchecked';
       toast.success(`${workerName} ${action} "${task.name}"`);
     } catch {
@@ -843,6 +862,7 @@ export default function RoomDetail() {
       if (newTask) {
         setTasks((prev) => [...prev, newTask]);
       }
+      await refreshRoom();
       setNewTaskName('');
       toast.success('Item added');
     } catch {
@@ -892,6 +912,7 @@ export default function RoomDetail() {
       }
 
       setTasks((prev) => [...prev, ...newTasks]);
+      await refreshRoom();
       setBulkTaskText('');
       setShowBulkAddTasks(false);
       toast.success(`${newTasks.length} items added`);
@@ -906,6 +927,7 @@ export default function RoomDetail() {
     try {
       await client.entities.tasks.delete({ id: String(taskId) });
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
+      await refreshRoom();
       toast.success('Item removed');
     } catch {
       toast.error('Failed to remove item');
@@ -940,6 +962,7 @@ export default function RoomDetail() {
             : t
         )
       );
+      await refreshRoom();
       toast.success('Item name updated');
     } catch {
       toast.error('Failed to update item name');
@@ -962,6 +985,7 @@ export default function RoomDetail() {
       });
       setDeviations(next);
       setRoom({ ...room, workflow_deviations: next });
+      await refreshRoom();
       if (successMessage) toast.success(successMessage);
     } catch {
       toast.error('Failed to save deviations');
@@ -1242,6 +1266,7 @@ export default function RoomDetail() {
     try {
       await client.entities.room_photos.delete({ id: String(photo.id) });
       setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+      await refreshRoom();
       toast.success('Photo deleted');
     } catch {
       toast.error('Failed to delete photo');
@@ -1306,6 +1331,7 @@ export default function RoomDetail() {
         data: { deadline_at: iso } as Record<string, unknown>,
       });
       setRoom({ ...room, deadline_at: iso });
+      await refreshRoom();
       toast.success(iso ? 'Deadline saved' : 'Deadline cleared');
     } catch {
       toast.error('Failed to save deadline');
@@ -1324,6 +1350,7 @@ export default function RoomDetail() {
       });
       setDeadlineDraft('');
       setRoom({ ...room, deadline_at: null });
+      await refreshRoom();
       toast.success('Deadline cleared');
     } catch {
       toast.error('Failed to clear deadline');
@@ -1345,13 +1372,14 @@ export default function RoomDetail() {
           data: { phase_tool_overrides: next } as Record<string, unknown>,
         });
         setRoom((prev) => (prev ? { ...prev, phase_tool_overrides: next } : null));
+        await refreshRoom();
       } catch {
         toast.error('Failed to save phase tools');
       } finally {
         setPhaseToolsSaving(false);
       }
     },
-    [room, canEdit]
+    [room, canEdit, refreshRoom]
   );
 
   const commitChecklistSectionTitle = useCallback(async () => {
@@ -1376,6 +1404,7 @@ export default function RoomDetail() {
         } as Record<string, unknown>,
       });
       setRoom({ ...room, checklist_labels: next });
+      await refreshRoom();
       toast.success('Title updated');
     } catch {
       toast.error('Failed to save title');
@@ -1383,7 +1412,7 @@ export default function RoomDetail() {
       setSavingChecklistTitle(false);
       setEditingChecklistTitle(false);
     }
-  }, [room, canEdit, checklistTitleDraft, phaseTab, phaseWorkflow, defaultChecklistTitle]);
+  }, [room, canEdit, checklistTitleDraft, phaseTab, phaseWorkflow, defaultChecklistTitle, refreshRoom]);
 
   const persistHeatingCableDoc = useCallback(
     async (options?: { overrideDoc?: HeatingCableDoc; manual?: boolean }) => {
@@ -1417,6 +1446,7 @@ export default function RoomDetail() {
           if (fpSent === fpLatest) break;
           chain++;
         }
+        await refreshRoom();
         setHeatingCableSaveUi('saved');
         heatingSaveUiIdleTimerRef.current = setTimeout(() => {
           setHeatingCableSaveUi('idle');
@@ -1430,7 +1460,7 @@ export default function RoomDetail() {
         return false;
       }
     },
-    [room, displayName]
+    [room, displayName, refreshRoom]
   );
 
   const scheduleHeatingAutosave = useCallback(() => {
@@ -1629,37 +1659,17 @@ export default function RoomDetail() {
   const activityEntries = useMemo(() => {
     if (!room) return [];
     const primary = areasList[0]?.id ?? DEFAULT_AREA_ID;
-    const sel = normalizeRoomPhase(phaseTab, phaseWorkflow);
-    const rows: { t: number; msg: string }[] = [];
-    for (const v of visits) {
-      if (!taskBelongsToArea(v.area_id, activeAreaId, primary)) continue;
-      if (!visitMatchesPhase(v.phase, sel, phaseWorkflow)) continue;
-      const t = parseActivityTime(v.visited_at);
-      const tail = v.action?.trim() ? `: ${v.action.trim()}` : ' visited the room';
-      rows.push({ t, msg: `${v.worker_name}${tail}` });
-    }
-    for (const p of photos) {
-      if (!taskBelongsToArea(p.area_id, activeAreaId, primary)) continue;
-      if (!photoMatchesPhase(p.phase, sel, phaseWorkflow)) continue;
-      const t = parseActivityTime(p.created_at ?? null);
-      rows.push({
-        t,
-        msg: `Photo uploaded${p.filename ? `: ${p.filename}` : ''}`,
-      });
-    }
-    for (const task of tasks) {
-      if (!taskBelongsToArea(task.area_id, activeAreaId, primary)) continue;
-      if (storedChecklistPhase(task.phase, phaseWorkflow) !== sel) continue;
-      if (task.is_completed && task.checked_at && task.checked_by) {
-        rows.push({
-          t: parseActivityTime(task.checked_at),
-          msg: `${task.checked_by} checked off “${task.name}”`,
-        });
-      }
-    }
-    rows.sort((a, b) => b.t - a.t);
-    return rows.filter((r) => r.t > 0).slice(0, 100);
-  }, [room, visits, photos, tasks, phaseTab, phaseWorkflow, activeAreaId, areasList]);
+    return buildActivityRows({
+      activityLog: room.activity_log,
+      visits,
+      photos,
+      phaseTab,
+      phaseWorkflow,
+      activeAreaId,
+      areasPrimaryId: primary,
+      parseActivityTime,
+    });
+  }, [room, visits, photos, phaseTab, phaseWorkflow, activeAreaId, areasList]);
 
   const deviationsForPhase = useMemo(() => {
     const sel = normalizeRoomPhase(phaseTab, phaseWorkflow);
