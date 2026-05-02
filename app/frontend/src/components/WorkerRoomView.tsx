@@ -165,7 +165,9 @@ type Props = {
   duePast: boolean;
 
   phaseCompleteEligible: boolean;
-  onCompletePhase: () => void;
+  /** True when this tab is explicitly locked via phase_lock_overrides (worker handoff or admin). */
+  phaseExplicitWorkerLock?: boolean;
+  onCompletePhase: () => boolean | Promise<boolean>;
   completingPhase?: boolean;
 };
 
@@ -489,6 +491,15 @@ export function WorkerRoomView(p: Props) {
 
   const nonBoardFocus = useMemo(() => {
     const st = p.selectedPhaseStepStatus;
+    const forcedLock = p.phaseExplicitWorkerLock === true;
+    if (forcedLock && st === 'in_progress' && p.phaseTabLocked) {
+      return {
+        badge: 'Handed off',
+        badgeClass:
+          'border-emerald-400/75 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-50',
+        description: 'Locked after worker signoff — review only until an admin unlocks.',
+      };
+    }
     if (st === 'blocked' && !p.phaseTabLocked) {
       return {
         badge: 'Blocked',
@@ -535,7 +546,7 @@ export function WorkerRoomView(p: Props) {
         'border-teal-300/75 bg-teal-50 text-teal-950 dark:border-teal-800 dark:bg-teal-950/35 dark:text-teal-50',
       description: null as string | null,
     };
-  }, [p.phaseTabLocked, phaseTimeline, p.selectedPhaseStepStatus]);
+  }, [p.phaseTabLocked, phaseTimeline, p.selectedPhaseStepStatus, p.phaseExplicitWorkerLock]);
 
   const compactSummaryLines = useMemo(() => {
     const lines: string[] = [];
@@ -582,6 +593,13 @@ export function WorkerRoomView(p: Props) {
           'border-red-400/60 bg-red-50 text-red-950 dark:border-red-900/60 dark:bg-red-950/45 dark:text-red-50',
       };
     }
+    if (p.phaseExplicitWorkerLock && p.phaseTabLocked) {
+      return {
+        label: 'Handed off',
+        className:
+          'border-emerald-500/50 bg-emerald-50 text-emerald-950 dark:border-emerald-700/55 dark:bg-emerald-950/45 dark:text-emerald-50',
+      };
+    }
     if (p.phaseCompleteEligible && !p.phaseReadOnly) {
       return {
         label: 'Ready',
@@ -594,7 +612,7 @@ export function WorkerRoomView(p: Props) {
       className:
         'border-[#1E3A5F]/30 bg-[#1E3A5F]/[0.08] text-[#0f2744] dark:border-blue-800/50 dark:bg-blue-950/35 dark:text-blue-50',
     };
-  }, [p.blockedReason, p.phaseCompleteEligible, p.phaseReadOnly]);
+  }, [p.blockedReason, p.phaseCompleteEligible, p.phaseReadOnly, p.phaseExplicitWorkerLock, p.phaseTabLocked]);
 
   const openDeviationsCount = useMemo(
     () => p.deviations.filter((d) => d.status === 'open').length,
@@ -815,6 +833,24 @@ export function WorkerRoomView(p: Props) {
             ))}
           </div>
         </div>
+      ) : null}
+
+      {p.phaseExplicitWorkerLock && p.phaseTabLocked ? (
+        <Card className="overflow-hidden border-emerald-400/45 bg-emerald-50/85 shadow-sm dark:border-emerald-700/45 dark:bg-emerald-950/35">
+          <div className="flex gap-3 p-4 sm:p-4">
+            <Lock
+              className="h-5 w-5 shrink-0 text-emerald-800 dark:text-emerald-200 mt-0.5"
+              aria-hidden
+            />
+            <div className="min-w-0 space-y-1">
+              <p className="text-sm font-semibold text-emerald-950 dark:text-emerald-50">Phase handed off</p>
+              <p className="text-sm leading-snug text-emerald-900/88 dark:text-emerald-100/85">
+                Locked after worker signoff. Checklist, documentation, photos, and notes for this phase are read-only
+                until an admin unlocks editing.
+              </p>
+            </div>
+          </div>
+        </Card>
       ) : null}
 
       {viewingNonBoard ? (
@@ -1561,7 +1597,12 @@ export function WorkerRoomView(p: Props) {
               type="button"
               className="w-full bg-emerald-600 text-white hover:bg-emerald-700 sm:w-auto"
               disabled={p.completingPhase}
-              onClick={() => p.onCompletePhase()}
+              onClick={() => {
+                void (async () => {
+                  const next = await Promise.resolve(p.onCompletePhase());
+                  if (next) setPhaseHandoffDialogOpen(false);
+                })();
+              }}
             >
               {p.completingPhase ? 'Recording…' : 'Confirm handoff'}
             </Button>

@@ -62,6 +62,38 @@ export async function fetchProjectsListAll(): Promise<{ data: { items: unknown[]
 }
 
 /** Normalizes FastAPI / SDK variants: `{ items }`, `{ data: { items } }`, or a bare array. */
+/** Worker phase handoff: records visit and persists phase_lock_overrides (workers cannot PATCH locks directly). */
+export async function postWorkerPhaseHandoff(
+  roomId: number,
+  body: { phase: string; worker_name: string; area_id?: string }
+): Promise<void> {
+  const base = getAPIBaseURL().replace(/\/$/, '');
+  const url = `${base}/api/v1/entities/rooms/${roomId}/worker-phase-handoff`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token = globalThis.localStorage?.getItem('token');
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    /* ignore */
+  }
+  if (typeof globalThis.window?.location?.origin === 'string') {
+    headers['App-Host'] = globalThis.window.location.origin;
+  }
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const text = await res.text();
+    let detail = text;
+    try {
+      const j = JSON.parse(text) as { detail?: unknown };
+      if (typeof j.detail === 'string') detail = j.detail;
+      else if (Array.isArray(j.detail)) detail = j.detail.map(String).join(', ');
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+}
+
 export function extractProjectItemsFromListBody(body: unknown): unknown[] {
   if (body == null) return [];
   if (Array.isArray(body)) return body;

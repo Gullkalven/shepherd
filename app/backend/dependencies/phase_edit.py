@@ -9,10 +9,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dependencies.roles import ROLE_ADMIN
+from dependencies.room_areas import norm_area_id, worker_phase_context_for_area
 from models.projects import Projects
 from models.rooms import Rooms
 from services.rooms import RoomsService
-from dependencies.room_areas import worker_phase_context_for_area
 
 logger = logging.getLogger(__name__)
 
@@ -210,3 +210,89 @@ async def ensure_room_phase_editable_for_worker(
         phase_statuses_raw,
     ):
         raise HTTPException(status_code=403, detail=PHASE_WORKER_LOCKED_DETAIL)
+
+
+async def heating_documentation_phase_key(db: AsyncSession, room: Rooms, keys: List[str]) -> str:
+    """Workflow step that owns heating cable documentation (first with heating_cable_enabled)."""
+    try:
+        row = await db.execute(select(Projects).where(Projects.id == room.project_id))
+        proj = row.scalar_one_or_none()
+        raw = getattr(proj, "phase_workflow_json", None) if proj else None
+        if raw and str(raw).strip():
+            data = json.loads(raw)
+            if isinstance(data, list):
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    k = item.get("key")
+                    he = item.get("heating_cable_enabled")
+                    if isinstance(k, str) and k in keys and he is True:
+                        return normalize_room_phase(k, keys)
+    except Exception as e:
+        logger.warning("heating_documentation_phase_key: %s", e)
+    if "varmekabel" in keys:
+        return "varmekabel"
+    return keys[min(1, len(keys) - 1)] if keys else normalize_room_phase(None, keys)
+
+
+async def ensure_worker_deviations_update_allowed(
+    db: AsyncSession,
+    existing_room: Rooms,
+    user_id: str,
+    app_role: str,
+    keys: List[str],
+    new_raw: Any,
+) -> None:
+    if app_role == ROLE_ADMIN:
+        return
+    if not isinstance(new_raw, list):
+        return
+    old_raw = getattr(existing_room, "workflow_deviations", None)
+    old_list = old_raw if isinstance(old_raw, list) else []
+    old_map: Dict[str, Dict[str, Any]] = {}
+    for d in old_list:
+        if isinstance(d, dict) and d.get("id") is not None:
+            old_map[str(d["id"])] = d
+    new_map: Dict[str, Dict[str, Any]] = {}
+    for d in new_raw:
+        if isinstance(d, dict) and d.get("id") is not None:
+            new_map[str(d["id"])] = d
+    all_ids = set(old_map) | set(new_map)
+    for iid in all_ids:
+        o = old_map.get(iid)
+        n = new_map.get(iid)
+        if o == n:
+            continue
+        target = n if n is not None else o
+        if not isinstance(target, dict):
+            continue
+        pk = normalize_room_phase(target.get("phase_key"), keys)
+        aid = norm_area_id(target.get("area_id"))
+        await ensure_room_phase_editable_for_worker(db, existing_room.id, user_id, app_role, pk, area_id=aid)
+
+
+async def ensure_worker_may_update_room_gated_content(
+    db: AsyncSession,
+    existing_room: Rooms,
+    user_id: str,
+    app_role: str,
+    update_dict: Dict[str, Any],
+) -> None:
+    """Block worker PATCHes that mutate heating docs or deviations for locked phases."""
+    if app_role == ROLE_ADMIN:
+        return
+    keys = await workflow_keys_for_room(db, existing_room)
+    if "heating_cable_doc" in update_dict:
+        hk = await heating_documentation_phase_key(db, existing_room, keys)
+        await ensure_room_phase_editable_for_worker(
+            db, existing_room.id, user_id, app_role, hk, area_id=None
+        )
+    if "workflow_deviations" in update_dict:
+        await ensure_worker_deviations_update_allowed(
+            db,
+            existing_room,
+            user_id,
+            app_role,
+            keys,
+            update_dict["workflow_deviations"],
+        )

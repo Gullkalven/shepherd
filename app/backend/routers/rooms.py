@@ -3,7 +3,7 @@ import logging
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -20,14 +20,24 @@ from dependencies.roles import (
     require_room_collaborator,
 )
 from schemas.auth import UserResponse
-from dependencies.room_areas import parse_areas_list, sanitize_areas_payload
+from dependencies.room_areas import (
+    norm_area_id,
+    parse_areas_list,
+    sanitize_areas_payload,
+    worker_phase_context_for_area,
+)
 from dependencies.phase_edit import (
     workflow_keys_for_room,
     derive_linear_phase_statuses,
     merge_resolve_phase_statuses,
     primary_focus_phase,
     normalize_room_phase,
+    phase_tab_locked_for_worker,
+    ensure_worker_may_update_room_gated_content,
 )
+from models.projects import Projects
+from services.room_visits import Room_visitsService
+from sqlalchemy import select
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -187,6 +197,13 @@ class RoomsBatchDeleteRequest(BaseModel):
     ids: List[int]
 
 
+class WorkerPhaseHandoffRequest(BaseModel):
+    """Worker marks a phase complete: visit + per-phase lock (BAS/admin may unlock later)."""
+    phase: str
+    worker_name: str
+    area_id: Optional[str] = None
+
+
 def _prepare_room_update_dict(existing: Any, update_dict: Dict[str, Any], app_role: str) -> None:
     """Keep room.phase / areas[0] in sync for multi-area rooms (mutates update_dict)."""
     if app_role != ROLE_ADMIN:
@@ -234,6 +251,64 @@ async def _sync_phase_statuses_on_update(
         ph = normalize_room_phase(update_dict.get("phase"), keys_wf)
         update_dict["phase"] = ph
         update_dict["phase_statuses"] = derive_linear_phase_statuses(ph, keys_wf)
+
+
+def _merge_bool_phase_lock_overrides(raw: Any) -> Dict[str, bool]:
+    out: Dict[str, bool] = {}
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            if isinstance(k, str) and isinstance(v, bool):
+                out[k.strip()] = v
+    return out
+
+
+async def _phase_display_label(db: AsyncSession, room: Any, phase_key: str) -> str:
+    try:
+        row = await db.execute(select(Projects).where(Projects.id == room.project_id))
+        proj = row.scalar_one_or_none()
+        raw = getattr(proj, "phase_workflow_json", None) if proj else None
+        if raw and str(raw).strip():
+            data = json.loads(raw)
+            if isinstance(data, list):
+                for item in data:
+                    if isinstance(item, dict) and item.get("key") == phase_key:
+                        lab = item.get("label")
+                        if isinstance(lab, str) and lab.strip():
+                            return lab.strip()
+    except Exception as e:
+        logger.warning("_phase_display_label: %s", e)
+    return phase_key
+
+
+def build_worker_handoff_lock_update(existing_room: Any, phase_key: str, area_id_opt: Optional[str]) -> Dict[str, Any]:
+    """Merge phase_lock_overrides[phase_key]=True; sync areas JSON when the room uses areas."""
+    areas = parse_areas_list(getattr(existing_room, "areas", None))
+    if not areas:
+        cur = _merge_bool_phase_lock_overrides(getattr(existing_room, "phase_lock_overrides", None))
+        cur[phase_key] = True
+        return {"phase_lock_overrides": cur}
+
+    new_areas = deepcopy(areas)
+    aid = norm_area_id(area_id_opt)
+    idx = 0
+    if aid:
+        for i, a in enumerate(new_areas):
+            if a.get("id") == aid:
+                idx = i
+                break
+    target = new_areas[idx]
+    if idx == 0:
+        merged_root = _merge_bool_phase_lock_overrides(getattr(existing_room, "phase_lock_overrides", None))
+        merged_area = _merge_bool_phase_lock_overrides(target.get("phase_lock_overrides"))
+        cur = {**merged_root, **merged_area}
+    else:
+        cur = _merge_bool_phase_lock_overrides(target.get("phase_lock_overrides"))
+    cur[phase_key] = True
+    target["phase_lock_overrides"] = cur
+    out: Dict[str, Any] = {"areas": new_areas}
+    if idx == 0:
+        out["phase_lock_overrides"] = cur
+    return out
 
 
 # ---------- Routes ----------
@@ -336,6 +411,71 @@ async def get_rooms(
     except Exception as e:
         logger.error(f"Error fetching rooms {id}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/{id}/worker-phase-handoff", response_model=RoomsResponse)
+async def worker_phase_handoff(
+    id: int,
+    body: WorkerPhaseHandoffRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Worker confirms phase handoff: activity visit + persistent per-phase worker lock."""
+    name = (body.worker_name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Worker name is required")
+
+    await ensure_room_mutable(db, id, str(current_user.id), app_role)
+
+    service = RoomsService(db)
+    room_obj = await service.get_by_id(id, user_id=str(current_user.id))
+    if not room_obj:
+        raise HTTPException(status_code=404, detail="Rooms not found")
+
+    keys = await workflow_keys_for_room(db, room_obj)
+    phase_n = normalize_room_phase(body.phase, keys)
+    rp_existing = getattr(room_obj, "phase", None)
+    merged_statuses = merge_resolve_phase_statuses(
+        getattr(room_obj, "phase_statuses", None), rp_existing, keys
+    )
+    if merged_statuses.get(phase_n) != "in_progress":
+        raise HTTPException(
+            status_code=400,
+            detail="Only the active in-progress phase can be handed off.",
+        )
+
+    aid = norm_area_id(body.area_id)
+    rn, ov = worker_phase_context_for_area(room_obj, aid, keys)
+    ps_raw = getattr(room_obj, "phase_statuses", None)
+    if phase_tab_locked_for_worker(rn, phase_n, keys, ov, ps_raw):
+        raise HTTPException(status_code=400, detail="This phase is already locked for workers.")
+
+    label = await _phase_display_label(db, room_obj, phase_n)
+    visit_svc = Room_visitsService(db)
+    visit_data = {
+        "room_id": id,
+        "worker_name": name,
+        "action": f"Phase ready for handoff: {label}",
+        "visited_at": datetime.now(timezone.utc),
+        "phase": phase_n,
+        "area_id": aid,
+    }
+    visit_row = await visit_svc.create(visit_data, user_id=str(current_user.id))
+    if not visit_row:
+        raise HTTPException(status_code=400, detail="Failed to record visit")
+
+    lock_part = build_worker_handoff_lock_update(room_obj, phase_n, body.area_id)
+    try:
+        _prepare_room_update_dict(room_obj, lock_part, ROLE_ADMIN)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    result = await service.update(id, lock_part, user_id=str(current_user.id))
+    if not result:
+        raise HTTPException(status_code=404, detail="Rooms not found")
+    return result
 
 
 @router.post("", response_model=RoomsResponse, status_code=201)
@@ -482,6 +622,9 @@ async def update_rooms(
             update_dict.pop("phase_tool_overrides", None)
             if getattr(existing, "is_locked", False):
                 raise HTTPException(status_code=403, detail=ROOM_LOCKED_DETAIL)
+            await ensure_worker_may_update_room_gated_content(
+                db, existing, str(current_user.id), app_role, update_dict
+            )
         if "checklist_labels" in update_dict and update_dict["checklist_labels"] is not None:
             update_dict["checklist_labels"] = sanitize_checklist_labels(update_dict["checklist_labels"])
         if "phase_tool_overrides" in update_dict and update_dict["phase_tool_overrides"] is not None:

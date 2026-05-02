@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { client } from '@/lib/api';
+import { client, postWorkerPhaseHandoff } from '@/lib/api';
 import { persistWorkerLastRoom, WORKER_ROOM_CHECKLIST_ANCHOR } from '@/lib/workerLastRoom';
 import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
@@ -1259,33 +1259,33 @@ export default function RoomDetail() {
     }
   };
 
-  const handleWorkerPhaseComplete = async () => {
-    if (!room) return;
+  const handleWorkerPhaseComplete = async (): Promise<boolean> => {
+    if (!room) return false;
     const workerName = resolveSessionWorkerLabel(displayName);
     if (!workerName.trim()) {
       toast.error('Add your name in your profile to record handoff.');
       setShowCheckNameDialog(true);
-      return;
+      return false;
     }
     const phaseKey = normalizeRoomPhase(phaseTab, phaseWorkflow);
     const areaPayload =
-      activeAreaId === DEFAULT_AREA_ID && !hasPersistedAreas(room.areas) ? {} : { area_id: activeAreaId };
+      activeAreaId === DEFAULT_AREA_ID && !hasPersistedAreas(room.areas)
+        ? {}
+        : { area_id: activeAreaId };
     setCompletingWorkerPhase(true);
     try {
-      await client.entities.room_visits.create({
-        data: {
-          room_id: room.id,
-          worker_name: workerName,
-          action: `Phase ready for handoff: ${phaseLabel(phaseKey, phaseWorkflow)}`,
-          visited_at: new Date().toISOString(),
-          phase: phaseKey,
-          ...areaPayload,
-        },
+      await postWorkerPhaseHandoff(room.id, {
+        phase: phaseKey,
+        worker_name: workerName,
+        ...areaPayload,
       });
-      toast.success('Recorded. An admin can advance the board phase.');
+      toast.success('Phase handed off and locked for editing.');
       await loadData();
-    } catch {
-      toast.error('Could not record completion');
+      return true;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Could not complete handoff';
+      toast.error(msg);
+      return false;
     } finally {
       setCompletingWorkerPhase(false);
     }
@@ -1742,7 +1742,8 @@ export default function RoomDetail() {
   const duePast = isDeadlinePast(room.deadline_at ?? null);
   const heatingDerived = deriveHeatingCableStatus(heatingCableDoc);
   const heatingLockedByAdmin = heatingCableDoc.locked_by_admin === true;
-  const canEditHeatingCable = !editsBlocked && (!heatingLockedByAdmin || canEdit);
+  const canEditHeatingCable =
+    !editsBlocked && (!heatingLockedByAdmin || canEdit) && (canEdit || !phaseReadOnly);
   const selectedPhaseLabel = phaseLabel(selPhase, phaseWorkflow);
   const showHeatingCableModule = toolsSel.heating_cable;
   const selectedPhaseWorkReady =
@@ -1879,7 +1880,8 @@ export default function RoomDetail() {
               dueLine={dueLine}
               duePast={duePast}
               phaseCompleteEligible={workerPhaseCompleteEligible}
-              onCompletePhase={() => void handleWorkerPhaseComplete()}
+              phaseExplicitWorkerLock={lockOv[selPhase] === true}
+              onCompletePhase={() => handleWorkerPhaseComplete()}
               completingPhase={completingWorkerPhase}
               heatingDefaultPerformedBy={resolveSessionWorkerLabel(displayName)}
               heatingCableSeedResetKey={room.id}
