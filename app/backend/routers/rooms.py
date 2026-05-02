@@ -37,6 +37,28 @@ router = APIRouter(prefix="/api/v1/entities/rooms", tags=["rooms"])
 DEFAULT_CHECKLIST_SECTION = "Checklist"
 
 
+def sanitize_phase_tool_overrides(raw: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Keep optional per-phase tool toggles small and boolean-safe."""
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    out: Dict[str, Any] = {}
+    for k, v in raw.items():
+        if not isinstance(k, str) or len(k) > 80:
+            continue
+        if not isinstance(v, dict):
+            continue
+        entry: Dict[str, Any] = {}
+        if "checklist" in v and isinstance(v["checklist"], bool):
+            entry["checklist"] = v["checklist"]
+        if "heating_cable" in v and isinstance(v["heating_cable"], bool):
+            entry["heating_cable"] = v["heating_cable"]
+        if entry:
+            out[k.strip()] = entry
+    return out or None
+
+
 def sanitize_checklist_labels(raw: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
     """Keep optional phase → title map small and string-safe."""
     if raw is None:
@@ -79,6 +101,7 @@ class RoomsData(BaseModel):
     deadline_at: Optional[datetime] = None
     checklist_labels: Optional[Dict[str, str]] = None
     heating_cable_doc: Optional[Dict[str, Any]] = None
+    phase_tool_overrides: Optional[Dict[str, Any]] = None
     phase_statuses: Optional[Dict[str, str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -101,6 +124,7 @@ class RoomsUpdateData(BaseModel):
     deadline_at: Optional[datetime] = None
     checklist_labels: Optional[Dict[str, str]] = None
     heating_cable_doc: Optional[Dict[str, Any]] = None
+    phase_tool_overrides: Optional[Dict[str, Any]] = None
     phase_statuses: Optional[Dict[str, str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -125,6 +149,7 @@ class RoomsResponse(BaseModel):
     deadline_at: Optional[datetime] = None
     checklist_labels: Optional[Dict[str, Any]] = None
     heating_cable_doc: Optional[Dict[str, Any]] = None
+    phase_tool_overrides: Optional[Dict[str, Any]] = None
     phase_statuses: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -332,6 +357,8 @@ async def create_rooms(
                 dump["areas"] = sanitize_areas_payload(dump["areas"])
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=str(e)) from e
+        if dump.get("phase_tool_overrides") is not None:
+            dump["phase_tool_overrides"] = sanitize_phase_tool_overrides(dump["phase_tool_overrides"])
         result = await service.create(dump, user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create rooms")
@@ -369,6 +396,8 @@ async def create_roomss_batch(
                 except ValueError as e:
                     await db.rollback()
                     raise HTTPException(status_code=400, detail=str(e)) from e
+            if dump_b.get("phase_tool_overrides") is not None:
+                dump_b["phase_tool_overrides"] = sanitize_phase_tool_overrides(dump_b["phase_tool_overrides"])
             result = await service.create(dump_b, user_id=str(current_user.id))
             if result:
                 results.append(result)
@@ -436,7 +465,7 @@ async def update_rooms(
         for k, v in raw_dump.items():
             if v is not None:
                 update_dict[k] = v
-            elif k in ("deadline_at", "checklist_labels", "heating_cable_doc"):
+            elif k in ("deadline_at", "checklist_labels", "heating_cable_doc", "phase_tool_overrides"):
                 update_dict[k] = None
         existing = await service.get_by_id(id, user_id=str(current_user.id))
         if not existing:
@@ -450,10 +479,13 @@ async def update_rooms(
             update_dict.pop("areas", None)
             update_dict.pop("deadline_at", None)
             update_dict.pop("checklist_labels", None)
+            update_dict.pop("phase_tool_overrides", None)
             if getattr(existing, "is_locked", False):
                 raise HTTPException(status_code=403, detail=ROOM_LOCKED_DETAIL)
         if "checklist_labels" in update_dict and update_dict["checklist_labels"] is not None:
             update_dict["checklist_labels"] = sanitize_checklist_labels(update_dict["checklist_labels"])
+        if "phase_tool_overrides" in update_dict and update_dict["phase_tool_overrides"] is not None:
+            update_dict["phase_tool_overrides"] = sanitize_phase_tool_overrides(update_dict["phase_tool_overrides"])
         try:
             _prepare_room_update_dict(existing, update_dict, app_role)
         except ValueError as e:

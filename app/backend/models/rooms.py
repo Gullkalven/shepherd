@@ -31,5 +31,7 @@ class Rooms(Base):
     checklist_labels = Column(JSON, nullable=True)
     # Heating cable documentation payload per room (3 stages + fields)
     heating_cable_doc = Column(JSON, nullable=True)
+    # Per-phase tool visibility overrides: { phase_key: { checklist?: bool, heating_cable?: bool } }; merged with project workflow
+    phase_tool_overrides = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

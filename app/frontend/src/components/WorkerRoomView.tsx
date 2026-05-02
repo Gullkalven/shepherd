@@ -492,11 +492,13 @@ export function WorkerRoomView(p: Props) {
   const compactSummaryLines = useMemo(() => {
     const lines: string[] = [];
     const tasks = p.tasksForSelectedPhase;
-    if (tasks.length > 0) {
-      const done = tasks.filter((t) => t.is_completed).length;
-      lines.push(`Checklist ${done}/${tasks.length} marked`);
-    } else {
-      lines.push('No checklist items in this phase');
+    if (p.showChecklistSection) {
+      if (tasks.length > 0) {
+        const done = tasks.filter((t) => t.is_completed).length;
+        lines.push(`Checklist ${done}/${tasks.length} marked`);
+      } else {
+        lines.push('No checklist items in this phase');
+      }
     }
     if (p.showHeatingModule && selectedHeatingDocProgress) {
       lines.push(`Heating documentation ${selectedHeatingDocProgress.complete}/${selectedHeatingDocProgress.total}`);
@@ -515,6 +517,7 @@ export function WorkerRoomView(p: Props) {
     return lines;
   }, [
     p.tasksForSelectedPhase,
+    p.showChecklistSection,
     p.showHeatingModule,
     selectedHeatingDocProgress,
     p.showPhotosSection,

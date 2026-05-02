@@ -35,6 +35,8 @@ KEY_RE = re.compile(r"^[a-z0-9_]{1,64}$")
 class WorkflowPhase(BaseModel):
     key: str = Field(..., min_length=1, max_length=64)
     label: str = Field(..., min_length=1, max_length=120)
+    checklist_enabled: Optional[bool] = None
+    heating_cable_enabled: Optional[bool] = None
 
 
 class ProjectWorkflowResponse(BaseModel):
@@ -60,9 +62,18 @@ def _parse_stored_workflow(raw: Optional[str]) -> Optional[List[WorkflowPhase]]:
             continue
         k = item.get("key")
         lab = item.get("label")
+        ce = item.get("checklist_enabled")
+        he = item.get("heating_cable_enabled")
         if isinstance(k, str) and isinstance(lab, str) and k.strip() and lab.strip():
             try:
-                out.append(WorkflowPhase(key=k.strip(), label=lab.strip()))
+                out.append(
+                    WorkflowPhase(
+                        key=k.strip(),
+                        label=lab.strip(),
+                        checklist_enabled=ce if isinstance(ce, bool) else None,
+                        heating_cable_enabled=he if isinstance(he, bool) else None,
+                    )
+                )
             except Exception:
                 continue
     return out if out else None
@@ -170,7 +181,14 @@ async def put_project_workflow(
                 detail=f"Cannot remove phase {rk!r}: checklist still references it in {tc} item(s).",
             )
 
-    payload: List[dict[str, Any]] = [{"key": p.key, "label": p.label} for p in body.phases]
+    payload: List[dict[str, Any]] = []
+    for p in body.phases:
+        row: dict[str, Any] = {"key": p.key, "label": p.label}
+        if p.checklist_enabled is not None:
+            row["checklist_enabled"] = p.checklist_enabled
+        if p.heating_cable_enabled is not None:
+            row["heating_cable_enabled"] = p.heating_cable_enabled
+        payload.append(row)
     proj.phase_workflow_json = json.dumps(payload, ensure_ascii=False)
     await db.commit()
     await db.refresh(proj)

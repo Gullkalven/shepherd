@@ -32,8 +32,11 @@ import {
   storedChecklistPhase,
   visitMatchesPhase,
   photoMatchesPhase,
+  coercePhaseToolOverrides,
   computePhaseChipUi,
+  resolvePhaseTools,
   type PhaseStepStatus,
+  type PhaseToolOverride,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import {
@@ -53,7 +56,6 @@ import {
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
   heatingStageHasAnyData,
-  isHeatingCablePhase,
   type HeatingCableDoc,
   type HeatingCableStage,
   type HeatingCableStageKey,
@@ -204,6 +206,8 @@ interface Room {
   heating_cable_doc?: unknown;
   /** Per workflow-step status map; null/absent = derive from legacy `phase` pointer */
   phase_statuses?: Record<string, string> | null;
+  /** Optional overrides merged with project workflow for checklist/heating visibility */
+  phase_tool_overrides?: Record<string, PhaseToolOverride> | unknown | null;
   floor_id: number;
   project_id: number;
 }
@@ -422,6 +426,7 @@ export default function RoomDetail() {
   const skipHeatingDocSyncRef = useRef(false);
   const heatingPhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [completingWorkerPhase, setCompletingWorkerPhase] = useState(false);
+  const [phaseToolsSaving, setPhaseToolsSaving] = useState(false);
   const [floorRoomsOrdered, setFloorRoomsOrdered] = useState<RoomNavSibling[]>([]);
 
   const loadData = useCallback(async () => {
@@ -451,7 +456,13 @@ export default function RoomDetail() {
       if (Array.isArray(rawPhases) && rawPhases.length > 0) {
         const parsed = rawPhases
           .filter((p: { key?: string; label?: string }) => p?.key && p?.label)
-          .map((p: { key: string; label: string }) => ({ key: String(p.key), label: String(p.label) }));
+          .map((p: Record<string, unknown>) => ({
+            key: String(p.key),
+            label: String(p.label),
+            checklist_enabled: typeof p.checklist_enabled === 'boolean' ? p.checklist_enabled : undefined,
+            heating_cable_enabled:
+              typeof p.heating_cable_enabled === 'boolean' ? p.heating_cable_enabled : undefined,
+          }));
         if (parsed.length > 0) wf = parsed;
       }
       setPhaseWorkflow(wf);
@@ -1311,6 +1322,28 @@ export default function RoomDetail() {
     }
   };
 
+  const persistPhaseToolToggle = useCallback(
+    async (phaseKey: string, partial: PhaseToolOverride) => {
+      if (!room?.id || !canEdit) return;
+      setPhaseToolsSaving(true);
+      try {
+        const cur = coercePhaseToolOverrides(room.phase_tool_overrides);
+        const merged: PhaseToolOverride = { ...cur[phaseKey], ...partial };
+        const next = { ...cur, [phaseKey]: merged };
+        await client.entities.rooms.update({
+          id: String(room.id),
+          data: { phase_tool_overrides: next } as Record<string, unknown>,
+        });
+        setRoom((prev) => (prev ? { ...prev, phase_tool_overrides: next } : null));
+      } catch {
+        toast.error('Failed to save phase tools');
+      } finally {
+        setPhaseToolsSaving(false);
+      }
+    },
+    [room, canEdit]
+  );
+
   const commitChecklistSectionTitle = useCallback(async () => {
     if (!room || !canEdit) return;
     const phaseKey = normalizeRoomPhase(phaseTab, phaseWorkflow);
@@ -1683,6 +1716,10 @@ export default function RoomDetail() {
     phasePhotoTaskIdRef.current = task.id;
     fileInputRef.current?.click();
   };
+  const phaseToolOverrides = coercePhaseToolOverrides(room.phase_tool_overrides);
+  const phaseWfEntry = (k: string) => phaseWorkflow.find((p) => p.key === k);
+  const toolsSel = resolvePhaseTools(phaseWfEntry(selPhase), phaseToolOverrides[selPhase]);
+  const toolsBoard = resolvePhaseTools(phaseWfEntry(focusPhaseKey), phaseToolOverrides[focusPhaseKey]);
   const chipUiSel = computePhaseChipUi(
     selPhase,
     resolvedPhaseStatuses,
@@ -1690,7 +1727,8 @@ export default function RoomDetail() {
     lockOv,
     totalForPhase,
     completedForPhase,
-    focusPhaseKey
+    focusPhaseKey,
+    toolsSel.checklist
   );
   const checklistLabelsMap = coerceChecklistLabels(room.checklist_labels);
   const checklistSectionTitle =
@@ -1701,21 +1739,19 @@ export default function RoomDetail() {
   const heatingLockedByAdmin = heatingCableDoc.locked_by_admin === true;
   const canEditHeatingCable = !editsBlocked && (!heatingLockedByAdmin || canEdit);
   const selectedPhaseLabel = phaseLabel(selPhase, phaseWorkflow);
-  const showHeatingCableModule = isHeatingCablePhase(selPhase, selectedPhaseLabel);
+  const showHeatingCableModule = toolsSel.heating_cable;
   const tasksForBoardPhase = tasksInArea.filter(
     (t) => storedChecklistPhase(t.phase, phaseWorkflow) === focusPhaseKey
   );
   const boardPhaseIncompleteCount = tasksForBoardPhase.filter((t) => !t.is_completed).length;
   const boardPhaseTotalCount = tasksForBoardPhase.length;
-  const boardPhaseLabelForHeating = phaseLabel(focusPhaseKey, phaseWorkflow);
-  const boardPhaseShowHeating = isHeatingCablePhase(focusPhaseKey, boardPhaseLabelForHeating);
+  const boardPhaseShowHeating = toolsBoard.heating_cable;
   const boardPhaseWorkReady =
-    (boardPhaseTotalCount === 0 || boardPhaseIncompleteCount === 0) &&
+    (!toolsBoard.checklist || boardPhaseTotalCount === 0 || boardPhaseIncompleteCount === 0) &&
     (!boardPhaseShowHeating || heatingDerived.status === 'complete');
-  const selectedPhaseShowHeating = isHeatingCablePhase(selPhase, selectedPhaseLabel);
   const selectedPhaseWorkReady =
-    (totalForPhase === 0 || completedForPhase === totalForPhase) &&
-    (!selectedPhaseShowHeating || heatingDerived.status === 'complete');
+    (!toolsSel.checklist || totalForPhase === 0 || completedForPhase === totalForPhase) &&
+    (!toolsSel.heating_cable || heatingDerived.status === 'complete');
   const workerPhaseCompleteEligible =
     resolvedPhaseStatuses[selPhase] === 'in_progress' &&
     !editsBlocked &&
@@ -1815,7 +1851,7 @@ export default function RoomDetail() {
               phaseTabLocked={phaseWorkerLocked}
               editsBlocked={editsBlocked}
               checklistSectionTitle={checklistSectionTitle}
-              showChecklistSection={sectionVisibility.checklist}
+              showChecklistSection={sectionVisibility.checklist && toolsSel.checklist}
               tasksForSelectedPhase={tasksForPhase}
               canInteractChecklist={canInteractChecklist}
               onTaskClick={handleTaskClick}
@@ -2044,6 +2080,53 @@ export default function RoomDetail() {
           ) : null}
         </Card>
 
+        {canEdit && !editsBlocked ? (
+          <Card className="border-border/45 bg-background/70 shadow-none p-2.5 sm:p-3">
+            <p className="text-[11px] font-semibold text-foreground">Phase tools (this room)</p>
+            <p className="text-[10px] text-muted-foreground mt-1 mb-2 leading-snug">
+              Per-phase checklist and heating cable visibility for workers. Project defaults apply unless you override
+              here; hiding a tool does not remove saved data.
+            </p>
+            <div className="space-y-2 max-h-52 overflow-y-auto">
+              {phaseWorkflow.map((pe) => {
+                const eff = resolvePhaseTools(pe, phaseToolOverrides[pe.key]);
+                return (
+                  <div
+                    key={pe.key}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border/35 pb-2 last:border-0 last:pb-0"
+                  >
+                    <span className="text-[11px] font-medium text-foreground w-full sm:w-36 shrink-0">
+                      {phaseLabel(pe.key, phaseWorkflow)}
+                    </span>
+                    <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-input"
+                        checked={eff.checklist}
+                        disabled={phaseToolsSaving}
+                        onChange={(e) => void persistPhaseToolToggle(pe.key, { checklist: e.target.checked })}
+                      />
+                      Checklist
+                    </label>
+                    <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-input"
+                        checked={eff.heating_cable}
+                        disabled={phaseToolsSaving}
+                        onChange={(e) =>
+                          void persistPhaseToolToggle(pe.key, { heating_cable: e.target.checked })
+                        }
+                      />
+                      Heating cable
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        ) : null}
+
         {(sectionVisibility.checklist || sectionVisibility.photos) && (
           <div className="w-full space-y-4">
             <input
@@ -2196,6 +2279,7 @@ export default function RoomDetail() {
                 const tks = tasksInArea.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === key);
                 const done = tks.filter((x) => x.is_completed).length;
                 const tot = tks.length;
+                const chipTools = resolvePhaseTools(phaseWfEntry(key), phaseToolOverrides[key]);
                 const ui = computePhaseChipUi(
                   key,
                   resolvedPhaseStatuses,
@@ -2203,7 +2287,8 @@ export default function RoomDetail() {
                   lockOv,
                   tot,
                   done,
-                  focusPhaseKey
+                  focusPhaseKey,
+                  chipTools.checklist
                 );
                 const isSel = key === selPhase;
                 const tabLockedForWorkers = phaseTabReadOnlyForWorker(
@@ -2348,6 +2433,7 @@ export default function RoomDetail() {
                 </div>
                 <div className="space-y-2 px-3 py-2.5 sm:px-3.5 text-[11px] leading-snug">
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    {toolsSel.checklist ? (
                     <span className="text-muted-foreground">
                       Checklist:{' '}
                       <span className="font-medium text-foreground tabular-nums">
@@ -2355,6 +2441,7 @@ export default function RoomDetail() {
                       </span>{' '}
                       done
                     </span>
+                    ) : null}
                     {sectionVisibility.photos ? (
                       <span className="text-muted-foreground">
                         Photos:{' '}
@@ -2368,7 +2455,7 @@ export default function RoomDetail() {
                       </span>
                     ) : null}
                   </div>
-                  {completedTaskNamesForPhase.length > 0 ? (
+                  {toolsSel.checklist && completedTaskNamesForPhase.length > 0 ? (
                     <div className="rounded-md border border-border/50 bg-background/60 px-2 py-1.5 dark:bg-background/40">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/90">
                         Completed items
@@ -2387,7 +2474,7 @@ export default function RoomDetail() {
                         </p>
                       ) : null}
                     </div>
-                  ) : totalForPhase > 0 ? (
+                  ) : toolsSel.checklist && totalForPhase > 0 ? (
                     <p className="text-[11px] text-muted-foreground">No checklist items marked complete in this phase.</p>
                   ) : null}
                   <p className="border-t border-border/35 pt-2 text-[10px] text-muted-foreground leading-relaxed">

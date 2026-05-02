@@ -10,9 +10,11 @@ import {
   deriveLinearPhaseStatusesFromPointer,
   DEFAULT_PHASE_WORKFLOW,
   formatPhaseStrip,
+  coercePhaseToolOverrides,
   normalizeRoomPhase,
   phaseLabel,
   resolvePhaseStepStatuses,
+  resolvePhaseTools,
   roomHasPhaseActiveOnBoard,
   storedChecklistPhase,
   type FloorPhaseProgressEntry,
@@ -65,6 +67,7 @@ interface Room {
   areas?: unknown;
   deadline_at?: string | null;
   heating_cable_doc?: unknown;
+  phase_tool_overrides?: unknown;
 }
 
 interface ChecklistTemplate {
@@ -124,6 +127,10 @@ export default function FloorDetail() {
   const [bulkCreating, setBulkCreating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState(0);
   const [bulkTotal, setBulkTotal] = useState(0);
+  /** Per-phase tools for bulk-created rooms (merged from workflow when opening the dialog). */
+  const [bulkPhaseToolDraft, setBulkPhaseToolDraft] = useState<
+    Record<string, { checklist: boolean; heating_cable: boolean }>
+  >({});
   const [showBlockDialog, setShowBlockDialog] = useState(false);
   const [pendingBlockedRoomId, setPendingBlockedRoomId] = useState<number | null>(null);
   const [blockedReason, setBlockedReason] = useState('');
@@ -179,7 +186,13 @@ export default function FloorDetail() {
       if (Array.isArray(rawPhases) && rawPhases.length > 0) {
         const parsed: PhaseWorkflowEntry[] = rawPhases
           .filter((p: { key?: string; label?: string }) => p?.key && p?.label)
-          .map((p: { key: string; label: string }) => ({ key: String(p.key), label: String(p.label) }));
+          .map((p: Record<string, unknown>) => ({
+            key: String(p.key),
+            label: String(p.label),
+            checklist_enabled: typeof p.checklist_enabled === 'boolean' ? p.checklist_enabled : undefined,
+            heating_cable_enabled:
+              typeof p.heating_cable_enabled === 'boolean' ? p.heating_cable_enabled : undefined,
+          }));
         if (parsed.length > 0) summaryWorkflow = parsed;
       }
       setPhaseWorkflow(summaryWorkflow);
@@ -275,10 +288,21 @@ export default function FloorDetail() {
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   };
 
+  useEffect(() => {
+    if (!showBulkCreate) return;
+    const next: Record<string, { checklist: boolean; heating_cable: boolean }> = {};
+    for (const p of phaseWorkflow) {
+      const r = resolvePhaseTools(p, null);
+      next[p.key] = { checklist: r.checklist, heating_cable: r.heating_cable };
+    }
+    setBulkPhaseToolDraft(next);
+  }, [showBulkCreate, phaseWorkflow]);
+
   const createRoomWithTasks = async (
     roomNum: string,
     worker: string,
-    templatesByPhase: Record<string, number | undefined>
+    templatesByPhase: Record<string, number | undefined>,
+    phaseToolOverridesForRoom?: Record<string, { checklist: boolean; heating_cable: boolean }> | null
   ) => {
     const roomRes = await client.entities.rooms.create({
       data: {
@@ -290,6 +314,9 @@ export default function FloorDetail() {
         assigned_worker: worker,
         comment: '',
         blocked_reason: '',
+        ...(phaseToolOverridesForRoom && Object.keys(phaseToolOverridesForRoom).length > 0
+          ? { phase_tool_overrides: phaseToolOverridesForRoom }
+          : {}),
       },
     });
     const newRoom = roomRes?.data;
@@ -398,7 +425,8 @@ export default function FloorDetail() {
           createRoomWithTasks(
             roomNum,
             bulkWorker.trim(),
-            templatesByPhaseFromSelections(bulkPhaseTemplateSelections)
+            templatesByPhaseFromSelections(bulkPhaseTemplateSelections),
+            bulkPhaseToolDraft
           )
             .then(() => { created++; })
             .catch(() => { failed++; })
@@ -899,7 +927,16 @@ export default function FloorDetail() {
   };
 
   const openWorkflowDialog = () => {
-    setWorkflowDraft(phaseWorkflow.map((p) => ({ ...p })));
+    setWorkflowDraft(
+      phaseWorkflow.map((p) => {
+        const r = resolvePhaseTools(p, null);
+        return {
+          ...p,
+          checklist_enabled: r.checklist,
+          heating_cable_enabled: r.heating_cable,
+        };
+      })
+    );
     setShowWorkflowDialog(true);
   };
 
@@ -929,8 +966,18 @@ export default function FloorDetail() {
       const keys = new Set(prev.map((p) => p.key));
       let k = `phase_${Date.now()}`;
       while (keys.has(k)) k = `${k}_x`;
-      return [...prev, { key: k, label: 'New phase' }];
+      return [...prev, { key: k, label: 'New phase', checklist_enabled: true, heating_cable_enabled: false }];
     });
+  };
+
+  const updateWorkflowDraftTool = (
+    index: number,
+    field: 'checklist_enabled' | 'heating_cable_enabled',
+    value: boolean
+  ) => {
+    setWorkflowDraft((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    );
   };
 
   const handleSaveWorkflow = async () => {
@@ -938,6 +985,8 @@ export default function FloorDetail() {
     const trimmed = workflowDraft.map((p) => ({
       key: p.key.trim(),
       label: p.label.trim(),
+      checklist_enabled: p.checklist_enabled !== false,
+      heating_cable_enabled: Boolean(p.heating_cable_enabled),
     }));
     if (trimmed.some((p) => !p.key || !p.label)) {
       toast.error('Each phase needs an internal key and a display name');
@@ -1253,6 +1302,10 @@ export default function FloorDetail() {
                   phaseWorkflow
                 );
                 const heatingStatus = deriveHeatingCableStatus(room.heating_cable_doc);
+                const toolOv = coercePhaseToolOverrides(room.phase_tool_overrides);
+                const showHeatingOnCard = phaseWorkflow.some((e) =>
+                  resolvePhaseTools(e, toolOv[e.key]).heating_cable
+                );
                 return (
                   <RoomFloorCardContextMenu
                     key={room.id}
@@ -1276,7 +1329,11 @@ export default function FloorDetail() {
                       assignedWorker={room.assigned_worker}
                       updatedAt={room.updated_at}
                       deadlineAt={room.deadline_at}
-                      heatingCableStatusLabel={HEATING_CABLE_DERIVED_STATUS_LABEL[heatingStatus.status]}
+                      heatingCableStatusLabel={
+                        showHeatingOnCard
+                          ? HEATING_CABLE_DERIVED_STATUS_LABEL[heatingStatus.status]
+                          : undefined
+                      }
                       onClick={() =>
                         selectionMode
                           ? toggleRoomSelection(room.id)
@@ -1519,6 +1576,65 @@ export default function FloorDetail() {
               </div>
             </div>
 
+            <div className="space-y-1.5 rounded-md border border-input bg-muted/30 p-3">
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-300 block">
+                Phase tools (this batch)
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Checklist and heating cable visibility for workers on generated rooms. Defaults match project phases —
+                change here before generating if this batch should differ.
+              </p>
+              <div className="space-y-2 pt-1 max-h-44 overflow-y-auto">
+                {phaseWorkflow.map((p) => (
+                  <div
+                    key={p.key}
+                    className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-border/40 pb-2 last:border-0 last:pb-0"
+                  >
+                    <span className="text-xs font-medium text-foreground w-full sm:w-28 shrink-0">
+                      {phaseLabel(p.key, phaseWorkflow)}
+                    </span>
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-input"
+                        checked={bulkPhaseToolDraft[p.key]?.checklist !== false}
+                        onChange={(e) =>
+                          setBulkPhaseToolDraft((prev) => ({
+                            ...prev,
+                            [p.key]: {
+                              checklist: e.target.checked,
+                              heating_cable:
+                                prev[p.key]?.heating_cable ?? resolvePhaseTools(p, null).heating_cable,
+                            },
+                          }))
+                        }
+                        disabled={bulkCreating}
+                      />
+                      Checklist
+                    </label>
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-input"
+                        checked={Boolean(bulkPhaseToolDraft[p.key]?.heating_cable)}
+                        onChange={(e) =>
+                          setBulkPhaseToolDraft((prev) => ({
+                            ...prev,
+                            [p.key]: {
+                              checklist: prev[p.key]?.checklist ?? resolvePhaseTools(p, null).checklist,
+                              heating_cable: e.target.checked,
+                            },
+                          }))
+                        }
+                        disabled={bulkCreating}
+                      />
+                      Heating cable
+                    </label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Preview */}
             {getBulkPreview() && (
               <div className="bg-slate-50 dark:bg-slate-800 rounded-lg p-3 border dark:border-slate-700">
@@ -1732,6 +1848,26 @@ export default function FloorDetail() {
                   <p className="text-[10px] font-mono text-muted-foreground truncate" title={row.key}>
                     key: {row.key}
                   </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 pt-0.5">
+                    <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-input"
+                        checked={row.checklist_enabled !== false}
+                        onChange={(e) => updateWorkflowDraftTool(index, 'checklist_enabled', e.target.checked)}
+                      />
+                      Checklist
+                    </label>
+                    <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-input"
+                        checked={Boolean(row.heating_cable_enabled)}
+                        onChange={(e) => updateWorkflowDraftTool(index, 'heating_cable_enabled', e.target.checked)}
+                      />
+                      Heating cable
+                    </label>
+                  </div>
                 </div>
                 <div className="flex flex-row gap-1 shrink-0 sm:flex-col">
                   <Button

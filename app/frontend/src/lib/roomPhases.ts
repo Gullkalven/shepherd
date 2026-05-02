@@ -1,4 +1,64 @@
-export type PhaseWorkflowEntry = { key: string; label: string };
+import { isHeatingCablePhase } from '@/lib/heatingCable';
+
+/** Per-phase workflow step (order + labels + optional tool visibility defaults). */
+export type PhaseWorkflowEntry = {
+  key: string;
+  label: string;
+  /** When omitted, checklist UI defaults to on (backward compatible). */
+  checklist_enabled?: boolean;
+  /** When omitted, defaults from legacy name match (e.g. Varmekabel) until set explicitly. */
+  heating_cable_enabled?: boolean;
+};
+
+/** Room-level overrides merged on top of project workflow (see `resolvePhaseTools`). */
+export type PhaseToolOverride = {
+  checklist?: boolean;
+  heating_cable?: boolean;
+};
+
+export type PhaseToolFlags = {
+  checklist: boolean;
+  heating_cable: boolean;
+};
+
+/** Parse `rooms.phase_tool_overrides` from the API. */
+export function coercePhaseToolOverrides(raw: unknown): Record<string, PhaseToolOverride> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, PhaseToolOverride> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof k !== 'string' || !k.trim()) continue;
+    if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+    const o = v as Record<string, unknown>;
+    const entry: PhaseToolOverride = {};
+    if (typeof o.checklist === 'boolean') entry.checklist = o.checklist;
+    if (typeof o.heating_cable === 'boolean') entry.heating_cable = o.heating_cable;
+    if (Object.keys(entry).length) out[k.trim()] = entry;
+  }
+  return out;
+}
+
+/**
+ * Effective tools for one phase: room overrides win, then workflow JSON, then legacy defaults.
+ * Historical “Varmekabel” phases keep heating on via `isHeatingCablePhase` when no explicit flag exists.
+ */
+export function resolvePhaseTools(
+  entry: PhaseWorkflowEntry | undefined,
+  roomOverride: PhaseToolOverride | null | undefined
+): PhaseToolFlags {
+  const checklist =
+    roomOverride?.checklist ??
+    (entry?.checklist_enabled !== undefined ? entry.checklist_enabled : true);
+  let heating_cable = roomOverride?.heating_cable;
+  if (heating_cable === undefined) {
+    heating_cable =
+      entry?.heating_cable_enabled !== undefined
+        ? entry.heating_cable_enabled
+        : entry
+          ? isHeatingCablePhase(entry.key, entry.label)
+          : false;
+  }
+  return { checklist, heating_cable };
+}
 
 /** Per workflow-step status (independent of overall room.status). */
 export const PHASE_STEP_STATUS_VALUES = ['not_started', 'in_progress', 'complete', 'blocked'] as const;
@@ -312,7 +372,9 @@ export function computePhaseChipUi(
   overrides: Record<string, boolean> | null | undefined,
   totalTasks: number,
   completedTasks: number,
-  focusPhaseKey: string
+  focusPhaseKey: string,
+  /** When false, checklist counts do not affect chip progress text (worker checklist hidden for this phase). */
+  checklistEnabled = true
 ): PhaseChipUi {
   const pk = normalizeRoomPhase(phaseKey, workflow);
   const fk = normalizeRoomPhase(focusPhaseKey, workflow);
@@ -320,14 +382,17 @@ export function computePhaseChipUi(
   const workerLocked = phaseTabLockedFromResolvedStatuses(resolvedStatuses, pk, workflow, overrides);
   const isMain = pk === fk && stepStatus === 'in_progress';
 
+  const tot = checklistEnabled ? totalTasks : 0;
+  const done = checklistEnabled ? completedTasks : 0;
+
   let progress = '';
-  if (totalTasks > 0) {
-    if (completedTasks === totalTasks) {
-      progress = `${completedTasks}/${totalTasks}`;
+  if (tot > 0) {
+    if (done === tot) {
+      progress = `${done}/${tot}`;
     } else if (isMain || stepStatus === 'in_progress') {
-      progress = `${completedTasks}/${totalTasks}`;
+      progress = `${done}/${tot}`;
     } else {
-      progress = `${totalTasks - completedTasks} missing`;
+      progress = `${tot - done} missing`;
     }
   }
 
@@ -340,9 +405,9 @@ export function computePhaseChipUi(
     status = 'Locked';
   } else if (stepStatus === 'complete') {
     status = 'Completed';
-  } else if (totalTasks === 0) {
+  } else if (tot === 0) {
     status = 'Not started';
-  } else if (completedTasks === totalTasks) {
+  } else if (done === tot) {
     status = 'Completed';
   } else {
     status = 'Open';

@@ -71,6 +71,10 @@
             "type": "object",
             "description": "Optional map of workflow phase key -> custom checklist section title for that phase."
         },
+        "phase_tool_overrides": {
+            "type": "object",
+            "description": "Optional per-phase tool visibility: phase key -> { checklist?: bool, heating_cable?: bool }, merged with project workflow."
+        },
         "created_at": {
             "type": "string",
             "format": "date-time",
