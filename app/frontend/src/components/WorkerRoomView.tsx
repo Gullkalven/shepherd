@@ -530,6 +530,13 @@ export function WorkerRoomView(p: Props) {
     p.boardPhaseWorkReady,
   ]);
 
+  const nextPhaseLabel = useMemo(() => {
+    const keys = p.phaseWorkflow.map((x) => x.key);
+    const i = keys.indexOf(p.boardPhaseKey);
+    if (i < 0 || i >= keys.length - 1) return null;
+    return phaseLabel(keys[i + 1], p.phaseWorkflow);
+  }, [p.boardPhaseKey, p.phaseWorkflow]);
+
   const nextStepBanner = useMemo(() => {
     if (p.blockedReason) return null;
     if (p.editsBlocked) {
@@ -542,22 +549,24 @@ export function WorkerRoomView(p: Props) {
     if (viewingNonBoard) {
       return {
         tone: 'neutral' as const,
-        title: 'Current focus',
-        body: `Active work is in "${boardLabel}". Switch below when you’re ready to continue there.`,
+        title: 'Go to active phase',
+        body: `Continue in “${boardLabel}” (phase switcher below).`,
       };
     }
     if (p.phaseCompleteEligible && !p.phaseReadOnly) {
       return {
         tone: 'success' as const,
         title: 'Next action',
-        body: 'Complete this phase — checklist and required documentation are done.',
+        body: nextPhaseLabel
+          ? `Mark phase complete — next is ${nextPhaseLabel}`
+          : 'Mark phase complete',
       };
     }
     const firstIncomplete = p.tasksForSelectedPhase.find((t) => !t.is_completed);
     if (firstIncomplete) {
       return {
         tone: 'primary' as const,
-        title: 'Next action',
+        title: 'Complete checklist item',
         body: firstIncomplete.name,
       };
     }
@@ -565,21 +574,21 @@ export function WorkerRoomView(p: Props) {
       return {
         tone: 'primary' as const,
         title: 'Next action',
-        body: `Heating cable · ${focusStageLabel}`,
+        body: `Save heating docs · finish ${focusStageLabel}`,
       };
     }
     if (p.boardPhaseShowHeating && boardHeatingDocProgress && !p.boardPhaseWorkReady) {
       return {
         tone: 'primary' as const,
         title: 'Next action',
-        body: `Finish heating documentation (${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages done).`,
+        body: `Finish heating documentation (${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages).`,
       };
     }
     return {
       tone: 'muted' as const,
-      title: 'Status',
+      title: 'Next action',
       body: p.boardPhaseWorkReady
-        ? 'Required work for this phase is complete - finish below when you are ready.'
+        ? 'Scroll down when you are ready to wrap up.'
         : 'Continue in the checklist and sections below.',
     };
   }, [
@@ -594,6 +603,7 @@ export function WorkerRoomView(p: Props) {
     p.boardPhaseWorkReady,
     focusStageLabel,
     boardHeatingDocProgress,
+    nextPhaseLabel,
   ]);
 
   const heroStatPrimary = useMemo(() => {
@@ -624,34 +634,9 @@ export function WorkerRoomView(p: Props) {
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4 lg:max-w-xl">
-      {/* Room hero — room #, phase, progress, next action */}
+      {/* Room hero — room #, phase, next action, progress; status/due collapsed */}
       <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.09] via-background to-background shadow-md ring-1 ring-black/[0.03] dark:from-blue-950/45 dark:via-background dark:to-background dark:ring-white/[0.06]">
         <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-            <Badge
-              className={cn(
-                'border-0 text-[10px] font-semibold uppercase tracking-wide sm:text-[10px]',
-                p.roomStatusClassName
-              )}
-            >
-              {p.roomStatusLabel}
-            </Badge>
-            {p.dueLine ? (
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums sm:text-[10px]',
-                  p.duePast
-                    ? 'bg-red-500/10 text-red-700 dark:text-red-400'
-                    : 'text-muted-foreground'
-                )}
-              >
-                <Clock className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
-                Due {p.dueLine}
-                {p.duePast ? <span className="font-semibold"> · Overdue</span> : null}
-              </span>
-            ) : null}
-          </div>
-
           <div className="space-y-0.5">
             {p.areaName ? (
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/90">
@@ -664,12 +649,67 @@ export function WorkerRoomView(p: Props) {
             </h1>
           </div>
 
-          <div className="rounded-xl border border-border/50 bg-background/60 px-3.5 py-2.5 dark:bg-background/40">
+          <div className="rounded-xl border-2 border-[#1E3A5F]/25 bg-background/75 px-3.5 py-3 shadow-sm dark:border-blue-800/50 dark:bg-background/50 sm:px-4 sm:py-3.5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Current phase
             </p>
-            <p className="mt-0.5 text-lg font-semibold leading-snug text-foreground sm:text-xl">{boardLabel}</p>
+            <p className="mt-1 text-xl font-bold leading-snug tracking-tight text-foreground sm:text-2xl">{boardLabel}</p>
           </div>
+
+          {nextStepBanner ? (
+            <div
+              className={cn(
+                'rounded-xl border-2 px-3.5 py-3.5 shadow-sm sm:px-4 sm:py-4',
+                nextStepBanner.tone === 'primary' &&
+                  'border-[#1E3A5F]/50 bg-[#1E3A5F]/[0.1] ring-1 ring-[#1E3A5F]/15 dark:border-blue-500/45 dark:bg-blue-950/40 dark:ring-blue-500/20',
+                nextStepBanner.tone === 'success' &&
+                  'border-emerald-500/50 bg-emerald-50 dark:border-emerald-600/50 dark:bg-emerald-950/45',
+                nextStepBanner.tone === 'neutral' &&
+                  'border-border/70 bg-muted/35 dark:bg-muted/25',
+                nextStepBanner.tone === 'muted' && 'border-border/55 bg-muted/25'
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className={cn(
+                    'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
+                    nextStepBanner.tone === 'primary' &&
+                      'bg-[#1E3A5F]/20 text-[#1E3A5F] dark:bg-blue-500/25 dark:text-blue-100',
+                    nextStepBanner.tone === 'success' &&
+                      'bg-emerald-600/20 text-emerald-900 dark:bg-emerald-500/25 dark:text-emerald-50',
+                    nextStepBanner.tone === 'neutral' && 'bg-muted text-muted-foreground',
+                    nextStepBanner.tone === 'muted' && 'bg-muted/90 text-muted-foreground'
+                  )}
+                >
+                  <ChevronRight className="h-[1.1rem] w-[1.1rem]" aria-hidden />
+                </div>
+                <div className="min-w-0 flex-1 space-y-1">
+                  <p
+                    className={cn(
+                      'text-[10px] font-bold uppercase tracking-[0.14em]',
+                      nextStepBanner.tone === 'primary' && 'text-[#1E3A5F] dark:text-blue-300',
+                      nextStepBanner.tone === 'success' && 'text-emerald-800 dark:text-emerald-200',
+                      nextStepBanner.tone === 'neutral' && 'text-muted-foreground',
+                      nextStepBanner.tone === 'muted' && 'text-muted-foreground'
+                    )}
+                  >
+                    {nextStepBanner.title}
+                  </p>
+                  <p
+                    className={cn(
+                      'text-[16px] font-bold leading-snug sm:text-[17px]',
+                      nextStepBanner.tone === 'primary' && 'text-foreground',
+                      nextStepBanner.tone === 'success' && 'text-emerald-950 dark:text-emerald-50',
+                      nextStepBanner.tone === 'neutral' && 'text-foreground',
+                      nextStepBanner.tone === 'muted' && 'text-muted-foreground'
+                    )}
+                  >
+                    {nextStepBanner.body}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             <p className="px-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -717,60 +757,40 @@ export function WorkerRoomView(p: Props) {
             </div>
           </div>
 
-          {nextStepBanner ? (
-            <div
-              className={cn(
-                'rounded-xl border px-3.5 py-3 sm:px-4 sm:py-3.5',
-                nextStepBanner.tone === 'primary' &&
-                  'border-[#1E3A5F]/35 bg-[#1E3A5F]/[0.07] dark:border-blue-600/50 dark:bg-blue-950/35',
-                nextStepBanner.tone === 'success' &&
-                  'border-emerald-400/45 bg-emerald-50/95 dark:border-emerald-700/50 dark:bg-emerald-950/40',
-                nextStepBanner.tone === 'neutral' &&
-                  'border-border/60 bg-muted/30 dark:bg-muted/20',
-                nextStepBanner.tone === 'muted' && 'border-border/50 bg-muted/20'
-              )}
-            >
-              <div className="flex items-start gap-2.5">
-                <div
+          <Collapsible defaultOpen={false} className="rounded-xl border border-border/40 bg-muted/[0.08]">
+            <CollapsibleTrigger className="group flex w-full min-h-10 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:py-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                Status &amp; due date
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="flex flex-wrap items-center gap-2 border-t border-border/30 px-3 pb-3 pt-2">
+                <Badge
                   className={cn(
-                    'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                    nextStepBanner.tone === 'primary' &&
-                      'bg-[#1E3A5F]/15 text-[#1E3A5F] dark:bg-blue-500/20 dark:text-blue-200',
-                    nextStepBanner.tone === 'success' &&
-                      'bg-emerald-600/15 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100',
-                    nextStepBanner.tone === 'neutral' && 'bg-muted text-muted-foreground',
-                    nextStepBanner.tone === 'muted' && 'bg-muted/80 text-muted-foreground'
+                    'border-0 text-[10px] font-semibold uppercase tracking-wide sm:text-[10px]',
+                    p.roomStatusClassName
                   )}
                 >
-                  <ChevronRight className="h-4 w-4" aria-hidden />
-                </div>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p
+                  {p.roomStatusLabel}
+                </Badge>
+                {p.dueLine ? (
+                  <span
                     className={cn(
-                      'text-[10px] font-bold uppercase tracking-[0.14em]',
-                      nextStepBanner.tone === 'primary' && 'text-[#1E3A5F]/90 dark:text-blue-300/90',
-                      nextStepBanner.tone === 'success' && 'text-emerald-800 dark:text-emerald-200',
-                      nextStepBanner.tone === 'neutral' && 'text-muted-foreground',
-                      nextStepBanner.tone === 'muted' && 'text-muted-foreground'
+                      'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums sm:text-[10px]',
+                      p.duePast
+                        ? 'bg-red-500/10 text-red-700 dark:text-red-400'
+                        : 'text-muted-foreground'
                     )}
                   >
-                    {nextStepBanner.title}
-                  </p>
-                  <p
-                    className={cn(
-                      'text-[15px] font-semibold leading-snug sm:text-base',
-                      nextStepBanner.tone === 'primary' && 'text-foreground',
-                      nextStepBanner.tone === 'success' && 'text-emerald-950 dark:text-emerald-50',
-                      nextStepBanner.tone === 'neutral' && 'text-foreground/95',
-                      nextStepBanner.tone === 'muted' && 'text-muted-foreground'
-                    )}
-                  >
-                    {nextStepBanner.body}
-                  </p>
-                </div>
+                    <Clock className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+                    Due {p.dueLine}
+                    {p.duePast ? <span className="font-semibold"> · Overdue</span> : null}
+                  </span>
+                ) : null}
               </div>
-            </div>
-          ) : null}
+            </CollapsibleContent>
+          </Collapsible>
 
           {p.blockedReason ? (
             <div className="flex gap-2 rounded-xl border border-red-300/60 bg-red-50/95 px-3.5 py-3 text-sm text-red-950 dark:border-red-900/55 dark:bg-red-950/45 dark:text-red-50">
