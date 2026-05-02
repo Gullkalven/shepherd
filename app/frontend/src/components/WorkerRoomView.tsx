@@ -101,7 +101,10 @@ type Props = {
   showHeatingModule: boolean;
   heatingCableDoc: HeatingCableDoc;
   canEditHeatingCable: boolean;
-  savingHeatingCable: boolean;
+  /** Disables inputs only during photo upload or similar blocking work — not during background autosave. */
+  heatingCableBlocking: boolean;
+  /** Subtle persist feedback for the heating cable module. */
+  heatingCableSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
   heatingLockedByAdmin: boolean;
   heatingPhotoInputRefs: RefObject<Record<string, HTMLInputElement | null>>;
   onHeatingFieldChange: (
@@ -1140,7 +1143,29 @@ export function WorkerRoomView(p: Props) {
       {showFullPhaseDetails && p.showHeatingModule ? (
         <Card className="overflow-hidden border-border/60 shadow-sm">
           <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1.5">
-            <h2 className="text-base font-semibold tracking-tight sm:text-lg">Heating cable</h2>
+            <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+              <h2 className="text-base font-semibold tracking-tight sm:text-lg">Heating cable</h2>
+              {!p.heatingLockedByAdmin && p.canEditHeatingCable ? (
+                <span
+                  className={cn(
+                    'text-[11px] font-medium tabular-nums shrink-0 pt-0.5',
+                    p.heatingCableSaveStatus === 'saving' && 'text-muted-foreground',
+                    p.heatingCableSaveStatus === 'saved' && 'text-emerald-700 dark:text-emerald-400',
+                    p.heatingCableSaveStatus === 'error' && 'text-destructive',
+                    p.heatingCableSaveStatus === 'idle' && 'text-muted-foreground/70'
+                  )}
+                  aria-live="polite"
+                >
+                  {p.heatingCableSaveStatus === 'saving'
+                    ? 'Saving…'
+                    : p.heatingCableSaveStatus === 'saved'
+                      ? 'Saved'
+                      : p.heatingCableSaveStatus === 'error'
+                        ? 'Failed to save'
+                        : null}
+                </span>
+              ) : null}
+            </div>
             {focusStageLabel ? (
               <p className="text-xs font-medium text-amber-900/90 dark:text-amber-100/90 flex items-center gap-1.5">
                 <span className="text-muted-foreground font-normal">Current stage:</span>
@@ -1172,7 +1197,7 @@ export function WorkerRoomView(p: Props) {
                     if (
                       o &&
                       p.canEditHeatingCable &&
-                      !p.savingHeatingCable &&
+                      !p.heatingCableBlocking &&
                       !(row.date?.trim())
                     ) {
                       p.onHeatingFieldChange(stage.key, 'date', formatHeatingCableDatetimeLocalNow());
@@ -1253,7 +1278,7 @@ export function WorkerRoomView(p: Props) {
                             placeholder="Resistance (Ω)"
                             value={row.resistance_ohm || ''}
                             className="h-11 text-sm"
-                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
                           />
                           <Input
@@ -1263,7 +1288,7 @@ export function WorkerRoomView(p: Props) {
                             placeholder="Insulation (MΩ)"
                             value={row.insulation_mohm || ''}
                             className="h-11 text-sm"
-                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'insulation_mohm', e.target.value)}
                           />
                         </div>
@@ -1275,7 +1300,7 @@ export function WorkerRoomView(p: Props) {
                         <HeatingPerformedCompactRow
                           fieldId={`heat-${sid}`}
                           storedDate={row.date}
-                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onCommit={(v) => p.onHeatingFieldChange(stage.key, 'date', v)}
                         />
                         <div className="space-y-1.5 pt-0.5">
@@ -1287,7 +1312,7 @@ export function WorkerRoomView(p: Props) {
                             placeholder="Name"
                             value={row.performed_by || ''}
                             className="h-11 text-sm"
-                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'performed_by', e.target.value)}
                           />
                         </div>
@@ -1298,7 +1323,7 @@ export function WorkerRoomView(p: Props) {
                           placeholder="Note (optional)"
                           value={row.note || ''}
                           className="text-sm min-h-[56px]"
-                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onChange={(e) => p.onHeatingFieldChange(stage.key, 'note', e.target.value)}
                         />
                       </div>
@@ -1332,7 +1357,7 @@ export function WorkerRoomView(p: Props) {
                             const map = heatingPhotoRefKeys(sid);
                             p.heatingPhotoInputRefs.current[map[suffix]] = el;
                           }}
-                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onFile={(file) => p.onHeatingStagePhotoChange(stage.key, file)}
                         />
                       </div>
@@ -1358,7 +1383,7 @@ export function WorkerRoomView(p: Props) {
                   open={open}
                   onOpenChange={(o) => {
                     setHeatingStageOpen(panelId, o);
-                    if (o && p.canEditHeatingCable && !p.savingHeatingCable && !(step.date?.trim())) {
+                    if (o && p.canEditHeatingCable && !p.heatingCableBlocking && !(step.date?.trim())) {
                       p.onExtraHeatingFieldChange(idx, 'date', formatHeatingCableDatetimeLocalNow());
                     }
                   }}
@@ -1439,7 +1464,7 @@ export function WorkerRoomView(p: Props) {
                             placeholder="Resistance (Ω)"
                             value={step.resistance_ohm || ''}
                             className="h-11 text-sm"
-                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onExtraHeatingFieldChange(idx, 'resistance_ohm', e.target.value)}
                           />
                           <Input
@@ -1449,7 +1474,7 @@ export function WorkerRoomView(p: Props) {
                             placeholder="Insulation (MΩ)"
                             value={step.insulation_mohm || ''}
                             className="h-11 text-sm"
-                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onExtraHeatingFieldChange(idx, 'insulation_mohm', e.target.value)}
                           />
                         </div>
@@ -1461,7 +1486,7 @@ export function WorkerRoomView(p: Props) {
                         <HeatingPerformedCompactRow
                           fieldId={`heat-extra-${photoKey}`}
                           storedDate={step.date}
-                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onCommit={(v) => p.onExtraHeatingFieldChange(idx, 'date', v)}
                         />
                         <div className="space-y-1.5 pt-0.5">
@@ -1476,7 +1501,7 @@ export function WorkerRoomView(p: Props) {
                             placeholder="Name"
                             value={step.performed_by || ''}
                             className="h-11 text-sm"
-                            disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                             onChange={(e) => p.onExtraHeatingFieldChange(idx, 'performed_by', e.target.value)}
                           />
                         </div>
@@ -1487,7 +1512,7 @@ export function WorkerRoomView(p: Props) {
                           placeholder="Note (optional)"
                           value={step.note || ''}
                           className="text-sm min-h-[56px]"
-                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onChange={(e) => p.onExtraHeatingFieldChange(idx, 'note', e.target.value)}
                         />
                       </div>
@@ -1521,7 +1546,7 @@ export function WorkerRoomView(p: Props) {
                             const map = heatingPhotoRefKeys(photoKey);
                             p.heatingPhotoInputRefs.current[map[suffix]] = el;
                           }}
-                          disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onFile={(file) => p.onHeatingStagePhotoChange(photoKey, file)}
                         />
                       </div>
@@ -1533,11 +1558,16 @@ export function WorkerRoomView(p: Props) {
             {!p.heatingLockedByAdmin ? (
               <Button
                 type="button"
-                className="w-full h-12 text-base font-medium"
-                disabled={!p.canEditHeatingCable || p.savingHeatingCable}
+                variant="outline"
+                className="w-full h-11 text-sm font-medium text-muted-foreground"
+                disabled={
+                  !p.canEditHeatingCable ||
+                  p.heatingCableBlocking ||
+                  p.heatingCableSaveStatus === 'saving'
+                }
                 onClick={() => p.onSaveHeatingCable()}
               >
-                {p.savingHeatingCable ? 'Saving…' : 'Save heating cable documentation'}
+                Save now
               </Button>
             ) : null}
           </div>

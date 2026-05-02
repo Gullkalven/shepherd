@@ -69,6 +69,9 @@ const STATUS_OPTIONS = [
 
 const WORKER_NAME_KEY = 'trello_v2_worker_name';
 
+const HEATING_AUTOSAVE_DEBOUNCE_MS = 900;
+const HEATING_SAVE_UI_IDLE_MS = 2600;
+
 /** Prefer signed-in display name; legacy localStorage only when the profile has no name. */
 function resolveSessionWorkerLabel(displayName: string | null | undefined): string {
   const fromSession = displayName?.trim();
@@ -78,6 +81,80 @@ function resolveSessionWorkerLabel(displayName: string | null | undefined): stri
   } catch {
     return '';
   }
+}
+
+function buildHeatingCablePayload(
+  doc: HeatingCableDoc,
+  displayName: string | null | undefined
+): HeatingCableDoc {
+  const performerFallback = resolveSessionWorkerLabel(displayName);
+  const normalizedWithWorker: HeatingCableDoc = {
+    ...doc,
+  };
+  for (const stage of HEATING_CABLE_STAGES) {
+    const row = normalizedWithWorker[stage.key] || {};
+    const hasAnyValue =
+      Boolean(row.resistance_ohm?.trim()) ||
+      Boolean(row.insulation_mohm?.trim()) ||
+      Boolean(row.date?.trim()) ||
+      Boolean(row.note?.trim());
+    if (hasAnyValue && !row.performed_by?.trim() && performerFallback) {
+      normalizedWithWorker[stage.key] = {
+        ...row,
+        performed_by: performerFallback,
+      };
+    }
+  }
+  if (Array.isArray(normalizedWithWorker.extra_steps) && performerFallback) {
+    normalizedWithWorker.extra_steps = normalizedWithWorker.extra_steps.map((row) => {
+      const hasAnyValue =
+        Boolean(row.resistance_ohm?.trim()) ||
+        Boolean(row.insulation_mohm?.trim()) ||
+        Boolean(row.date?.trim()) ||
+        Boolean(row.note?.trim());
+      if (hasAnyValue && !row.performed_by?.trim()) {
+        return { ...row, performed_by: performerFallback };
+      }
+      return row;
+    });
+  }
+  return {
+    ...normalizedWithWorker,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/** Compare docs for drift detection — ignores `updated_at` only. */
+function heatingCableContentFingerprint(doc: HeatingCableDoc): string {
+  const { updated_at: _u, ...rest } = doc;
+  return JSON.stringify(normalizeHeatingCableDoc(rest));
+}
+
+function mergeHeatingModulePhotoIntoDoc(
+  prev: HeatingCableDoc,
+  stageId: string,
+  objectKey: string
+): HeatingCableDoc {
+  const out: HeatingCableDoc = { ...prev };
+  const addToStage = (stage: HeatingCableStage | undefined) => {
+    const row = stage || {};
+    const photos = Array.isArray(row.photos) ? [...row.photos, objectKey] : [objectKey];
+    return { ...row, photos };
+  };
+  if (stageId === 'before_installation') out.before_installation = addToStage(prev.before_installation);
+  else if (stageId === 'after_cable_laid') out.after_cable_laid = addToStage(prev.after_cable_laid);
+  else if (stageId === 'after_screed_final') out.after_screed_final = addToStage(prev.after_screed_final);
+  else {
+    const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
+    const idx = extra.findIndex((s) => (s.id || '') === stageId);
+    if (idx >= 0) {
+      const row = extra[idx] || {};
+      const photos = Array.isArray(row.photos) ? [...row.photos, objectKey] : [objectKey];
+      extra[idx] = { ...row, photos };
+      out.extra_steps = extra;
+    }
+  }
+  return out;
 }
 
 interface Task {
@@ -336,7 +413,13 @@ export default function RoomDetail() {
   const [checklistTitleDraft, setChecklistTitleDraft] = useState('');
   const [savingChecklistTitle, setSavingChecklistTitle] = useState(false);
   const [heatingCableDoc, setHeatingCableDoc] = useState<HeatingCableDoc>({});
-  const [savingHeatingCable, setSavingHeatingCable] = useState(false);
+  /** True while a heating-cable photo is uploading/processing or admin lock toggles — inputs stay responsive during autosave. */
+  const [heatingCableBlocking, setHeatingCableBlocking] = useState(false);
+  const [heatingCableSaveUi, setHeatingCableSaveUi] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const heatingCableDocRef = useRef<HeatingCableDoc>({});
+  const heatingAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heatingSaveUiIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const skipHeatingDocSyncRef = useRef(false);
   const heatingPhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [completingWorkerPhase, setCompletingWorkerPhase] = useState(false);
   const [floorRoomsOrdered, setFloorRoomsOrdered] = useState<RoomNavSibling[]>([]);
@@ -556,9 +639,24 @@ export default function RoomDetail() {
   }, [room?.id, room?.workflow_deviations]);
 
   useEffect(() => {
+    heatingCableDocRef.current = heatingCableDoc;
+  }, [heatingCableDoc]);
+
+  useEffect(() => {
     if (!room) return;
+    if (skipHeatingDocSyncRef.current) {
+      skipHeatingDocSyncRef.current = false;
+      return;
+    }
     setHeatingCableDoc(normalizeHeatingCableDoc(room.heating_cable_doc));
   }, [room?.id, room?.heating_cable_doc]);
+
+  useEffect(() => {
+    return () => {
+      if (heatingAutosaveTimerRef.current) clearTimeout(heatingAutosaveTimerRef.current);
+      if (heatingSaveUiIdleTimerRef.current) clearTimeout(heatingSaveUiIdleTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     setShowAddTask(false);
@@ -1244,6 +1342,71 @@ export default function RoomDetail() {
     }
   }, [room, canEdit, checklistTitleDraft, phaseTab, phaseWorkflow, defaultChecklistTitle]);
 
+  const persistHeatingCableDoc = useCallback(
+    async (options?: { overrideDoc?: HeatingCableDoc; manual?: boolean }) => {
+      if (!room) return false;
+      const manualToast = options?.manual ?? false;
+      let useOverride = options?.overrideDoc;
+
+      if (heatingSaveUiIdleTimerRef.current) {
+        clearTimeout(heatingSaveUiIdleTimerRef.current);
+        heatingSaveUiIdleTimerRef.current = null;
+      }
+      setHeatingCableSaveUi('saving');
+
+      let chain = 0;
+      try {
+        while (chain < 5) {
+          const source = useOverride ?? heatingCableDocRef.current;
+          useOverride = undefined;
+          const payload = buildHeatingCablePayload(source, displayName);
+          await client.entities.rooms.update({
+            id: String(room.id),
+            data: { heating_cable_doc: payload } as Record<string, unknown>,
+          });
+          skipHeatingDocSyncRef.current = true;
+          setRoom((prev) => (prev ? { ...prev, heating_cable_doc: payload } : null));
+
+          const fpSent = heatingCableContentFingerprint(payload);
+          const fpLatest = heatingCableContentFingerprint(
+            buildHeatingCablePayload(heatingCableDocRef.current, displayName)
+          );
+          if (fpSent === fpLatest) break;
+          chain++;
+        }
+        setHeatingCableSaveUi('saved');
+        heatingSaveUiIdleTimerRef.current = setTimeout(() => {
+          setHeatingCableSaveUi('idle');
+          heatingSaveUiIdleTimerRef.current = null;
+        }, HEATING_SAVE_UI_IDLE_MS);
+        if (manualToast) toast.success('Heating cable documentation saved');
+        return true;
+      } catch {
+        setHeatingCableSaveUi('error');
+        if (manualToast) toast.error('Failed to save heating cable documentation');
+        return false;
+      }
+    },
+    [room, displayName]
+  );
+
+  const scheduleHeatingAutosave = useCallback(() => {
+    if (heatingAutosaveTimerRef.current) clearTimeout(heatingAutosaveTimerRef.current);
+    heatingAutosaveTimerRef.current = setTimeout(() => {
+      heatingAutosaveTimerRef.current = null;
+      void persistHeatingCableDoc();
+    }, HEATING_AUTOSAVE_DEBOUNCE_MS);
+  }, [persistHeatingCableDoc]);
+
+  const saveHeatingCableDoc = useCallback(async () => {
+    if (!room) return;
+    if (heatingAutosaveTimerRef.current) {
+      clearTimeout(heatingAutosaveTimerRef.current);
+      heatingAutosaveTimerRef.current = null;
+    }
+    await persistHeatingCableDoc({ manual: true });
+  }, [room, persistHeatingCableDoc]);
+
   const updateHeatingStageField = (
     stageKey: HeatingCableStageKey,
     field: 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
@@ -1269,58 +1432,7 @@ export default function RoomDetail() {
         [stageKey]: row,
       };
     });
-  };
-
-  const saveHeatingCableDoc = async () => {
-    if (!room) return;
-    setSavingHeatingCable(true);
-    try {
-      const performerFallback = resolveSessionWorkerLabel(displayName);
-      const normalizedWithWorker: HeatingCableDoc = {
-        ...heatingCableDoc,
-      };
-      for (const stage of HEATING_CABLE_STAGES) {
-        const row = normalizedWithWorker[stage.key] || {};
-        const hasAnyValue =
-          Boolean(row.resistance_ohm?.trim()) ||
-          Boolean(row.insulation_mohm?.trim()) ||
-          Boolean(row.date?.trim()) ||
-          Boolean(row.note?.trim());
-        if (hasAnyValue && !row.performed_by?.trim() && performerFallback) {
-          normalizedWithWorker[stage.key] = {
-            ...row,
-            performed_by: performerFallback,
-          };
-        }
-      }
-      if (Array.isArray(normalizedWithWorker.extra_steps) && performerFallback) {
-        normalizedWithWorker.extra_steps = normalizedWithWorker.extra_steps.map((row) => {
-          const hasAnyValue =
-            Boolean(row.resistance_ohm?.trim()) ||
-            Boolean(row.insulation_mohm?.trim()) ||
-            Boolean(row.date?.trim()) ||
-            Boolean(row.note?.trim());
-          if (hasAnyValue && !row.performed_by?.trim()) {
-            return { ...row, performed_by: performerFallback };
-          }
-          return row;
-        });
-      }
-      const payload: HeatingCableDoc = {
-        ...normalizedWithWorker,
-        updated_at: new Date().toISOString(),
-      };
-      await client.entities.rooms.update({
-        id: String(room.id),
-        data: { heating_cable_doc: payload } as Record<string, unknown>,
-      });
-      setRoom({ ...room, heating_cable_doc: payload });
-      toast.success('Heating cable documentation saved');
-    } catch {
-      toast.error('Failed to save heating cable documentation');
-    } finally {
-      setSavingHeatingCable(false);
-    }
+    scheduleHeatingAutosave();
   };
 
   const addExtraHeatingStep = () => {
@@ -1338,6 +1450,7 @@ export default function RoomDetail() {
       });
       return { ...prev, extra_steps: extra };
     });
+    scheduleHeatingAutosave();
   };
 
   const updateExtraHeatingStepField = (
@@ -1361,6 +1474,7 @@ export default function RoomDetail() {
       extra[stepIndex] = step;
       return { ...prev, extra_steps: extra };
     });
+    scheduleHeatingAutosave();
   };
 
   const removeExtraHeatingStep = (stepIndex: number) => {
@@ -1369,6 +1483,7 @@ export default function RoomDetail() {
       extra.splice(stepIndex, 1);
       return { ...prev, extra_steps: extra };
     });
+    scheduleHeatingAutosave();
   };
 
   const uploadHeatingModulePhoto = async (stageId: string, file: File) => {
@@ -1417,41 +1532,22 @@ export default function RoomDetail() {
         ...taskPhotoVisitAreaPayload(),
       },
     });
-    setHeatingCableDoc((prev) => {
-      const out: HeatingCableDoc = { ...prev };
-      const addToStage = (stage: HeatingCableDoc[keyof HeatingCableDoc] | undefined) => {
-        const row = (stage || {}) as any;
-        const photos = Array.isArray(row.photos) ? [...row.photos, objectKey] : [objectKey];
-        return { ...row, photos };
-      };
-      if (stageId === 'before_installation') out.before_installation = addToStage(prev.before_installation);
-      else if (stageId === 'after_cable_laid') out.after_cable_laid = addToStage(prev.after_cable_laid);
-      else if (stageId === 'after_screed_final') out.after_screed_final = addToStage(prev.after_screed_final);
-      else {
-        const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
-        const idx = extra.findIndex((s) => (s.id || '') === stageId);
-        if (idx >= 0) {
-          const row = extra[idx] || {};
-          const photos = Array.isArray(row.photos) ? [...row.photos, objectKey] : [objectKey];
-          extra[idx] = { ...row, photos };
-          out.extra_steps = extra;
-        }
-      }
-      return out;
-    });
+    const nextDoc = mergeHeatingModulePhotoIntoDoc(heatingCableDocRef.current, stageId, objectKey);
+    setHeatingCableDoc(nextDoc);
+    await persistHeatingCableDoc({ overrideDoc: nextDoc });
     await loadData();
   };
 
   const handleHeatingStagePhotoInput = async (stageId: string, file?: File) => {
     if (!file || !room) return;
-    setSavingHeatingCable(true);
+    setHeatingCableBlocking(true);
     try {
       await uploadHeatingModulePhoto(stageId, file);
       toast.success('Heating module photo uploaded');
     } catch {
       toast.error('Failed to upload heating module photo');
     } finally {
-      setSavingHeatingCable(false);
+      setHeatingCableBlocking(false);
       const galleryKey = `${stageId}:gallery`;
       const cameraKey = `${stageId}:camera`;
       const g = heatingPhotoInputRefs.current[galleryKey];
@@ -1465,7 +1561,7 @@ export default function RoomDetail() {
 
   const toggleHeatingCableLock = async () => {
     if (!room || !canEdit) return;
-    setSavingHeatingCable(true);
+    setHeatingCableBlocking(true);
     try {
       const payload: HeatingCableDoc = {
         ...heatingCableDoc,
@@ -1476,13 +1572,14 @@ export default function RoomDetail() {
         id: String(room.id),
         data: { heating_cable_doc: payload } as Record<string, unknown>,
       });
+      skipHeatingDocSyncRef.current = true;
       setHeatingCableDoc(payload);
       setRoom({ ...room, heating_cable_doc: payload });
       toast.success(payload.locked_by_admin ? 'Heating cable section locked' : 'Heating cable section unlocked');
     } catch {
       toast.error('Failed to update heating cable lock');
     } finally {
-      setSavingHeatingCable(false);
+      setHeatingCableBlocking(false);
     }
   };
 
@@ -1725,7 +1822,8 @@ export default function RoomDetail() {
               showHeatingModule={showHeatingCableModule}
               heatingCableDoc={heatingCableDoc}
               canEditHeatingCable={canEditHeatingCable}
-              savingHeatingCable={savingHeatingCable}
+              heatingCableBlocking={heatingCableBlocking}
+              heatingCableSaveStatus={heatingCableSaveUi}
               heatingLockedByAdmin={heatingLockedByAdmin}
               heatingPhotoInputRefs={heatingPhotoInputRefs}
               onHeatingFieldChange={updateHeatingStageField}
@@ -2465,7 +2563,7 @@ export default function RoomDetail() {
                               size="sm"
                               className="h-6 text-[10px]"
                               onClick={() => void toggleHeatingCableLock()}
-                              disabled={savingHeatingCable}
+                              disabled={heatingCableBlocking}
                             >
                               {heatingLockedByAdmin ? 'Unlock' : 'Lock'}
                             </Button>
@@ -2475,6 +2573,26 @@ export default function RoomDetail() {
                       <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
                         Fill all three measurement stages for complete documentation.
                       </p>
+                      {canEditHeatingCable && !heatingLockedByAdmin ? (
+                        <p
+                          className={cn(
+                            'mt-1 text-[11px] font-medium tabular-nums',
+                            heatingCableSaveUi === 'saving' && 'text-muted-foreground',
+                            heatingCableSaveUi === 'saved' && 'text-emerald-700 dark:text-emerald-400',
+                            heatingCableSaveUi === 'error' && 'text-destructive',
+                            heatingCableSaveUi === 'idle' && 'text-muted-foreground/70'
+                          )}
+                          aria-live="polite"
+                        >
+                          {heatingCableSaveUi === 'saving'
+                            ? 'Saving…'
+                            : heatingCableSaveUi === 'saved'
+                              ? 'Saved'
+                              : heatingCableSaveUi === 'error'
+                                ? 'Failed to save'
+                                : 'Changes save automatically'}
+                        </p>
+                      ) : null}
                       {heatingLockedByAdmin ? (
                         <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
                           Locked by admin. Workers can view, admins can still correct.
@@ -2494,7 +2612,7 @@ export default function RoomDetail() {
                                 step="any"
                                 placeholder="Resistance (Ohm)"
                                 value={row.resistance_ohm || ''}
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) =>
                                   updateHeatingStageField(stage.key, 'resistance_ohm', e.target.value)
                                 }
@@ -2506,7 +2624,7 @@ export default function RoomDetail() {
                                 step="any"
                                 placeholder="Insulation (MΩ)"
                                 value={row.insulation_mohm || ''}
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) =>
                                   updateHeatingStageField(stage.key, 'insulation_mohm', e.target.value)
                                 }
@@ -2515,14 +2633,14 @@ export default function RoomDetail() {
                               <Input
                                 type="date"
                                 value={row.date || ''}
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateHeatingStageField(stage.key, 'date', e.target.value)}
                                 className="h-8 text-xs"
                               />
                               <Input
                                 placeholder="Performed by"
                                 value={row.performed_by || ''}
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) =>
                                   updateHeatingStageField(stage.key, 'performed_by', e.target.value)
                                 }
@@ -2532,7 +2650,7 @@ export default function RoomDetail() {
                             <Textarea
                               placeholder="Optional note / deviation"
                               value={row.note || ''}
-                              disabled={!canEditHeatingCable || savingHeatingCable}
+                              disabled={!canEditHeatingCable || heatingCableBlocking}
                               onChange={(e) => updateHeatingStageField(stage.key, 'note', e.target.value)}
                               rows={2}
                               className="text-xs"
@@ -2563,7 +2681,7 @@ export default function RoomDetail() {
                                   variant="outline"
                                   size="sm"
                                   className="h-7 text-[10px] shrink-0"
-                                  disabled={!canEditHeatingCable || savingHeatingCable}
+                                  disabled={!canEditHeatingCable || heatingCableBlocking}
                                   onClick={() => heatingPhotoInputRefs.current[`${stage.key}:camera`]?.click()}
                                 >
                                   Take photo
@@ -2573,7 +2691,7 @@ export default function RoomDetail() {
                                   variant="outline"
                                   size="sm"
                                   className="h-7 text-[10px] shrink-0"
-                                  disabled={!canEditHeatingCable || savingHeatingCable}
+                                  disabled={!canEditHeatingCable || heatingCableBlocking}
                                   onClick={() => heatingPhotoInputRefs.current[`${stage.key}:gallery`]?.click()}
                                 >
                                   Gallery
@@ -2595,7 +2713,7 @@ export default function RoomDetail() {
                               <Input
                                 placeholder="Extra step name (e.g. Before connecting thermostat)"
                                 value={step.label || ''}
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'label', e.target.value)}
                                 className="h-8 text-xs"
                               />
@@ -2604,7 +2722,7 @@ export default function RoomDetail() {
                                 variant="ghost"
                                 size="sm"
                                 className="h-8 text-[10px]"
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onClick={() => removeExtraHeatingStep(idx)}
                               >
                                 Remove
@@ -2617,7 +2735,7 @@ export default function RoomDetail() {
                                 step="any"
                                 placeholder="Resistance (Ohm)"
                                 value={step.resistance_ohm || ''}
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'resistance_ohm', e.target.value)}
                                 className="h-8 text-xs"
                               />
@@ -2627,21 +2745,21 @@ export default function RoomDetail() {
                                 step="any"
                                 placeholder="Insulation (MΩ)"
                                 value={step.insulation_mohm || ''}
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'insulation_mohm', e.target.value)}
                                 className="h-8 text-xs"
                               />
                               <Input
                                 type="date"
                                 value={step.date || ''}
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'date', e.target.value)}
                                 className="h-8 text-xs"
                               />
                               <Input
                                 placeholder="Performed by"
                                 value={step.performed_by || ''}
-                                disabled={!canEditHeatingCable || savingHeatingCable}
+                                disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'performed_by', e.target.value)}
                                 className="h-8 text-xs"
                               />
@@ -2649,7 +2767,7 @@ export default function RoomDetail() {
                             <Textarea
                               placeholder="Optional note / deviation"
                               value={step.note || ''}
-                              disabled={!canEditHeatingCable || savingHeatingCable}
+                              disabled={!canEditHeatingCable || heatingCableBlocking}
                               onChange={(e) => updateExtraHeatingStepField(idx, 'note', e.target.value)}
                               rows={2}
                               className="text-xs"
@@ -2680,7 +2798,7 @@ export default function RoomDetail() {
                                   variant="outline"
                                   size="sm"
                                   className="h-7 text-[10px] shrink-0"
-                                  disabled={!canEditHeatingCable || savingHeatingCable}
+                                  disabled={!canEditHeatingCable || heatingCableBlocking}
                                   onClick={() => heatingPhotoInputRefs.current[`${sid}:camera`]?.click()}
                                 >
                                   Take photo
@@ -2690,7 +2808,7 @@ export default function RoomDetail() {
                                   variant="outline"
                                   size="sm"
                                   className="h-7 text-[10px] shrink-0"
-                                  disabled={!canEditHeatingCable || savingHeatingCable}
+                                  disabled={!canEditHeatingCable || heatingCableBlocking}
                                   onClick={() => heatingPhotoInputRefs.current[`${sid}:gallery`]?.click()}
                                 >
                                   Gallery
@@ -2711,7 +2829,7 @@ export default function RoomDetail() {
                           size="sm"
                           className="h-8 text-xs"
                           onClick={addExtraHeatingStep}
-                          disabled={!canEditHeatingCable || savingHeatingCable}
+                          disabled={!canEditHeatingCable || heatingCableBlocking}
                         >
                           Add extra step
                         </Button>
@@ -2726,11 +2844,12 @@ export default function RoomDetail() {
                         <Button
                           type="button"
                           size="sm"
+                          variant="outline"
                           className="h-8 text-xs"
                           onClick={() => void saveHeatingCableDoc()}
-                          disabled={!canEditHeatingCable || savingHeatingCable}
+                          disabled={!canEditHeatingCable || heatingCableBlocking || heatingCableSaveUi === 'saving'}
                         >
-                          {savingHeatingCable ? 'Saving...' : 'Save measurements'}
+                          {heatingCableSaveUi === 'saving' ? 'Saving…' : 'Save now'}
                         </Button>
                       </div>
                     </div>
