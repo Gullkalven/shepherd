@@ -121,6 +121,10 @@ type Props = {
   heatingCableBlocking: boolean;
   /** Subtle persist feedback for the heating cable module. */
   heatingCableSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  /** True when local edits differ from last persisted payload (measurements, notes, photos, etc.). */
+  heatingCableDirty: boolean;
+  /** Label for the manual save button — contextual vs generic “Save now”. */
+  heatingCableManualSaveLabel: string;
   heatingLockedByAdmin: boolean;
   heatingPhotoInputRefs: RefObject<Record<string, HTMLInputElement | null>>;
   onHeatingFieldChange: (
@@ -1107,26 +1111,37 @@ export function WorkerRoomView(p: Props) {
           <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1.5">
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
               <h2 className="text-base font-semibold tracking-tight sm:text-lg">Heating cable</h2>
-              {!p.heatingLockedByAdmin && p.canEditHeatingCable ? (
-                <span
-                  className={cn(
-                    'text-[11px] font-medium tabular-nums shrink-0 pt-0.5',
-                    p.heatingCableSaveStatus === 'saving' && 'text-muted-foreground',
-                    p.heatingCableSaveStatus === 'saved' && 'text-emerald-700 dark:text-emerald-400',
-                    p.heatingCableSaveStatus === 'error' && 'text-destructive',
-                    p.heatingCableSaveStatus === 'idle' && 'text-muted-foreground/70'
-                  )}
-                  aria-live="polite"
-                >
-                  {p.heatingCableSaveStatus === 'saving'
-                    ? 'Saving…'
-                    : p.heatingCableSaveStatus === 'saved'
-                      ? 'Saved'
-                      : p.heatingCableSaveStatus === 'error'
-                        ? 'Failed to save'
-                        : null}
-                </span>
-              ) : null}
+              {(() => {
+                const passiveComplete =
+                  p.heatingDerived.status === 'complete' ? 'Documentation complete' : 'All changes saved';
+                let statusText: string | null = null;
+                if (p.heatingCableSaveStatus === 'saving') statusText = 'Saving…';
+                else if (p.heatingCableSaveStatus === 'error') statusText = 'Failed to save';
+                else if (p.heatingCableSaveStatus === 'saved') statusText = 'Saved just now';
+                else if (
+                  !p.heatingCableDirty ||
+                  !p.canEditHeatingCable ||
+                  p.heatingLockedByAdmin ||
+                  p.phaseReadOnly
+                ) {
+                  statusText = passiveComplete;
+                }
+                if (!statusText) return null;
+                return (
+                  <span
+                    className={cn(
+                      'text-[11px] font-medium tabular-nums shrink-0 pt-0.5',
+                      p.heatingCableSaveStatus === 'saving' && 'text-muted-foreground',
+                      p.heatingCableSaveStatus === 'saved' && 'text-emerald-700 dark:text-emerald-400',
+                      p.heatingCableSaveStatus === 'error' && 'text-destructive',
+                      p.heatingCableSaveStatus === 'idle' && 'text-muted-foreground/70'
+                    )}
+                    aria-live="polite"
+                  >
+                    {statusText}
+                  </span>
+                );
+              })()}
             </div>
             {focusStageLabel ? (
               <p className="text-xs font-medium text-amber-900/90 dark:text-amber-100/90 flex items-center gap-1.5">
@@ -1487,19 +1502,21 @@ export function WorkerRoomView(p: Props) {
                 </div>
               </div>
             ) : null}
-            {!p.heatingLockedByAdmin ? (
+            {p.canEditHeatingCable &&
+            !p.heatingLockedByAdmin &&
+            !p.phaseReadOnly &&
+            (p.heatingCableDirty || p.heatingCableSaveStatus === 'saving') ? (
               <Button
                 type="button"
                 variant="outline"
                 className="w-full h-11 text-sm font-medium text-muted-foreground"
                 disabled={
-                  !p.canEditHeatingCable ||
                   p.heatingCableBlocking ||
                   p.heatingCableSaveStatus === 'saving'
                 }
                 onClick={() => p.onSaveHeatingCable()}
               >
-                Save now
+                {p.heatingCableSaveStatus === 'saving' ? 'Saving…' : p.heatingCableManualSaveLabel}
               </Button>
             ) : null}
           </div>
