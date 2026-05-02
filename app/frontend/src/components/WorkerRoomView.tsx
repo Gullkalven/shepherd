@@ -55,6 +55,7 @@ import {
   phaseTimelineState,
 } from '@/lib/roomPhases';
 import { cn } from '@/lib/utils';
+import type { ActivityDisplayRow } from '@/lib/roomActivity';
 
 export type WorkerTask = {
   id: number;
@@ -168,7 +169,7 @@ type Props = {
   legacySavedWorkerName?: string;
   onClearSavedWorkerName?: () => void;
 
-  activityEntries: { t: number; msg: string }[];
+  activityEntries: ActivityDisplayRow[];
   formatActivityWhen: (ts: number) => string;
 
   deviations: WorkerDeviation[];
@@ -1774,11 +1775,18 @@ export function WorkerRoomView(p: Props) {
                 ) : (
                   p.activityEntries.map((row, i) => (
                     <div
-                      key={`${row.t}-${i}`}
+                      key={row.rowKey}
                       className="flex gap-2 border-b border-border/25 pb-1.5 last:border-0"
                     >
-                      <span className="w-14 shrink-0 whitespace-nowrap text-muted-foreground">
-                        {p.formatActivityWhen(row.t)}
+                      <span className="w-14 shrink-0 whitespace-nowrap text-muted-foreground tabular-nums">
+                        <span className="inline-flex flex-col items-end gap-0.5 leading-tight">
+                          <span>{p.formatActivityWhen(row.t)}</span>
+                          {i === 0 ? (
+                            <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground/75">
+                              Latest
+                            </span>
+                          ) : null}
+                        </span>
                       </span>
                       <span className="min-w-0 leading-snug">{row.msg}</span>
                     </div>

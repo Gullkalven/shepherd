@@ -127,6 +127,14 @@ export function collectLoggedPhotoIds(entries: ActivityLogEntry[]): Set<number> 
   return ids;
 }
 
+/** One activity line for the room Activity panel; `t` is ms since epoch from stored timestamps (not label text). */
+export type ActivityDisplayRow = {
+  t: number;
+  msg: string;
+  /** Stable React key; log rows prefer server `id` when present. */
+  rowKey: string;
+};
+
 export function buildActivityRows(params: {
   activityLog: unknown;
   visits: {
@@ -143,7 +151,7 @@ export function buildActivityRows(params: {
   activeAreaId: string;
   areasPrimaryId: string;
   parseActivityTime: (s: string | null | undefined) => number;
-}): { t: number; msg: string }[] {
+}): ActivityDisplayRow[] {
   const {
     activityLog,
     visits,
@@ -159,7 +167,9 @@ export function buildActivityRows(params: {
   const loggedVisits = collectLoggedVisitIds(entries);
   const loggedPhotos = collectLoggedPhotoIds(entries);
 
-  const rows: { t: number; msg: string }[] = [];
+  /** Monotonic insert order: higher = newer. Used when two rows share the same `t` (e.g. same-second precision). */
+  let seq = 0;
+  const rows: { t: number; msg: string; seq: number; rowKey: string }[] = [];
 
   for (const e of entries) {
     if (!taskBelongsToArea(e.area_id, activeAreaId, areasPrimaryId)) continue;
@@ -169,7 +179,13 @@ export function buildActivityRows(params: {
     const base = formatActivityMessage(e);
     const msg =
       phaseLabel && phaseLabel !== '—' ? `${base} · ${phaseLabel}` : base;
-    rows.push({ t, msg });
+    const id = typeof e.id === 'string' && e.id.trim() ? e.id.trim() : '';
+    rows.push({
+      t,
+      msg,
+      seq: seq++,
+      rowKey: id ? `log:${id}` : `log:seq-${seq - 1}`,
+    });
   }
 
   for (const v of visits) {
@@ -181,6 +197,8 @@ export function buildActivityRows(params: {
     rows.push({
       t,
       msg: `${v.worker_name}${tail}`,
+      seq: seq++,
+      rowKey: `visit:${v.id}`,
     });
   }
 
@@ -192,9 +210,14 @@ export function buildActivityRows(params: {
     rows.push({
       t,
       msg: p.filename ? `Photo uploaded: ${p.filename}` : 'Photo uploaded',
+      seq: seq++,
+      rowKey: `photo:${p.id}`,
     });
   }
 
-  rows.sort((a, b) => b.t - a.t);
-  return rows.filter((r) => r.t > 0).slice(0, 500);
+  rows.sort((a, b) => b.t - a.t || b.seq - a.seq);
+  return rows
+    .filter((r) => r.t > 0)
+    .slice(0, 500)
+    .map(({ t, msg, rowKey }) => ({ t, msg, rowKey }));
 }

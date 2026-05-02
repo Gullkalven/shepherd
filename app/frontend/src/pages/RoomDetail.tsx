@@ -3521,11 +3521,18 @@ export default function RoomDetail() {
                           ) : (
                             activityEntries.map((row, i) => (
                               <div
-                                key={`${row.t}-${i}`}
+                                key={row.rowKey}
                                 className="flex gap-2 border-b border-border/30 pb-1.5 last:border-0 last:pb-0"
                               >
-                                <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0 w-14">
-                                  {formatActivityWhen(row.t)}
+                                <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0 w-14 tabular-nums">
+                                  <span className="inline-flex flex-col items-end gap-0.5 leading-tight">
+                                    <span>{formatActivityWhen(row.t)}</span>
+                                    {i === 0 ? (
+                                      <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground/75">
+                                        Latest
+                                      </span>
+                                    ) : null}
+                                  </span>
                                 </span>
                                 <span className="text-foreground/85 min-w-0 leading-snug">{row.msg}</span>
                               </div>
