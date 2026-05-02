@@ -3049,18 +3049,30 @@ export default function RoomDetail() {
                                 >
                                   {task.name}
                                 </span>
-                                {task.checked_by ? (
+                                {task.is_completed && task.checked_by ? (
                                   <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                                     <Badge
                                       variant="secondary"
-                                      className={`text-[10px] h-5 px-1.5 ${
-                                        task.is_completed
-                                          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                          : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
-                                      }`}
+                                      className="text-[10px] h-5 px-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
                                     >
                                       <User className="h-2.5 w-2.5 mr-0.5" />
-                                      {task.checked_by}
+                                      Completed · {task.checked_by}
+                                    </Badge>
+                                    {task.checked_at ? (
+                                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                        <Clock className="h-2.5 w-2.5" />
+                                        {formatVisitDate(task.checked_at)}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                ) : !task.is_completed && task.checked_by ? (
+                                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-[10px] h-5 px-1.5 bg-orange-50 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200"
+                                    >
+                                      <User className="h-2.5 w-2.5 mr-0.5" />
+                                      Unchecked by {task.checked_by}
                                     </Badge>
                                     {task.checked_at ? (
                                       <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
@@ -3272,27 +3284,39 @@ export default function RoomDetail() {
                                           </button>
                                         )}
                                       </div>
-                                      {task.checked_by && (
+                                      {task.is_completed && task.checked_by ? (
                                         <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                                           <Badge
                                             variant="secondary"
-                                            className={`text-[10px] h-5 px-1.5 ${
-                                              task.is_completed
-                                                ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                                                : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300'
-                                            }`}
+                                            className="text-[10px] h-5 px-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
                                           >
                                             <User className="h-2.5 w-2.5 mr-0.5" />
-                                            {task.checked_by}
+                                            Completed · {task.checked_by}
                                           </Badge>
-                                          {task.checked_at && (
+                                          {task.checked_at ? (
                                             <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                                               <Clock className="h-2.5 w-2.5" />
                                               {formatVisitDate(task.checked_at)}
                                             </span>
-                                          )}
+                                          ) : null}
                                         </div>
-                                      )}
+                                      ) : !task.is_completed && task.checked_by ? (
+                                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                          <Badge
+                                            variant="secondary"
+                                            className="text-[10px] h-5 px-1.5 bg-orange-50 dark:bg-orange-900/30 text-orange-800 dark:text-orange-200"
+                                          >
+                                            <User className="h-2.5 w-2.5 mr-0.5" />
+                                            Unchecked by {task.checked_by}
+                                          </Badge>
+                                          {task.checked_at ? (
+                                            <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                              <Clock className="h-2.5 w-2.5" />
+                                              {formatVisitDate(task.checked_at)}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                      ) : null}
                                     </div>
                                   </button>
                                   {canDeleteChecklistItem && canMutateChecklist && (

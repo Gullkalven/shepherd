@@ -1040,14 +1040,31 @@ export function WorkerRoomView(p: Props) {
                           >
                             {task.name}
                           </p>
-                          {task.checked_by ? (
-                            <p className="hidden items-center gap-1.5 text-[11px] text-muted-foreground sm:flex">
-                              <User className="h-3 w-3" />
-                              {task.checked_by}
+                          {task.is_completed && task.checked_by ? (
+                            <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                              <User className="h-3 w-3 shrink-0" aria-hidden />
+                              <span className="font-medium text-emerald-800/90 dark:text-emerald-300/90">
+                                Completed
+                              </span>
+                              <span className="opacity-60">·</span>
+                              <span>{task.checked_by}</span>
                               {task.checked_at ? (
                                 <>
                                   <span className="opacity-50">·</span>
-                                  <Clock className="h-3 w-3" />
+                                  <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                                  {formatVisitDateShort(task.checked_at)}
+                                </>
+                              ) : null}
+                            </p>
+                          ) : !task.is_completed && task.checked_by ? (
+                            <p className="flex items-center gap-1.5 text-[11px] text-amber-900/85 dark:text-amber-100/85">
+                              <User className="h-3 w-3 shrink-0" aria-hidden />
+                              <span>Unchecked by</span>
+                              <span className="font-medium">{task.checked_by}</span>
+                              {task.checked_at ? (
+                                <>
+                                  <span className="opacity-50">·</span>
+                                  <Clock className="h-3 w-3 shrink-0" aria-hidden />
                                   {formatVisitDateShort(task.checked_at)}
                                 </>
                               ) : null}
