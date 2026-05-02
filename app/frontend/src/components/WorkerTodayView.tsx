@@ -65,10 +65,8 @@ function taskSubtitle(roomId: number, tasks: TaskRow[]): string {
   const total = list.length;
   if (total === 0) return 'Open room';
   const done = list.filter((t) => t.is_completed).length;
-  if (done >= total) return `${done}/${total} done`;
-  const next = list.find((t) => !t.is_completed);
-  const name = next?.name?.trim();
-  return name ? `${done}/${total} · ${name}` : `${done}/${total} tasks left`;
+  if (done >= total) return `${done}/${total} marked`;
+  return `${done}/${total} open`;
 }
 
 type EnrichedRoom = {
@@ -132,9 +130,9 @@ function primaryContinueTrustLines(room: EnrichedRoom): string[] {
   else lines.push('Your last opened room');
 
   if (room.status === 'ready_for_inspection') {
-    lines.push('Priority today');
+    lines.push('Needs handoff');
   } else if (lines.length < 2 && room.status === 'in_progress') {
-    lines.push('Pick up where you left off');
+    lines.push('Same room as before');
   }
   return lines.slice(0, 2);
 }
@@ -142,28 +140,28 @@ function primaryContinueTrustLines(room: EnrichedRoom): string[] {
 function primaryNextTrustLines(room: EnrichedRoom): string[] {
   switch (room.status) {
     case 'not_started':
-      return ['Ready to start', 'Waiting for you'];
+      return ['Ready to start'];
     case 'ready_for_inspection':
-      return ['Needs handoff', 'Priority today'];
+      return ['Needs handoff'];
     case 'in_progress': {
       const days = calendarDaysAgo(room.updated_at);
-      if (days === 0) return ['Worked here today', 'Waiting for you'];
-      if (days === 1) return ['Worked here yesterday', 'Waiting for you'];
-      return ['In progress', 'Waiting for you'];
+      if (days === 0) return ['Worked here today'];
+      if (days === 1) return ['Worked here yesterday'];
+      return ['In progress'];
     }
     default:
-      return ['Ready for work', 'Waiting for you'];
+      return ['Ready for work'];
   }
 }
 
 function alternateRoomTrustLines(room: EnrichedRoom): string[] {
   switch (room.status) {
     case 'not_started':
-      return ['Ready to start', 'Waiting for you'];
+      return ['Ready to start'];
     case 'ready_for_inspection':
-      return ['Needs handoff', 'Waiting for you'];
+      return ['Needs handoff'];
     case 'in_progress':
-      return ['In progress', 'Next when you are ready'];
+      return ['In progress'];
     default:
       return [roomReasonLabel(room)];
   }
@@ -332,6 +330,11 @@ export default function WorkerTodayView({
 
   const blockedCount = blockedRooms.length;
 
+  const actionableRoomCount = useMemo(
+    () => roomsFlat.filter((r) => ACTIONABLE.has(r.status)).length,
+    [roomsFlat]
+  );
+
   const completedTodayCount = useMemo(
     () => roomsFlat.filter((r) => r.status === 'completed' && isLocalDateToday(r.updated_at)).length,
     [roomsFlat]
@@ -380,7 +383,14 @@ export default function WorkerTodayView({
       <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-foreground">Today</h1>
-          <p className="text-sm text-muted-foreground">My rooms{greeting}</p>
+          <p className="text-sm text-muted-foreground">
+            My rooms{greeting}
+            {actionableRoomCount > 0 ? (
+              <span className="mt-0.5 block text-xs">
+                {actionableRoomCount} ready {actionableRoomCount === 1 ? 'room' : 'rooms'}
+              </span>
+            ) : null}
+          </p>
         </div>
 
         {showSitesFailure ? (
@@ -482,7 +492,7 @@ export default function WorkerTodayView({
                   >
                     <div className="min-w-0 flex-1 space-y-1.5">
                       <span className="block text-lg font-bold leading-tight text-white">
-                        {resumeRoom ? 'Continue Last Room' : 'Next Ready Room'}
+                        {resumeRoom ? 'Open last room' : 'Open ready room'}
                       </span>
                       <span className="block text-base font-semibold text-white/95">Room {primaryRoomLabel}</span>
                       {primaryTrustLines.length > 0 && (
@@ -525,7 +535,9 @@ export default function WorkerTodayView({
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 space-y-1">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Another room ready</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Another ready room
+                        </p>
                         <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
                           Room {alternateReady.room_number}
                         </p>

@@ -427,7 +427,7 @@ export function WorkerRoomView(p: Props) {
         badgeClass:
           'border-amber-300/80 bg-amber-100 text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100',
         description:
-          'Upcoming after the current phase. Use View details for the full record, or jump back to focus on today\'s work.',
+          'Upcoming after the current phase. Expand details for the full record, or go back to the active phase when you need it.',
       };
     }
     if (p.phaseTabLocked) {
@@ -451,8 +451,8 @@ export function WorkerRoomView(p: Props) {
       badge: 'Upcoming',
       badgeClass:
         'border-blue-300/70 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100',
-      description:
-        'You may work ahead when ready. Details stay collapsed here so the active phase stays in focus.',
+        description:
+        'Work ahead if you need to. Details stay collapsed so the active phase stays easy to find.',
     };
   }, [p.phaseTabLocked, phaseTimeline]);
 
@@ -461,7 +461,7 @@ export function WorkerRoomView(p: Props) {
     const tasks = p.tasksForSelectedPhase;
     if (tasks.length > 0) {
       const done = tasks.filter((t) => t.is_completed).length;
-      lines.push(`Checklist ${done}/${tasks.length} done`);
+      lines.push(`Checklist ${done}/${tasks.length} marked`);
     } else {
       lines.push('No checklist items in this phase');
     }
@@ -537,59 +537,59 @@ export function WorkerRoomView(p: Props) {
     return phaseLabel(keys[i + 1], p.phaseWorkflow);
   }, [p.boardPhaseKey, p.phaseWorkflow]);
 
-  const nextStepBanner = useMemo(() => {
+  const workContextBanner = useMemo(() => {
     if (p.blockedReason) return null;
     if (p.editsBlocked) {
       return {
         tone: 'muted' as const,
-        title: 'Next action',
-        body: 'This room is view-only — review sections below.',
+        title: 'Current work',
+        body: 'View only — use the sections below for reference.',
       };
     }
     if (viewingNonBoard) {
       return {
         tone: 'neutral' as const,
-        title: 'Go to active phase',
-        body: `Continue in “${boardLabel}” (phase switcher below).`,
+        title: 'Current phase',
+        body: `Active phase is “${boardLabel}” — switch below if you need it.`,
       };
     }
     if (p.phaseCompleteEligible && !p.phaseReadOnly) {
       return {
         tone: 'success' as const,
-        title: 'Next action',
+        title: 'Mark progress',
         body: nextPhaseLabel
-          ? `Mark phase complete — next is ${nextPhaseLabel}`
-          : 'Mark phase complete',
+          ? `Hand off this phase — next is ${nextPhaseLabel}`
+          : 'Hand off this phase when you are done.',
       };
     }
     const firstIncomplete = p.tasksForSelectedPhase.find((t) => !t.is_completed);
     if (firstIncomplete) {
       return {
         tone: 'primary' as const,
-        title: 'Complete checklist item',
+        title: 'Current work',
         body: firstIncomplete.name,
       };
     }
     if (p.boardPhaseShowHeating && !p.boardPhaseWorkReady && focusStageLabel) {
       return {
         tone: 'primary' as const,
-        title: 'Next action',
-        body: `Save heating docs · finish ${focusStageLabel}`,
+        title: 'Documentation',
+        body: `Open ${focusStageLabel} · save when ready`,
       };
     }
     if (p.boardPhaseShowHeating && boardHeatingDocProgress && !p.boardPhaseWorkReady) {
       return {
         tone: 'primary' as const,
-        title: 'Next action',
-        body: `Finish heating documentation (${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages).`,
+        title: 'Documentation',
+        body: `Heating ${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages uploaded — finish the rest below.`,
       };
     }
     return {
       tone: 'muted' as const,
-      title: 'Next action',
+      title: 'Current work',
       body: p.boardPhaseWorkReady
-        ? 'Scroll down when you are ready to wrap up.'
-        : 'Continue in the checklist and sections below.',
+        ? 'Wrap up below when you are ready.'
+        : 'Checklist and documentation below.',
     };
   }, [
     p.blockedReason,
@@ -609,11 +609,11 @@ export function WorkerRoomView(p: Props) {
   const heroStatPrimary = useMemo(() => {
     if (p.boardPhaseTotalCount > 0) {
       return {
-        label: 'Checklist',
+        label: 'Open items',
         value: String(p.boardPhaseIncompleteCount),
         sub:
           p.boardPhaseTotalCount > 0
-            ? `${p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/${p.boardPhaseTotalCount} done`
+            ? `${p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/${p.boardPhaseTotalCount} marked`
             : undefined,
       };
     }
@@ -622,11 +622,11 @@ export function WorkerRoomView(p: Props) {
       return {
         label: 'Heating docs',
         value: String(Math.max(0, left)),
-        sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages done`,
+        sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages uploaded`,
       };
     }
     return {
-      label: 'Checklist',
+      label: 'Open items',
       value: '0',
       sub: 'No items this phase',
     };
@@ -634,7 +634,7 @@ export function WorkerRoomView(p: Props) {
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4 lg:max-w-xl">
-      {/* Room hero — room #, phase, next action, progress; status/due collapsed */}
+      {/* Room hero — room #, phase, work context, progress; status/due collapsed */}
       <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.09] via-background to-background shadow-md ring-1 ring-black/[0.03] dark:from-blue-950/45 dark:via-background dark:to-background dark:ring-white/[0.06]">
         <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
           <div className="space-y-0.5">
@@ -656,29 +656,29 @@ export function WorkerRoomView(p: Props) {
             <p className="mt-1 text-xl font-bold leading-snug tracking-tight text-foreground sm:text-2xl">{boardLabel}</p>
           </div>
 
-          {nextStepBanner ? (
+          {workContextBanner ? (
             <div
               className={cn(
                 'rounded-xl border-2 px-3.5 py-3.5 shadow-sm sm:px-4 sm:py-4',
-                nextStepBanner.tone === 'primary' &&
+                workContextBanner.tone === 'primary' &&
                   'border-[#1E3A5F]/50 bg-[#1E3A5F]/[0.1] ring-1 ring-[#1E3A5F]/15 dark:border-blue-500/45 dark:bg-blue-950/40 dark:ring-blue-500/20',
-                nextStepBanner.tone === 'success' &&
+                workContextBanner.tone === 'success' &&
                   'border-emerald-500/50 bg-emerald-50 dark:border-emerald-600/50 dark:bg-emerald-950/45',
-                nextStepBanner.tone === 'neutral' &&
+                workContextBanner.tone === 'neutral' &&
                   'border-border/70 bg-muted/35 dark:bg-muted/25',
-                nextStepBanner.tone === 'muted' && 'border-border/55 bg-muted/25'
+                workContextBanner.tone === 'muted' && 'border-border/55 bg-muted/25'
               )}
             >
               <div className="flex items-start gap-3">
                 <div
                   className={cn(
                     'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-                    nextStepBanner.tone === 'primary' &&
+                    workContextBanner.tone === 'primary' &&
                       'bg-[#1E3A5F]/20 text-[#1E3A5F] dark:bg-blue-500/25 dark:text-blue-100',
-                    nextStepBanner.tone === 'success' &&
+                    workContextBanner.tone === 'success' &&
                       'bg-emerald-600/20 text-emerald-900 dark:bg-emerald-500/25 dark:text-emerald-50',
-                    nextStepBanner.tone === 'neutral' && 'bg-muted text-muted-foreground',
-                    nextStepBanner.tone === 'muted' && 'bg-muted/90 text-muted-foreground'
+                    workContextBanner.tone === 'neutral' && 'bg-muted text-muted-foreground',
+                    workContextBanner.tone === 'muted' && 'bg-muted/90 text-muted-foreground'
                   )}
                 >
                   <ChevronRight className="h-[1.1rem] w-[1.1rem]" aria-hidden />
@@ -687,24 +687,24 @@ export function WorkerRoomView(p: Props) {
                   <p
                     className={cn(
                       'text-[10px] font-bold uppercase tracking-[0.14em]',
-                      nextStepBanner.tone === 'primary' && 'text-[#1E3A5F] dark:text-blue-300',
-                      nextStepBanner.tone === 'success' && 'text-emerald-800 dark:text-emerald-200',
-                      nextStepBanner.tone === 'neutral' && 'text-muted-foreground',
-                      nextStepBanner.tone === 'muted' && 'text-muted-foreground'
+                      workContextBanner.tone === 'primary' && 'text-[#1E3A5F] dark:text-blue-300',
+                      workContextBanner.tone === 'success' && 'text-emerald-800 dark:text-emerald-200',
+                      workContextBanner.tone === 'neutral' && 'text-muted-foreground',
+                      workContextBanner.tone === 'muted' && 'text-muted-foreground'
                     )}
                   >
-                    {nextStepBanner.title}
+                    {workContextBanner.title}
                   </p>
                   <p
                     className={cn(
                       'text-[16px] font-bold leading-snug sm:text-[17px]',
-                      nextStepBanner.tone === 'primary' && 'text-foreground',
-                      nextStepBanner.tone === 'success' && 'text-emerald-950 dark:text-emerald-50',
-                      nextStepBanner.tone === 'neutral' && 'text-foreground',
-                      nextStepBanner.tone === 'muted' && 'text-muted-foreground'
+                      workContextBanner.tone === 'primary' && 'text-foreground',
+                      workContextBanner.tone === 'success' && 'text-emerald-950 dark:text-emerald-50',
+                      workContextBanner.tone === 'neutral' && 'text-foreground',
+                      workContextBanner.tone === 'muted' && 'text-muted-foreground'
                     )}
                   >
-                    {nextStepBanner.body}
+                    {workContextBanner.body}
                   </p>
                 </div>
               </div>
@@ -713,7 +713,7 @@ export function WorkerRoomView(p: Props) {
 
           <div className="space-y-2">
             <p className="px-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Progress
+              At a glance
             </p>
             <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
               <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
@@ -839,7 +839,7 @@ export function WorkerRoomView(p: Props) {
         </div>
       ) : null}
 
-      {/* Phase switcher — collapsed by default to keep the hero action-first */}
+      {/* Phase switcher — collapsed by default */}
       {workflowKeys.length > 1 ? (
         <Collapsible defaultOpen={false} className="rounded-lg border border-border/25 bg-muted/[0.04]">
           <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:py-2">
@@ -897,11 +897,11 @@ export function WorkerRoomView(p: Props) {
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 space-y-1">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Not the active phase
+                  Another phase
                 </p>
                 <p className="text-lg font-semibold tracking-tight leading-snug">{selectedLabel}</p>
                 <p className="text-sm text-muted-foreground">
-                  Current focus: <span className="font-medium text-foreground">{boardLabel}</span>
+                  Current phase: <span className="font-medium text-foreground">{boardLabel}</span>
                 </p>
               </div>
               <Badge
@@ -937,7 +937,7 @@ export function WorkerRoomView(p: Props) {
                 className="h-11 min-h-11 w-full bg-[#1E3A5F] hover:bg-[#1E3A5F]/90 dark:bg-blue-700 dark:hover:bg-blue-700/90 sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1"
                 onClick={() => p.onPhaseSelect(p.boardPhaseKey)}
               >
-                Jump to active phase
+                Move to current phase
               </Button>
               <Button
                 type="button"
@@ -1083,9 +1083,9 @@ export function WorkerRoomView(p: Props) {
               <Collapsible defaultOpen={false} className="rounded-xl border border-dashed border-border/55 bg-muted/10">
                 <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:px-4 sm:py-3">
                   <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground">Add photos for this phase</span>
+                    <span className="text-sm font-medium text-foreground">Upload documentation</span>
                     <span className="text-xs text-muted-foreground">
-                      Optional — stage photos in Heating cable are the main record
+                      Optional phase photos — heating cable stages are the main record
                     </span>
                   </span>
                   <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
@@ -1120,7 +1120,7 @@ export function WorkerRoomView(p: Props) {
             </p>
             {focusStageLabel ? (
               <p className="text-xs font-medium text-amber-900/90 dark:text-amber-100/90 flex items-center gap-1.5">
-                <span className="text-muted-foreground font-normal">Next up:</span>
+                <span className="text-muted-foreground font-normal">Current stage:</span>
                 <span>{focusStageLabel}</span>
               </p>
             ) : (
@@ -1138,7 +1138,7 @@ export function WorkerRoomView(p: Props) {
               const isFocus = focusStageId === sid;
               const open = heatingStageOpen(sid);
               const started = heatingStageHasAnyData(row);
-              const badgeLabel = complete ? 'Complete' : isFocus ? 'Now' : started ? 'In progress' : 'Not started';
+              const badgeLabel = complete ? 'Complete' : isFocus ? 'Open' : started ? 'In progress' : 'Not started';
 
               return (
                 <Collapsible
@@ -1321,7 +1321,7 @@ export function WorkerRoomView(p: Props) {
               const isFocus = focusStageId === panelId;
               const open = heatingStageOpen(panelId);
               const started = heatingStageHasAnyData(step);
-              const badgeLabel = complete ? 'Complete' : isFocus ? 'Now' : started ? 'In progress' : 'Not started';
+              const badgeLabel = complete ? 'Complete' : isFocus ? 'Open' : started ? 'In progress' : 'Not started';
 
               return (
                 <Collapsible
@@ -1518,13 +1518,13 @@ export function WorkerRoomView(p: Props) {
           <div className="space-y-4 p-5 sm:p-6">
             <div className="space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800/90 dark:text-emerald-200/90">
-                Ready to continue
+                Mark progress
               </p>
               <p className="text-xl font-bold tracking-tight text-emerald-950 dark:text-emerald-50">
-                Complete this phase
+                Phase ready for handoff
               </p>
               <p className="text-sm leading-snug text-emerald-900/85 dark:text-emerald-100/85">
-                Everything required for {selectedLabel} is done. Confirm to hand off.
+                Required work for {selectedLabel} is documented. Hand off when it matches the site.
               </p>
             </div>
             <Button
@@ -1534,7 +1534,7 @@ export function WorkerRoomView(p: Props) {
               disabled={p.completingPhase}
               onClick={() => p.onCompletePhase()}
             >
-              {p.completingPhase ? 'Saving…' : 'Complete phase'}
+              {p.completingPhase ? 'Saving…' : 'Mark phase complete'}
             </Button>
           </div>
         </Card>

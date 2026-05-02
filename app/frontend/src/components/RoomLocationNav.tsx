@@ -104,7 +104,12 @@ export function RoomLocationNav({
           <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5" asChild>
             <Link
               to={`/project/${projectId}/floor/${floorId}/room/${nextRoom.id}`}
-              aria-label={`Next room, ${nextRoom.room_number}`}
+              title={isWorker ? 'Move to next room' : undefined}
+              aria-label={
+                isWorker
+                  ? `Move to next room, ${nextRoom.room_number}`
+                  : `Next room, ${nextRoom.room_number}`
+              }
             >
               <span className="hidden sm:inline">Next room</span>
               <span className="inline sm:hidden">Next</span>
