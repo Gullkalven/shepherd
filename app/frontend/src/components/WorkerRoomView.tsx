@@ -11,7 +11,6 @@ import {
   Calendar,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   Circle,
   Clock,
   History,
@@ -19,6 +18,7 @@ import {
   Lock,
   User,
   AlertTriangle,
+  XCircle,
 } from 'lucide-react';
 import {
   HEATING_CABLE_STAGES,
@@ -526,46 +526,6 @@ export function WorkerRoomView(p: Props) {
     p.activityEntries.length,
   ]);
 
-  const heroWorkState = useMemo(() => {
-    if (p.blockedReason) {
-      return {
-        label: 'Blocked',
-        className:
-          'border-red-400/50 bg-red-50 text-red-950 dark:border-red-900/60 dark:bg-red-950/45 dark:text-red-50',
-      };
-    }
-    if (p.editsBlocked) {
-      return {
-        label: 'View only',
-        className: 'border-border/70 bg-muted/50 text-muted-foreground',
-      };
-    }
-    if (p.phaseCompleteEligible && !p.phaseReadOnly) {
-      return {
-        label: 'Ready for handoff',
-        className:
-          'border-emerald-400/55 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-50',
-      };
-    }
-    if (p.boardPhaseWorkReady) {
-      return {
-        label: 'On track',
-        className:
-          'border-teal-400/45 bg-teal-50/90 text-teal-950 dark:border-teal-800 dark:bg-teal-950/35 dark:text-teal-50',
-      };
-    }
-    return {
-      label: 'In progress',
-      className: 'border-[#1E3A5F]/25 bg-background/90 text-foreground dark:border-blue-800/50 dark:bg-background/80',
-    };
-  }, [
-    p.blockedReason,
-    p.editsBlocked,
-    p.phaseCompleteEligible,
-    p.phaseReadOnly,
-    p.boardPhaseWorkReady,
-  ]);
-
   const nextPhaseLabel = useMemo(() => {
     const keys = p.phaseWorkflow.map((x) => x.key);
     const i = keys.indexOf(p.boardPhaseKey);
@@ -573,44 +533,79 @@ export function WorkerRoomView(p: Props) {
     return phaseLabel(keys[i + 1], p.phaseWorkflow);
   }, [p.boardPhaseKey, p.phaseWorkflow]);
 
-  /**
-   * Hero operational banner: only when something needs attention or a clear next operational state.
-   * Steady progress with no required gaps → no banner (details live in checklist / heating / status).
-   */
-  const workContextBanner = useMemo(() => {
-    if (p.blockedReason) return null;
-    if (p.editsBlocked) return null;
-    if (viewingNonBoard) return null;
-
+  const workerDecisionStatus = useMemo(() => {
+    if (p.blockedReason) {
+      return {
+        label: 'Blocked',
+        className:
+          'border-red-400/60 bg-red-50 text-red-950 dark:border-red-900/60 dark:bg-red-950/45 dark:text-red-50',
+      };
+    }
     if (p.phaseCompleteEligible && !p.phaseReadOnly) {
       return {
-        tone: 'success' as const,
-        title: 'Ready for next phase',
-        body: nextPhaseLabel ? `Next: ${nextPhaseLabel}` : 'Complete this phase when work matches the site.',
+        label: 'Ready',
+        className:
+          'border-emerald-400/55 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-50',
       };
+    }
+    return {
+      label: 'In progress',
+      className:
+        'border-[#1E3A5F]/30 bg-[#1E3A5F]/[0.08] text-[#0f2744] dark:border-blue-800/50 dark:bg-blue-950/35 dark:text-blue-50',
+    };
+  }, [p.blockedReason, p.phaseCompleteEligible, p.phaseReadOnly]);
+
+  const workHereNow = useMemo(() => {
+    if (p.blockedReason) {
+      return {
+        ok: false as const,
+        detail: 'Work is blocked until this is cleared — see Blockers.',
+      };
+    }
+    if (p.editsBlocked) {
+      return { ok: false as const, detail: 'This room is locked for editing.' };
+    }
+    if (viewingNonBoard) {
+      return {
+        ok: false as const,
+        detail: 'Switch to an active phase below to log work.',
+      };
+    }
+    if (p.phaseTabLocked) {
+      return { ok: false as const, detail: 'This phase is locked — view only.' };
+    }
+    return { ok: true as const, detail: null as string | null };
+  }, [p.blockedReason, p.editsBlocked, viewingNonBoard, p.phaseTabLocked]);
+
+  const openDeviationsCount = useMemo(
+    () => p.deviations.filter((d) => d.status === 'open').length,
+    [p.deviations]
+  );
+
+  const lastActivitySummary = useMemo(() => {
+    const row = p.activityEntries[0];
+    if (!row) return null;
+    return { when: p.formatActivityWhen(row.t), msg: row.msg };
+  }, [p.activityEntries, p.formatActivityWhen]);
+
+  /** One scannable line for what to do next on the active phase (no vague labels). */
+  const decisionFocusLine = useMemo(() => {
+    if (p.blockedReason || p.editsBlocked || viewingNonBoard) return null;
+    if (p.phaseCompleteEligible && !p.phaseReadOnly) {
+      return nextPhaseLabel
+        ? `Hand off when done — next is ${nextPhaseLabel}.`
+        : 'Hand off when the site matches your documentation.';
     }
     const firstIncomplete = p.tasksForSelectedPhase.find((t) => !t.is_completed);
     if (firstIncomplete) {
-      return {
-        tone: 'primary' as const,
-        title: 'Action needed',
-        body: firstIncomplete.name,
-      };
+      return `Next checklist: ${firstIncomplete.name}`;
     }
     if (p.boardPhaseShowHeating && !p.boardPhaseWorkReady) {
       if (focusStageLabel) {
-        return {
-          tone: 'primary' as const,
-          title: 'Final reading missing',
-          body: focusStageLabel,
-        };
+        return `Finish heating documentation — ${focusStageLabel}.`;
       }
       if (boardHeatingDocProgress) {
-        return {
-          tone: 'primary' as const,
-          title: 'Documentation incomplete',
-          body: `Heating stages ${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} complete.`,
-        };
+        return `Heating documentation ${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages complete.`;
       }
     }
     return null;
@@ -620,222 +615,239 @@ export function WorkerRoomView(p: Props) {
     viewingNonBoard,
     p.phaseCompleteEligible,
     p.phaseReadOnly,
+    nextPhaseLabel,
     p.tasksForSelectedPhase,
     p.boardPhaseShowHeating,
     p.boardPhaseWorkReady,
     focusStageLabel,
     boardHeatingDocProgress,
-    nextPhaseLabel,
   ]);
 
   const heroStatPrimary = useMemo(() => {
     if (p.boardPhaseTotalCount > 0) {
       return {
-        label: 'Open items',
+        label: 'Open work',
         value: String(p.boardPhaseIncompleteCount),
         sub:
           p.boardPhaseTotalCount > 0
-            ? `${p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/${p.boardPhaseTotalCount} marked`
+            ? `${p.boardPhaseTotalCount - p.boardPhaseIncompleteCount}/${p.boardPhaseTotalCount} done`
             : undefined,
       };
     }
     if (p.boardPhaseShowHeating && boardHeatingDocProgress) {
       const left = boardHeatingDocProgress.total - boardHeatingDocProgress.complete;
       return {
-        label: 'Heating docs',
+        label: 'Open work',
         value: String(Math.max(0, left)),
-        sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages uploaded`,
+        sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} heating stages done`,
       };
     }
     return {
-      label: 'Open items',
+      label: 'Open work',
       value: '0',
-      sub: 'No items this phase',
+      sub: 'Nothing queued this phase',
     };
   }, [p.boardPhaseTotalCount, p.boardPhaseIncompleteCount, p.boardPhaseShowHeating, boardHeatingDocProgress]);
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4 lg:max-w-xl">
-      {/* Room hero — room #, phase, work context, progress; status/due collapsed */}
+      {/* Room decision card — field-first: status, due, can work, phases, work left, blockers, last touch */}
       <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.09] via-background to-background shadow-md ring-1 ring-black/[0.03] dark:from-blue-950/45 dark:via-background dark:to-background dark:ring-white/[0.06]">
         <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
-          <div className="space-y-0.5">
-            {p.areaName ? (
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/90">
-                {p.areaName}
-              </p>
-            ) : null}
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Room</p>
-            <h1 className="text-[1.85rem] font-bold leading-[1.08] tracking-tight text-foreground sm:text-[2.1rem]">
-              {p.roomNumber}
-            </h1>
-          </div>
-
-          <div className="rounded-xl border-2 border-[#1E3A5F]/25 bg-background/75 px-3.5 py-3 shadow-sm dark:border-blue-800/50 dark:bg-background/50 sm:px-4 sm:py-3.5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Current phase
-            </p>
-            <p className="mt-1 text-xl font-bold leading-snug tracking-tight text-foreground sm:text-2xl">
-              {inProgressKeys.length > 1
-                ? inProgressKeys.map((k) => phaseLabel(k, p.phaseWorkflow)).join(' · ')
-                : boardLabel}
-            </p>
-          </div>
-
-          {workContextBanner ? (
-            <div
-              className={cn(
-                'rounded-xl border-2 px-3.5 py-3.5 shadow-sm sm:px-4 sm:py-4',
-                workContextBanner.tone === 'primary' &&
-                  'border-[#1E3A5F]/50 bg-[#1E3A5F]/[0.1] ring-1 ring-[#1E3A5F]/15 dark:border-blue-500/45 dark:bg-blue-950/40 dark:ring-blue-500/20',
-                workContextBanner.tone === 'success' &&
-                  'border-emerald-500/50 bg-emerald-50 dark:border-emerald-600/50 dark:bg-emerald-950/45',
-                workContextBanner.tone === 'neutral' &&
-                  'border-border/70 bg-muted/35 dark:bg-muted/25',
-                workContextBanner.tone === 'muted' && 'border-border/55 bg-muted/25'
-              )}
-            >
-              <div className="flex items-start gap-3">
-                <div
+          <div className="flex flex-col gap-3 min-[400px]:flex-row min-[400px]:items-start min-[400px]:justify-between min-[400px]:gap-4">
+            <div className="min-w-0 space-y-0.5">
+              {p.areaName ? (
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/90">
+                  {p.areaName}
+                </p>
+              ) : null}
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Room</p>
+              <h1 className="text-[1.85rem] font-bold leading-[1.08] tracking-tight text-foreground sm:text-[2.1rem]">
+                {p.roomNumber}
+              </h1>
+            </div>
+            <div className="flex shrink-0 flex-col items-stretch gap-2 min-[400px]:items-end min-[400px]:text-right">
+              <span
+                className={cn(
+                  'inline-flex w-fit max-w-full items-center justify-center rounded-full border px-3 py-1 text-[11px] font-semibold leading-tight min-[400px]:self-end sm:text-xs',
+                  workerDecisionStatus.className
+                )}
+              >
+                {workerDecisionStatus.label}
+              </span>
+              {p.dueLine ? (
+                <span
                   className={cn(
-                    'mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full',
-                    workContextBanner.tone === 'primary' &&
-                      'bg-[#1E3A5F]/20 text-[#1E3A5F] dark:bg-blue-500/25 dark:text-blue-100',
-                    workContextBanner.tone === 'success' &&
-                      'bg-emerald-600/20 text-emerald-900 dark:bg-emerald-500/25 dark:text-emerald-50',
-                    workContextBanner.tone === 'neutral' && 'bg-muted text-muted-foreground',
-                    workContextBanner.tone === 'muted' && 'bg-muted/90 text-muted-foreground'
+                    'inline-flex w-fit max-w-full items-center gap-1.5 rounded-lg border border-border/40 bg-background/80 px-2.5 py-1.5 text-xs font-semibold tabular-nums shadow-sm min-[400px]:self-end dark:bg-background/40',
+                    p.duePast && 'border-red-400/40 bg-red-500/[0.08] text-red-800 dark:text-red-300'
                   )}
                 >
-                  <ChevronRight className="h-[1.1rem] w-[1.1rem]" aria-hidden />
-                </div>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p
-                    className={cn(
-                      'text-[10px] font-bold uppercase tracking-[0.14em]',
-                      workContextBanner.tone === 'primary' && 'text-[#1E3A5F] dark:text-blue-300',
-                      workContextBanner.tone === 'success' && 'text-emerald-800 dark:text-emerald-200',
-                      workContextBanner.tone === 'neutral' && 'text-muted-foreground',
-                      workContextBanner.tone === 'muted' && 'text-muted-foreground'
-                    )}
-                  >
-                    {workContextBanner.title}
-                  </p>
-                  <p
-                    className={cn(
-                      'text-[16px] font-bold leading-snug sm:text-[17px]',
-                      workContextBanner.tone === 'primary' && 'text-foreground',
-                      workContextBanner.tone === 'success' && 'text-emerald-950 dark:text-emerald-50',
-                      workContextBanner.tone === 'neutral' && 'text-foreground',
-                      workContextBanner.tone === 'muted' && 'text-muted-foreground'
-                    )}
-                  >
-                    {workContextBanner.body}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            <p className="px-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              At a glance
-            </p>
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-              <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  {heroStatPrimary.label}
-                </p>
-                <p className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-3xl">
-                  {heroStatPrimary.value}
-                </p>
-                {heroStatPrimary.sub ? (
-                  <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground sm:text-xs">
-                    {heroStatPrimary.sub}
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Status
-                </p>
-                <div className="mt-1.5 flex flex-1 flex-col justify-center">
-                  <span
-                    className={cn(
-                      'inline-flex w-fit max-w-full items-center rounded-full border px-2 py-1 text-[11px] font-semibold leading-tight sm:text-xs',
-                      heroWorkState.className
-                    )}
-                  >
-                    {heroWorkState.label}
+                  <Calendar className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                  <span>
+                    Due {p.dueLine}
+                    {p.duePast ? <span className="font-bold"> · Overdue</span> : null}
                   </span>
-                  {p.boardPhaseShowHeating ? (
-                    <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-                      Heating ·{' '}
-                      <span className="font-medium text-foreground/90">
-                        {p.boardPhaseWorkReady
-                          ? 'Complete'
-                          : HEATING_CABLE_DERIVED_STATUS_LABEL[p.heatingDerived.status]}
-                      </span>
-                    </p>
-                  ) : null}
-                </div>
+                </span>
+              ) : (
+                <span className="text-[11px] font-medium text-muted-foreground min-[400px]:self-end">No due date</span>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-border/45 bg-background/65 px-3.5 py-3 shadow-sm dark:bg-background/40 sm:px-4 sm:py-3.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Can you work here now?
+            </p>
+            <div className="mt-2 flex items-start gap-2.5">
+              {workHereNow.ok ? (
+                <CheckCircle2
+                  className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
+                  aria-hidden
+                />
+              ) : (
+                <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-base font-bold leading-tight text-foreground sm:text-lg">
+                  {workHereNow.ok ? 'Yes' : 'No'}
+                </p>
+                {workHereNow.detail ? (
+                  <p className="mt-1 text-sm leading-snug text-muted-foreground">{workHereNow.detail}</p>
+                ) : (
+                  <p className="mt-1 text-sm leading-snug text-muted-foreground">
+                    Checklist and documentation below apply to the active phase.
+                  </p>
+                )}
               </div>
             </div>
           </div>
 
-          <Collapsible defaultOpen={false} className="rounded-xl border border-border/40 bg-muted/[0.08]">
-            <CollapsibleTrigger className="group flex w-full min-h-10 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:py-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-                Status &amp; due date
-              </span>
-              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-            </CollapsibleTrigger>
-            <CollapsibleContent>
-              <div className="flex flex-wrap items-center gap-2 border-t border-border/30 px-3 pb-3 pt-2">
+          <div className="space-y-2">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              {inProgressKeys.length > 1 ? 'Active phases' : 'Active phase'}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {inProgressKeys.map((k) => (
+                <span
+                  key={k}
+                  className="inline-flex max-w-full items-center rounded-full border border-[#1E3A5F]/25 bg-[#1E3A5F]/[0.07] px-2.5 py-1 text-[11px] font-semibold leading-snug text-foreground dark:border-blue-800/50 dark:bg-blue-950/35 dark:text-blue-50 sm:text-xs"
+                >
+                  <span className="truncate">{phaseLabel(k, p.phaseWorkflow)}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+            <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                {heroStatPrimary.label}
+              </p>
+              <p className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-3xl">
+                {heroStatPrimary.value}
+              </p>
+              {heroStatPrimary.sub ? (
+                <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground sm:text-xs">
+                  {heroStatPrimary.sub}
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                Schedule
+              </p>
+              <div className="mt-1.5 flex flex-1 flex-col justify-center gap-1.5">
                 <Badge
                   className={cn(
-                    'border-0 text-[10px] font-semibold uppercase tracking-wide sm:text-[10px]',
+                    'w-fit max-w-full justify-start border-0 text-[10px] font-semibold uppercase tracking-wide',
                     p.roomStatusClassName
                   )}
                 >
                   {p.roomStatusLabel}
                 </Badge>
-                {p.dueLine ? (
-                  <span
-                    className={cn(
-                      'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium tabular-nums sm:text-[10px]',
-                      p.duePast
-                        ? 'bg-red-500/10 text-red-700 dark:text-red-400'
-                        : 'text-muted-foreground'
-                    )}
-                  >
-                    <Clock className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
-                    Due {p.dueLine}
-                    {p.duePast ? <span className="font-semibold"> · Overdue</span> : null}
-                  </span>
+                {p.boardPhaseShowHeating ? (
+                  <p className="text-[11px] leading-snug text-muted-foreground">
+                    Heating ·{' '}
+                    <span className="font-medium text-foreground/90">
+                      {p.boardPhaseWorkReady
+                        ? 'Complete'
+                        : HEATING_CABLE_DERIVED_STATUS_LABEL[p.heatingDerived.status]}
+                    </span>
+                  </p>
                 ) : null}
               </div>
-            </CollapsibleContent>
-          </Collapsible>
+            </div>
+          </div>
 
-          {p.blockedReason ? (
-            <div className="flex gap-2 rounded-xl border border-red-300/60 bg-red-50/95 px-3.5 py-3 text-sm text-red-950 dark:border-red-900/55 dark:bg-red-950/45 dark:text-red-50">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              <div>
-                <span className="font-semibold">Blocked</span>
-                <p className="mt-1 text-xs leading-relaxed text-red-900/95 dark:text-red-100/90">
-                  {p.blockedReason}
+          {decisionFocusLine ? (
+            <p className="rounded-lg border border-[#1E3A5F]/20 bg-[#1E3A5F]/[0.06] px-3 py-2.5 text-sm font-medium leading-snug text-foreground dark:border-blue-800/40 dark:bg-blue-950/30 dark:text-blue-50">
+              {decisionFocusLine}
+            </p>
+          ) : null}
+
+          {(p.blockedReason || openDeviationsCount > 0) && (
+            <div
+              className={cn(
+                'space-y-2 rounded-xl border px-3.5 py-3',
+                p.blockedReason
+                  ? 'border-red-400/55 bg-red-50/95 dark:border-red-900/55 dark:bg-red-950/40'
+                  : 'border-amber-400/35 bg-amber-50/90 dark:border-amber-900/50 dark:bg-amber-950/30'
+              )}
+            >
+              <p
+                className={cn(
+                  'text-[10px] font-semibold uppercase tracking-[0.12em]',
+                  p.blockedReason
+                    ? 'text-red-950 dark:text-red-200'
+                    : 'text-amber-950 dark:text-amber-200'
+                )}
+              >
+                Blockers
+              </p>
+              {p.blockedReason ? (
+                <div
+                  className={cn(
+                    'flex gap-2 text-sm',
+                    p.blockedReason
+                      ? 'text-red-950 dark:text-red-50'
+                      : 'text-amber-950 dark:text-amber-50'
+                  )}
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                  <p className="min-w-0 leading-relaxed">{p.blockedReason}</p>
+                </div>
+              ) : null}
+              {openDeviationsCount > 0 ? (
+                <p
+                  className={cn(
+                    'text-sm font-medium',
+                    p.blockedReason
+                      ? 'text-red-900 dark:text-red-100'
+                      : 'text-amber-950 dark:text-amber-100'
+                  )}
+                >
+                  {openDeviationsCount} open issue{openDeviationsCount === 1 ? '' : 's'} — see below.
                 </p>
+              ) : null}
+            </div>
+          )}
+
+          {lastActivitySummary ? (
+            <div className="flex gap-2 border-t border-border/30 pt-3 text-xs text-muted-foreground">
+              <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+              <div className="min-w-0 leading-snug">
+                <span className="font-semibold text-foreground/90">Last update · </span>
+                <span className="tabular-nums text-muted-foreground">{lastActivitySummary.when}</span>
+                <span className="mx-1.5 text-muted-foreground/50">·</span>
+                <span className="text-foreground/85">{lastActivitySummary.msg}</span>
               </div>
             </div>
-          ) : null}
-
-          {p.editsBlocked ? (
-            <div className="flex items-start gap-2.5 rounded-xl border border-border/55 bg-muted/25 px-3.5 py-3 text-xs text-muted-foreground">
-              <Lock className="mt-0.5 h-4 w-4 shrink-0 opacity-80" aria-hidden />
-              <span className="leading-relaxed">This room is locked for editing.</span>
+          ) : (
+            <div className="border-t border-border/30 pt-3 text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground/80">Last update · </span>
+              Nothing logged for this phase yet.
             </div>
-          ) : null}
+          )}
         </div>
       </Card>
 
