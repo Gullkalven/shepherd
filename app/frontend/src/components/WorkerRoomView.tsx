@@ -443,7 +443,7 @@ export function WorkerRoomView(p: Props) {
         badge: 'Blocked',
         badgeClass:
           'border-orange-300/80 bg-orange-50 text-orange-950 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-50',
-        description: 'This workflow step is marked blocked. Details below are read-only until an admin updates status.',
+        description: 'Waiting on a status update — details below are read-only.',
       };
     }
     if (p.phaseTabLocked && (st === 'not_started' || st === 'complete' || phaseTimeline === 'upcoming')) {
@@ -451,8 +451,7 @@ export function WorkerRoomView(p: Props) {
         badge: 'Locked',
         badgeClass:
           'border-amber-300/80 bg-amber-100 text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100',
-        description:
-          'Not open for editing yet, or already closed out. Expand details for the record, or switch to an in-progress step.',
+        description: 'Waiting for access.',
       };
     }
     if (p.phaseTabLocked) {
@@ -460,7 +459,7 @@ export function WorkerRoomView(p: Props) {
         badge: 'Locked',
         badgeClass:
           'border-slate-300/80 bg-slate-100 text-slate-900 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100',
-        description: 'This phase is locked for editing. You can still open details to review history.',
+        description: 'View only for this phase.',
       };
     }
     if (st === 'complete' || phaseTimeline === 'done') {
@@ -468,8 +467,7 @@ export function WorkerRoomView(p: Props) {
         badge: 'Completed',
         badgeClass:
           'border-emerald-300/80 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-100',
-        description:
-          'Finished step on this room. Open details anytime for checklist entries, documentation, and photos.',
+        description: 'Recorded for reference.',
       };
     }
     if (st === 'not_started') {
@@ -477,15 +475,14 @@ export function WorkerRoomView(p: Props) {
         badge: 'Not started',
         badgeClass:
           'border-blue-300/70 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100',
-        description: 'This step has not started yet. Switch to an in-progress step for current work.',
+        description: 'Current work is on another phase.',
       };
     }
     return {
       badge: 'In progress',
       badgeClass:
         'border-teal-300/75 bg-teal-50 text-teal-950 dark:border-teal-800 dark:bg-teal-950/35 dark:text-teal-50',
-      description:
-        'Parallel work is OK — use the phase picker below to jump between active steps.',
+      description: null as string | null,
     };
   }, [p.phaseTabLocked, phaseTimeline, p.selectedPhaseStepStatus]);
 
@@ -570,69 +567,51 @@ export function WorkerRoomView(p: Props) {
     return phaseLabel(keys[i + 1], p.phaseWorkflow);
   }, [p.boardPhaseKey, p.phaseWorkflow]);
 
+  /**
+   * Hero operational banner: only when something needs attention or a clear next operational state.
+   * Steady progress with no required gaps → no banner (details live in checklist / heating / status).
+   */
   const workContextBanner = useMemo(() => {
     if (p.blockedReason) return null;
-    if (p.editsBlocked) {
-      return {
-        tone: 'muted' as const,
-        title: 'Current work',
-        body: 'View only — use the sections below for reference.',
-      };
-    }
-    if (viewingNonBoard) {
-      const activeList = inProgressKeys.map((k) => phaseLabel(k, p.phaseWorkflow)).join(', ');
-      return {
-        tone: 'neutral' as const,
-        title: 'Current phase',
-        body: activeList
-          ? `In-progress steps: ${activeList}. Use the picker below if you need another tab.`
-          : `Switch below if you need a different phase.`,
-      };
-    }
+    if (p.editsBlocked) return null;
+    if (viewingNonBoard) return null;
+
     if (p.phaseCompleteEligible && !p.phaseReadOnly) {
       return {
         tone: 'success' as const,
-        title: 'Mark progress',
-        body: nextPhaseLabel
-          ? `Hand off this phase — next is ${nextPhaseLabel}`
-          : 'Hand off this phase when you are done.',
+        title: 'Ready for next phase',
+        body: nextPhaseLabel ? `Next: ${nextPhaseLabel}` : 'Complete this phase when work matches the site.',
       };
     }
     const firstIncomplete = p.tasksForSelectedPhase.find((t) => !t.is_completed);
     if (firstIncomplete) {
       return {
         tone: 'primary' as const,
-        title: 'Current work',
+        title: 'Action needed',
         body: firstIncomplete.name,
       };
     }
-    if (p.boardPhaseShowHeating && !p.boardPhaseWorkReady && focusStageLabel) {
-      return {
-        tone: 'primary' as const,
-        title: 'Documentation',
-        body: `Open ${focusStageLabel} · save when ready`,
-      };
+    if (p.boardPhaseShowHeating && !p.boardPhaseWorkReady) {
+      if (focusStageLabel) {
+        return {
+          tone: 'primary' as const,
+          title: 'Final reading missing',
+          body: focusStageLabel,
+        };
+      }
+      if (boardHeatingDocProgress) {
+        return {
+          tone: 'primary' as const,
+          title: 'Documentation incomplete',
+          body: `Heating stages ${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} complete.`,
+        };
+      }
     }
-    if (p.boardPhaseShowHeating && boardHeatingDocProgress && !p.boardPhaseWorkReady) {
-      return {
-        tone: 'primary' as const,
-        title: 'Documentation',
-        body: `Heating ${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages uploaded — finish the rest below.`,
-      };
-    }
-    return {
-      tone: 'muted' as const,
-      title: 'Current work',
-      body: p.boardPhaseWorkReady
-        ? 'Wrap up below when you are ready.'
-        : 'Checklist and documentation below.',
-    };
+    return null;
   }, [
     p.blockedReason,
     p.editsBlocked,
     viewingNonBoard,
-    inProgressKeys,
-    p.phaseWorkflow,
     p.phaseCompleteEligible,
     p.phaseReadOnly,
     p.tasksForSelectedPhase,
@@ -965,7 +944,9 @@ export function WorkerRoomView(p: Props) {
                 </span>
               </Badge>
             </div>
-            <p className="text-sm text-muted-foreground leading-snug">{nonBoardFocus.description}</p>
+            {nonBoardFocus.description ? (
+              <p className="text-sm text-muted-foreground leading-snug">{nonBoardFocus.description}</p>
+            ) : null}
             {!nonBoardDetailsExpanded ? (
               <ul className="rounded-lg border border-border/50 bg-background/60 px-3 py-2.5 text-sm space-y-1">
                 {compactSummaryLines.map((line) => (
@@ -1160,9 +1141,6 @@ export function WorkerRoomView(p: Props) {
         <Card className="overflow-hidden border-border/60 shadow-sm">
           <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1.5">
             <h2 className="text-base font-semibold tracking-tight sm:text-lg">Heating cable</h2>
-            <p className="text-xs text-muted-foreground leading-snug">
-              Open each stage for readings and photos. Completed stages stay collapsed for a quick scan.
-            </p>
             {focusStageLabel ? (
               <p className="text-xs font-medium text-amber-900/90 dark:text-amber-100/90 flex items-center gap-1.5">
                 <span className="text-muted-foreground font-normal">Current stage:</span>
