@@ -7,6 +7,8 @@ import {
   DEFAULT_PHASE_WORKFLOW,
   formatPhaseStrip,
   normalizeRoomPhase,
+  resolvePhaseStepStatuses,
+  roomHasPhaseActiveOnBoard,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 
@@ -19,6 +21,7 @@ export interface RoomPhaseCard {
   id: number;
   room_number: string;
   phase?: string;
+  phase_statuses?: Record<string, string> | null;
   status: string;
   assigned_worker?: string;
   blocked_reason?: string;
@@ -71,8 +74,9 @@ export default function PhaseBoard({
   return (
     <div className="flex min-h-0 min-w-0 w-full flex-1 flex-row flex-nowrap gap-4 overflow-x-auto overflow-y-hidden snap-x snap-mandatory [-webkit-overflow-scrolling:touch]">
       {phases.map((phase) => {
-        const defaultKey = phases[0]?.key ?? 'demontering';
-        const phaseRooms = rooms.filter((r) => (r.phase || defaultKey) === phase.key);
+        const phaseRooms = rooms.filter((r) =>
+          roomHasPhaseActiveOnBoard(phase.key, r.phase, r.phase_statuses ?? null, phases)
+        );
         return (
           <div
             key={phase.key}
@@ -96,10 +100,11 @@ export default function PhaseBoard({
                 const blocked = room.status === 'blocked';
 
                 const rp = normalizeRoomPhase(room.phase, phases);
+                const resolved = resolvePhaseStepStatuses(room.phase_statuses ?? undefined, rp, phases);
                 const cardProps = {
                   roomNumber: room.room_number,
                   floorLabel,
-                  phaseStrip: formatPhaseStrip(rp, phases),
+                  phaseStrip: formatPhaseStrip(rp, phases, resolved),
                   completed,
                   total,
                   blocked,

@@ -20,14 +20,20 @@ import {
 import { toast } from 'sonner';
 import {
   DEFAULT_PHASE_WORKFLOW,
+  deriveLinearPhaseStatusesFromPointer,
+  resolvePhaseStepStatuses,
+  focusPhaseKeyFromStatuses,
+  inProgressPhaseKeys,
   normalizeRoomPhase,
   phaseKeys,
   phaseLabel,
   phaseTabReadOnlyForWorker,
+  phaseTimelineFromStepStatus,
   storedChecklistPhase,
   visitMatchesPhase,
   photoMatchesPhase,
   computePhaseChipUi,
+  type PhaseStepStatus,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import {
@@ -119,6 +125,8 @@ interface Room {
   checklist_labels?: unknown;
   /** Heating cable documentation payload */
   heating_cable_doc?: unknown;
+  /** Per workflow-step status map; null/absent = derive from legacy `phase` pointer */
+  phase_statuses?: Record<string, string> | null;
   floor_id: number;
   project_id: number;
 }
@@ -433,8 +441,36 @@ export default function RoomDetail() {
     [areasList, activeAreaId]
   );
 
+  const legacyPhasePointer = useMemo(
+    () =>
+      room
+        ? normalizeRoomPhase(activeArea?.phase ?? room.phase, phaseWorkflow)
+        : normalizeRoomPhase(null, phaseWorkflow),
+    [room, activeArea?.phase, phaseWorkflow]
+  );
+
+  const resolvedPhaseStatuses = useMemo(() => {
+    if (!room)
+      return deriveLinearPhaseStatusesFromPointer(normalizeRoomPhase(null, phaseWorkflow), phaseWorkflow);
+    return resolvePhaseStepStatuses(
+      room.phase_statuses as Record<string, unknown> | undefined,
+      legacyPhasePointer,
+      phaseWorkflow
+    );
+  }, [room, room?.phase_statuses, legacyPhasePointer, phaseWorkflow]);
+
+  const focusPhaseKey = useMemo(
+    () => focusPhaseKeyFromStatuses(resolvedPhaseStatuses, legacyPhasePointer, phaseWorkflow),
+    [resolvedPhaseStatuses, legacyPhasePointer, phaseWorkflow]
+  );
+
+  const inProgressKeys = useMemo(
+    () => inProgressPhaseKeys(resolvedPhaseStatuses, phaseWorkflow),
+    [resolvedPhaseStatuses, phaseWorkflow]
+  );
+
   const saveAreasToServer = useCallback(
-    async (next: RoomArea[]) => {
+    async (next: RoomArea[], opts?: { phaseStatuses?: Record<string, PhaseStepStatus> }) => {
       if (!room) return;
       const primary = next[0];
       if (!primary) return;
@@ -445,6 +481,9 @@ export default function RoomDetail() {
         phase: phase0,
         phase_lock_overrides: Object.keys(lock0).length ? lock0 : {},
       };
+      if (opts?.phaseStatuses) {
+        payload.phase_statuses = opts.phaseStatuses;
+      }
       if (next.length > 1) {
         payload.areas = next.map((a) => {
           const o = coercePhaseLockOverrides(a.phase_lock_overrides);
@@ -867,8 +906,9 @@ export default function RoomDetail() {
     if (!room || !canMovePhase) return;
     const norm = normalizeRoomPhase(nextPhase, phaseWorkflow);
     const next = areasList.map((a, i) => (i === 0 ? { ...a, phase: norm } : a));
+    const linear = deriveLinearPhaseStatusesFromPointer(norm, phaseWorkflow);
     try {
-      await saveAreasToServer(next);
+      await saveAreasToServer(next, { phaseStatuses: linear });
       setPhaseTab(norm);
       toast.success(`Main phase: ${phaseLabel(norm, phaseWorkflow)}`);
     } catch {
@@ -880,12 +920,29 @@ export default function RoomDetail() {
     if (!room || !canMovePhase || !activeArea) return;
     const norm = normalizeRoomPhase(nextPhase, phaseWorkflow);
     const next = areasList.map((a) => (a.id === activeAreaId ? { ...a, phase: norm } : a));
+    const linear = deriveLinearPhaseStatusesFromPointer(norm, phaseWorkflow);
     try {
-      await saveAreasToServer(next);
+      await saveAreasToServer(next, { phaseStatuses: linear });
       setPhaseTab(norm);
       toast.success(`Area phase: ${phaseLabel(norm, phaseWorkflow)}`);
     } catch {
       toast.error('Failed to set area phase');
+    }
+  };
+
+  const handlePhaseStepStatusChange = async (stepKey: string, value: PhaseStepStatus) => {
+    if (!room || !canEdit) return;
+    const normKey = normalizeRoomPhase(stepKey, phaseWorkflow);
+    const next = { ...resolvedPhaseStatuses, [normKey]: value };
+    try {
+      await client.entities.rooms.update({
+        id: String(room.id),
+        data: { phase_statuses: next as Record<string, string> },
+      });
+      await loadData();
+      toast.success('Phase status updated');
+    } catch {
+      toast.error('Failed to update phase status');
     }
   };
 
@@ -895,10 +952,16 @@ export default function RoomDetail() {
     const overrides = coercePhaseLockOverrides(
       persistedAreas ? activeArea.phase_lock_overrides : room.phase_lock_overrides
     );
-    const workerLocked = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, overrides);
+    const workerLocked = phaseTabReadOnlyForWorker(
+      rp,
+      phaseKey,
+      phaseWorkflow,
+      overrides,
+      resolvedPhaseStatuses
+    );
     const nextOv: Record<string, boolean> = { ...overrides };
     if (workerLocked) {
-      const defaultLocked = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, {});
+      const defaultLocked = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, {}, resolvedPhaseStatuses);
       if (defaultLocked) nextOv[phaseKey] = false;
       else delete nextOv[phaseKey];
     } else {
@@ -909,7 +972,13 @@ export default function RoomDetail() {
     );
     try {
       await saveAreasToServer(nextAreas);
-      const after = phaseTabReadOnlyForWorker(rp, phaseKey, phaseWorkflow, nextOv);
+      const after = phaseTabReadOnlyForWorker(
+        rp,
+        phaseKey,
+        phaseWorkflow,
+        nextOv,
+        resolvedPhaseStatuses
+      );
       toast.success(after ? 'Phase locked for workers' : 'Phase open for workers');
     } catch {
       toast.error('Failed to update phase lock');
@@ -1491,7 +1560,13 @@ export default function RoomDetail() {
     activeArea?.phase_lock_overrides ?? room.phase_lock_overrides
   );
   const selPhase = normalizeRoomPhase(phaseTab, phaseWorkflow);
-  const phaseWorkerLocked = phaseTabReadOnlyForWorker(areaMainPhaseNorm, selPhase, phaseWorkflow, lockOv);
+  const phaseWorkerLocked = phaseTabReadOnlyForWorker(
+    areaMainPhaseNorm,
+    selPhase,
+    phaseWorkflow,
+    lockOv,
+    resolvedPhaseStatuses
+  );
   const phaseReadOnly = !canEdit && phaseWorkerLocked;
   const tasksInArea = tasks.filter((t) => taskBelongsToArea(t.area_id, activeAreaId, primaryAreaId));
   const tasksForPhase = tasksInArea.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === selPhase);
@@ -1511,7 +1586,15 @@ export default function RoomDetail() {
     phasePhotoTaskIdRef.current = task.id;
     fileInputRef.current?.click();
   };
-  const chipUiSel = computePhaseChipUi(selPhase, areaMainPhaseNorm, phaseWorkflow, lockOv, totalForPhase, completedForPhase);
+  const chipUiSel = computePhaseChipUi(
+    selPhase,
+    resolvedPhaseStatuses,
+    phaseWorkflow,
+    lockOv,
+    totalForPhase,
+    completedForPhase,
+    focusPhaseKey
+  );
   const checklistLabelsMap = coerceChecklistLabels(room.checklist_labels);
   const checklistSectionTitle =
     checklistLabelsMap[selPhase]?.trim() || defaultChecklistTitle;
@@ -1523,17 +1606,24 @@ export default function RoomDetail() {
   const selectedPhaseLabel = phaseLabel(selPhase, phaseWorkflow);
   const showHeatingCableModule = isHeatingCablePhase(selPhase, selectedPhaseLabel);
   const tasksForBoardPhase = tasksInArea.filter(
-    (t) => storedChecklistPhase(t.phase, phaseWorkflow) === areaMainPhaseNorm
+    (t) => storedChecklistPhase(t.phase, phaseWorkflow) === focusPhaseKey
   );
   const boardPhaseIncompleteCount = tasksForBoardPhase.filter((t) => !t.is_completed).length;
   const boardPhaseTotalCount = tasksForBoardPhase.length;
-  const boardPhaseLabelForHeating = phaseLabel(areaMainPhaseNorm, phaseWorkflow);
-  const boardPhaseShowHeating = isHeatingCablePhase(areaMainPhaseNorm, boardPhaseLabelForHeating);
+  const boardPhaseLabelForHeating = phaseLabel(focusPhaseKey, phaseWorkflow);
+  const boardPhaseShowHeating = isHeatingCablePhase(focusPhaseKey, boardPhaseLabelForHeating);
   const boardPhaseWorkReady =
     (boardPhaseTotalCount === 0 || boardPhaseIncompleteCount === 0) &&
     (!boardPhaseShowHeating || heatingDerived.status === 'complete');
+  const selectedPhaseShowHeating = isHeatingCablePhase(selPhase, selectedPhaseLabel);
+  const selectedPhaseWorkReady =
+    (totalForPhase === 0 || completedForPhase === totalForPhase) &&
+    (!selectedPhaseShowHeating || heatingDerived.status === 'complete');
   const workerPhaseCompleteEligible =
-    selPhase === areaMainPhaseNorm && !editsBlocked && !phaseReadOnly && boardPhaseWorkReady;
+    resolvedPhaseStatuses[selPhase] === 'in_progress' &&
+    !editsBlocked &&
+    !phaseReadOnly &&
+    selectedPhaseWorkReady;
 
   const workerRoomStatus = (() => {
     if (workerPhaseCompleteEligible) {
@@ -1614,7 +1704,9 @@ export default function RoomDetail() {
               activeAreaId={activeAreaId}
               onAreaChange={setActiveAreaId}
               phaseWorkflow={phaseWorkflow}
-              boardPhaseKey={areaMainPhaseNorm}
+              boardPhaseKey={focusPhaseKey}
+              inProgressPhaseKeys={inProgressKeys}
+              selectedPhaseStepStatus={resolvedPhaseStatuses[selPhase] ?? 'not_started'}
               selectedPhaseKey={selPhase}
               onPhaseSelect={setPhaseTab}
               boardPhaseIncompleteCount={boardPhaseIncompleteCount}
@@ -1911,6 +2003,39 @@ export default function RoomDetail() {
                     </Select>
                   </div>
                 ) : null}
+                <div className="flex flex-col gap-1.5 border-t border-border/35 pt-2.5 mt-2">
+                  <span className="text-[10px] font-medium text-muted-foreground/85">
+                    Workflow step status
+                  </span>
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    Several steps may be <span className="font-medium text-foreground/90">In progress</span> together.
+                    The board-phase control above keeps a simple linear progression when you need it.
+                  </p>
+                  <div className="grid gap-1.5 sm:grid-cols-2">
+                    {workflowPhaseKeys.map((k) => (
+                      <div key={k} className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
+                        <span className="text-[10px] text-muted-foreground truncate sm:min-w-[5rem] sm:max-w-[8rem]">
+                          {phaseLabel(k, phaseWorkflow)}
+                        </span>
+                        <Select
+                          value={resolvedPhaseStatuses[k] ?? 'not_started'}
+                          onValueChange={(v) => void handlePhaseStepStatusChange(k, v as PhaseStepStatus)}
+                          disabled={editsBlocked}
+                        >
+                          <SelectTrigger className="h-7 w-full sm:max-w-[9rem] text-[10px] border-border/45 bg-background/80">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="not_started">Not started</SelectItem>
+                            <SelectItem value="in_progress">In progress</SelectItem>
+                            <SelectItem value="complete">Complete</SelectItem>
+                            <SelectItem value="blocked">Blocked</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 {canEdit && !persistedAreas ? (
                   <div className="pt-1 border-t border-border/35">
                     <button
@@ -1973,13 +2098,22 @@ export default function RoomDetail() {
                 const tks = tasksInArea.filter((t) => storedChecklistPhase(t.phase, phaseWorkflow) === key);
                 const done = tks.filter((x) => x.is_completed).length;
                 const tot = tks.length;
-                const ui = computePhaseChipUi(key, areaMainPhaseNorm, phaseWorkflow, lockOv, tot, done);
+                const ui = computePhaseChipUi(
+                  key,
+                  resolvedPhaseStatuses,
+                  phaseWorkflow,
+                  lockOv,
+                  tot,
+                  done,
+                  focusPhaseKey
+                );
                 const isSel = key === selPhase;
                 const tabLockedForWorkers = phaseTabReadOnlyForWorker(
                   areaMainPhaseNorm,
                   key,
                   phaseWorkflow,
-                  lockOv
+                  lockOv,
+                  resolvedPhaseStatuses
                 );
                 return (
                   <div
@@ -2004,7 +2138,9 @@ export default function RoomDetail() {
                         !ui.isMain && ui.status === 'Not started' &&
                           'border-dashed border-slate-200 bg-muted/30 dark:border-slate-700',
                         !ui.isMain && ui.status === 'Open' &&
-                          'border-slate-200 bg-background dark:border-slate-700'
+                          'border-slate-200 bg-background dark:border-slate-700',
+                        !ui.isMain && ui.status === 'Blocked' &&
+                          'border-orange-300 bg-orange-50/80 dark:border-orange-900 dark:bg-orange-950/40'
                       )}
                     >
                       <span className="font-semibold leading-tight text-slate-800 dark:text-foreground line-clamp-2">

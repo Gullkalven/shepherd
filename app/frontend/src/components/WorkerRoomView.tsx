@@ -36,8 +36,8 @@ import {
   type HeatingCableStage,
   type HeatingCableStageKey,
 } from '@/lib/heatingCable';
-import type { PhaseWorkflowEntry } from '@/lib/roomPhases';
-import { phaseLabel, phaseTimelineState } from '@/lib/roomPhases';
+import type { PhaseStepStatus, PhaseWorkflowEntry } from '@/lib/roomPhases';
+import { phaseLabel, phaseTimelineFromStepStatus, phaseTimelineState } from '@/lib/roomPhases';
 import { cn } from '@/lib/utils';
 
 export type WorkerTask = {
@@ -69,8 +69,12 @@ type Props = {
   onAreaChange: (id: string) => void;
 
   phaseWorkflow: PhaseWorkflowEntry[];
-  /** Current board / active workflow phase for this area */
+  /** Floor-board focus: first in-progress step (hero metrics / default tab target) */
   boardPhaseKey: string;
+  /** All steps currently in progress (parallel work); defaults to [boardPhaseKey] when omitted */
+  inProgressPhaseKeys?: string[];
+  /** Resolved status for the selected phase tab (for messaging) */
+  selectedPhaseStepStatus?: PhaseStepStatus;
   /** Selected phase tab (may differ when reviewing history) */
   selectedPhaseKey: string;
   onPhaseSelect: (key: string) => void;
@@ -336,8 +340,20 @@ function heatingStageCollapseSummary(stage: HeatingCableStage): string {
 export function WorkerRoomView(p: Props) {
   const selectedLabel = phaseLabel(p.selectedPhaseKey, p.phaseWorkflow);
   const boardLabel = phaseLabel(p.boardPhaseKey, p.phaseWorkflow);
-  const viewingNonBoard = p.selectedPhaseKey !== p.boardPhaseKey;
-  const phaseTimeline = phaseTimelineState(p.boardPhaseKey, p.selectedPhaseKey, p.phaseWorkflow);
+  const inProgressKeys =
+    p.inProgressPhaseKeys && p.inProgressPhaseKeys.length > 0
+      ? p.inProgressPhaseKeys
+      : [p.boardPhaseKey];
+  const viewingNonBoard = !inProgressKeys.includes(p.selectedPhaseKey);
+  const phaseTimeline =
+    p.selectedPhaseStepStatus != null
+      ? phaseTimelineFromStepStatus(
+          p.selectedPhaseStepStatus,
+          p.selectedPhaseKey,
+          p.boardPhaseKey,
+          p.phaseWorkflow
+        )
+      : phaseTimelineState(p.boardPhaseKey, p.selectedPhaseKey, p.phaseWorkflow);
 
   const [nonBoardDetailsExpanded, setNonBoardDetailsExpanded] = useState(false);
   useEffect(() => {
@@ -421,13 +437,22 @@ export function WorkerRoomView(p: Props) {
   }, [focusTarget, p.heatingCableDoc.extra_steps]);
 
   const nonBoardFocus = useMemo(() => {
-    if (p.phaseTabLocked && phaseTimeline === 'upcoming') {
+    const st = p.selectedPhaseStepStatus;
+    if (st === 'blocked' && !p.phaseTabLocked) {
+      return {
+        badge: 'Blocked',
+        badgeClass:
+          'border-orange-300/80 bg-orange-50 text-orange-950 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-50',
+        description: 'This workflow step is marked blocked. Details below are read-only until an admin updates status.',
+      };
+    }
+    if (p.phaseTabLocked && (st === 'not_started' || st === 'complete' || phaseTimeline === 'upcoming')) {
       return {
         badge: 'Locked',
         badgeClass:
           'border-amber-300/80 bg-amber-100 text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100',
         description:
-          'Upcoming after the current phase. Expand details for the full record, or go back to the active phase when you need it.',
+          'Not open for editing yet, or already closed out. Expand details for the record, or switch to an in-progress step.',
       };
     }
     if (p.phaseTabLocked) {
@@ -438,23 +463,31 @@ export function WorkerRoomView(p: Props) {
         description: 'This phase is locked for editing. You can still open details to review history.',
       };
     }
-    if (phaseTimeline === 'done') {
+    if (st === 'complete' || phaseTimeline === 'done') {
       return {
         badge: 'Completed',
         badgeClass:
           'border-emerald-300/80 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-100',
         description:
-          'Earlier phase on this room. Open details anytime for checklist entries, documentation, and photos.',
+          'Finished step on this room. Open details anytime for checklist entries, documentation, and photos.',
+      };
+    }
+    if (st === 'not_started') {
+      return {
+        badge: 'Not started',
+        badgeClass:
+          'border-blue-300/70 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100',
+        description: 'This step has not started yet. Switch to an in-progress step for current work.',
       };
     }
     return {
-      badge: 'Upcoming',
+      badge: 'In progress',
       badgeClass:
-        'border-blue-300/70 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100',
-        description:
-        'Work ahead if you need to. Details stay collapsed so the active phase stays easy to find.',
+        'border-teal-300/75 bg-teal-50 text-teal-950 dark:border-teal-800 dark:bg-teal-950/35 dark:text-teal-50',
+      description:
+        'Parallel work is OK — use the phase picker below to jump between active steps.',
     };
-  }, [p.phaseTabLocked, phaseTimeline]);
+  }, [p.phaseTabLocked, phaseTimeline, p.selectedPhaseStepStatus]);
 
   const compactSummaryLines = useMemo(() => {
     const lines: string[] = [];
@@ -547,10 +580,13 @@ export function WorkerRoomView(p: Props) {
       };
     }
     if (viewingNonBoard) {
+      const activeList = inProgressKeys.map((k) => phaseLabel(k, p.phaseWorkflow)).join(', ');
       return {
         tone: 'neutral' as const,
         title: 'Current phase',
-        body: `Active phase is “${boardLabel}” — switch below if you need it.`,
+        body: activeList
+          ? `In-progress steps: ${activeList}. Use the picker below if you need another tab.`
+          : `Switch below if you need a different phase.`,
       };
     }
     if (p.phaseCompleteEligible && !p.phaseReadOnly) {
@@ -595,7 +631,8 @@ export function WorkerRoomView(p: Props) {
     p.blockedReason,
     p.editsBlocked,
     viewingNonBoard,
-    boardLabel,
+    inProgressKeys,
+    p.phaseWorkflow,
     p.phaseCompleteEligible,
     p.phaseReadOnly,
     p.tasksForSelectedPhase,
@@ -653,7 +690,11 @@ export function WorkerRoomView(p: Props) {
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
               Current phase
             </p>
-            <p className="mt-1 text-xl font-bold leading-snug tracking-tight text-foreground sm:text-2xl">{boardLabel}</p>
+            <p className="mt-1 text-xl font-bold leading-snug tracking-tight text-foreground sm:text-2xl">
+              {inProgressKeys.length > 1
+                ? inProgressKeys.map((k) => phaseLabel(k, p.phaseWorkflow)).join(' · ')
+                : boardLabel}
+            </p>
           </div>
 
           {workContextBanner ? (
@@ -856,7 +897,8 @@ export function WorkerRoomView(p: Props) {
               <div className="-mx-0.5 overflow-x-auto overscroll-x-contain px-0.5 [-webkit-overflow-scrolling:touch]">
                 <div className="flex w-max max-w-none gap-1.5 pb-1">
                   {workflowKeys.map((key) => {
-                    const isBoard = key === p.boardPhaseKey;
+                    const isBoard =
+                      (p.inProgressPhaseKeys?.includes(key) ?? false) || key === p.boardPhaseKey;
                     const isSel = key === p.selectedPhaseKey;
                     return (
                       <button
@@ -901,7 +943,10 @@ export function WorkerRoomView(p: Props) {
                 </p>
                 <p className="text-lg font-semibold tracking-tight leading-snug">{selectedLabel}</p>
                 <p className="text-sm text-muted-foreground">
-                  Current phase: <span className="font-medium text-foreground">{boardLabel}</span>
+                  In progress:{' '}
+                  <span className="font-medium text-foreground">
+                    {inProgressKeys.map((k) => phaseLabel(k, p.phaseWorkflow)).join(', ')}
+                  </span>
                 </p>
               </div>
               <Badge

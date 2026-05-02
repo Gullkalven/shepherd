@@ -1,5 +1,92 @@
 export type PhaseWorkflowEntry = { key: string; label: string };
 
+/** Per workflow-step status (independent of overall room.status). */
+export const PHASE_STEP_STATUS_VALUES = ['not_started', 'in_progress', 'complete', 'blocked'] as const;
+export type PhaseStepStatus = (typeof PHASE_STEP_STATUS_VALUES)[number];
+
+export function normalizePhaseStepStatus(
+  raw: string | null | undefined,
+  fallback: PhaseStepStatus = 'not_started'
+): PhaseStepStatus {
+  const s = raw != null ? String(raw).trim() : '';
+  return PHASE_STEP_STATUS_VALUES.includes(s as PhaseStepStatus) ? (s as PhaseStepStatus) : fallback;
+}
+
+/**
+ * Legacy single-pointer model: exactly one step is in_progress; earlier complete; later not_started.
+ */
+export function deriveLinearPhaseStatusesFromPointer(
+  legacyPhase: string,
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
+): Record<string, PhaseStepStatus> {
+  const keys = phaseKeys(workflow);
+  const rn = normalizeRoomPhase(legacyPhase, workflow);
+  const ri = keys.indexOf(rn);
+  const r = ri >= 0 ? ri : 0;
+  const out: Record<string, PhaseStepStatus> = {};
+  keys.forEach((k, i) => {
+    if (i < r) out[k] = 'complete';
+    else if (i === r) out[k] = 'in_progress';
+    else out[k] = 'not_started';
+  });
+  return out;
+}
+
+/**
+ * Merge persisted map with legacy pointer fallback (when API returns null / unknown keys).
+ */
+export function resolvePhaseStepStatuses(
+  raw: Record<string, unknown> | null | undefined,
+  legacyPhase: string,
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
+): Record<string, PhaseStepStatus> {
+  const base = deriveLinearPhaseStatusesFromPointer(legacyPhase, workflow);
+  if (!raw || typeof raw !== 'object') return base;
+  const keys = phaseKeys(workflow);
+  const next = { ...base };
+  for (const k of keys) {
+    const v = raw[k];
+    if (typeof v === 'string' && PHASE_STEP_STATUS_VALUES.includes(v as PhaseStepStatus)) {
+      next[k] = v as PhaseStepStatus;
+    }
+  }
+  return next;
+}
+
+/** First in-progress step in workflow order; falls back to legacy pointer when none in progress. */
+export function focusPhaseKeyFromStatuses(
+  statuses: Record<string, PhaseStepStatus>,
+  legacyFallback: string,
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
+): string {
+  for (const k of phaseKeys(workflow)) {
+    if (statuses[k] === 'in_progress') return k;
+  }
+  return normalizeRoomPhase(legacyFallback, workflow);
+}
+
+export function inProgressPhaseKeys(
+  statuses: Record<string, PhaseStepStatus>,
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
+): string[] {
+  return phaseKeys(workflow).filter((k) => statuses[k] === 'in_progress');
+}
+
+export function phaseTabLockedFromResolvedStatuses(
+  statuses: Record<string, PhaseStepStatus>,
+  tabPhase: string,
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW,
+  overrides?: Record<string, boolean> | null
+): boolean {
+  const tn = normalizeRoomPhase(tabPhase, workflow);
+  const st = statuses[tn] ?? 'not_started';
+  const defaultLocked = st !== 'in_progress';
+  const o = overrides?.[tn];
+  if (o === true) return true;
+  if (o === false) return false;
+  return defaultLocked;
+}
+
 export const DEFAULT_PHASE_WORKFLOW: PhaseWorkflowEntry[] = [
   { key: 'demontering', label: 'Demontering' },
   { key: 'varmekabel', label: 'Varmekabel' },
@@ -49,18 +136,37 @@ export function phaseTimelineState(
   return 'upcoming';
 }
 
+/** Timeline hint when per-step statuses are available (worker “another phase” card). */
+export function phaseTimelineFromStepStatus(
+  stepStatus: PhaseStepStatus,
+  tabPhase: string,
+  focusPhaseKey: string,
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
+): 'done' | 'active' | 'upcoming' {
+  const tn = normalizeRoomPhase(tabPhase, workflow);
+  if (stepStatus === 'complete') return 'done';
+  if (stepStatus === 'in_progress')
+    return tn === normalizeRoomPhase(focusPhaseKey, workflow) ? 'active' : 'active';
+  if (stepStatus === 'blocked') return 'upcoming';
+  return 'upcoming';
+}
+
 /**
  * Whether workers should be read-only in this phase tab.
- * Default: phases after the room's current (board) phase are locked; earlier or equal are open.
- * Admin overrides: { phaseKey: true } forces locked; { phaseKey: false } forces unlocked
- * (e.g. allow finishing an older phase after the room moved forward, or allow work ahead).
+ * With optional resolved per-step statuses: only `in_progress` is editable by default.
+ * Without resolvedStatuses: legacy rule — phases after the single board phase are locked.
+ * Admin overrides: { phaseKey: true } forces locked; { phaseKey: false } forces unlocked.
  */
 export function phaseTabReadOnlyForWorker(
   roomPhase: string,
   tabPhase: string,
   workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW,
-  overrides?: Record<string, boolean> | null
+  overrides?: Record<string, boolean> | null,
+  resolvedStatuses?: Record<string, PhaseStepStatus> | null
 ): boolean {
+  if (resolvedStatuses && Object.keys(resolvedStatuses).length > 0) {
+    return phaseTabLockedFromResolvedStatuses(resolvedStatuses, tabPhase, workflow, overrides);
+  }
   const keys = phaseKeys(workflow);
   const rn = normalizeRoomPhase(roomPhase, workflow);
   const tn = normalizeRoomPhase(tabPhase, workflow);
@@ -75,13 +181,27 @@ export function phaseTabReadOnlyForWorker(
   return defaultLocked;
 }
 
-/** Compact legend for the room card, e.g. D✓ V● R○ S○ */
+/** Compact legend for the room card, e.g. D✓ V● R○ S○ — optional per-step statuses for overlapping work */
 export function formatPhaseStrip(
   roomPhase: string,
-  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW,
+  resolvedStatuses?: Record<string, PhaseStepStatus> | null
 ): string {
   const keys = phaseKeys(workflow);
-  const ri = keys.indexOf(roomPhase);
+  if (resolvedStatuses && Object.keys(resolvedStatuses).length > 0) {
+    return keys
+      .map((key, i) => {
+        const L = phaseLabel(key, workflow).trim().charAt(0).toUpperCase() || String(i + 1);
+        const st = resolvedStatuses[key] ?? 'not_started';
+        if (st === 'complete') return `${L}✓`;
+        if (st === 'in_progress') return `${L}●`;
+        if (st === 'blocked') return `${L}✖`;
+        return `${L}○`;
+      })
+      .join(' ');
+  }
+  const rn = normalizeRoomPhase(roomPhase, workflow);
+  const ri = keys.indexOf(rn);
   return keys
     .map((key, i) => {
       const L = phaseLabel(key, workflow).trim().charAt(0).toUpperCase() || String(i + 1);
@@ -173,35 +293,38 @@ export function photoMatchesPhase(
 }
 
 export type PhaseChipUi = {
-  status: 'Active' | 'Open' | 'Locked' | 'Completed' | 'Not started';
+  status: 'Active' | 'Open' | 'Locked' | 'Completed' | 'Not started' | 'Blocked';
   /** Short progress text for the chip, e.g. "3/7" or "2 missing" */
   progress: string;
+  /** Highlight as current floor focus (first in-progress in workflow order) */
   isMain: boolean;
   workerLocked: boolean;
 };
 
 /**
  * Labels and progress text for a phase chip in the room workflow bar.
- * "Active" is always the floor-board main phase; lock is indicated separately on the chip.
+ * Pass resolved per-step statuses plus the floor-board focus key (first in-progress step).
  */
 export function computePhaseChipUi(
   phaseKey: string,
-  roomPhase: string,
+  resolvedStatuses: Record<string, PhaseStepStatus>,
   workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW,
   overrides: Record<string, boolean> | null | undefined,
   totalTasks: number,
-  completedTasks: number
+  completedTasks: number,
+  focusPhaseKey: string
 ): PhaseChipUi {
-  const rp = normalizeRoomPhase(roomPhase, workflow);
   const pk = normalizeRoomPhase(phaseKey, workflow);
-  const workerLocked = phaseTabReadOnlyForWorker(rp, pk, workflow, overrides);
-  const isMain = pk === rp;
+  const fk = normalizeRoomPhase(focusPhaseKey, workflow);
+  const stepStatus = resolvedStatuses[pk] ?? 'not_started';
+  const workerLocked = phaseTabLockedFromResolvedStatuses(resolvedStatuses, pk, workflow, overrides);
+  const isMain = pk === fk && stepStatus === 'in_progress';
 
   let progress = '';
   if (totalTasks > 0) {
     if (completedTasks === totalTasks) {
       progress = `${completedTasks}/${totalTasks}`;
-    } else if (isMain) {
+    } else if (isMain || stepStatus === 'in_progress') {
       progress = `${completedTasks}/${totalTasks}`;
     } else {
       progress = `${totalTasks - completedTasks} missing`;
@@ -209,10 +332,14 @@ export function computePhaseChipUi(
   }
 
   let status: PhaseChipUi['status'];
-  if (isMain) {
+  if (stepStatus === 'blocked') {
+    status = 'Blocked';
+  } else if (stepStatus === 'in_progress') {
     status = 'Active';
   } else if (workerLocked) {
     status = 'Locked';
+  } else if (stepStatus === 'complete') {
+    status = 'Completed';
   } else if (totalTasks === 0) {
     status = 'Not started';
   } else if (completedTasks === totalTasks) {
@@ -222,4 +349,20 @@ export function computePhaseChipUi(
   }
 
   return { status, progress, isMain, workerLocked };
+}
+
+/** Floor board / kanban: room appears in column P when step P is in progress */
+export function roomHasPhaseActiveOnBoard(
+  columnPhaseKey: string,
+  roomPhase: string | undefined,
+  phaseStatuses: Record<string, PhaseStepStatus> | null | undefined,
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
+): boolean {
+  const ck = normalizeRoomPhase(columnPhaseKey, workflow);
+  const legacy = normalizeRoomPhase(roomPhase, workflow);
+  const resolved =
+    phaseStatuses && Object.keys(phaseStatuses).length > 0
+      ? phaseStatuses
+      : deriveLinearPhaseStatusesFromPointer(legacy, workflow);
+  return resolved[ck] === 'in_progress';
 }

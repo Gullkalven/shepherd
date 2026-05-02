@@ -28,7 +28,11 @@
         },
         "phase": {
             "type": "string",
-            "description": "Current workflow phase for floor board placement"
+            "description": "Primary board/focus phase (first in_progress in workflow order when phase_statuses is set)"
+        },
+        "phase_statuses": {
+            "type": "object",
+            "description": "Per workflow-step status: phase key -> not_started | in_progress | complete | blocked. Omitted/null: derive from legacy phase pointer (single active step)."
         },
         "assigned_worker": {
             "type": "string",

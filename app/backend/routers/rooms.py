@@ -21,6 +21,13 @@ from dependencies.roles import (
 )
 from schemas.auth import UserResponse
 from dependencies.room_areas import parse_areas_list, sanitize_areas_payload
+from dependencies.phase_edit import (
+    workflow_keys_for_room,
+    derive_linear_phase_statuses,
+    merge_resolve_phase_statuses,
+    primary_focus_phase,
+    normalize_room_phase,
+)
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -72,6 +79,7 @@ class RoomsData(BaseModel):
     deadline_at: Optional[datetime] = None
     checklist_labels: Optional[Dict[str, str]] = None
     heating_cable_doc: Optional[Dict[str, Any]] = None
+    phase_statuses: Optional[Dict[str, str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -93,6 +101,7 @@ class RoomsUpdateData(BaseModel):
     deadline_at: Optional[datetime] = None
     checklist_labels: Optional[Dict[str, str]] = None
     heating_cable_doc: Optional[Dict[str, Any]] = None
+    phase_statuses: Optional[Dict[str, str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -116,6 +125,7 @@ class RoomsResponse(BaseModel):
     deadline_at: Optional[datetime] = None
     checklist_labels: Optional[Dict[str, Any]] = None
     heating_cable_doc: Optional[Dict[str, Any]] = None
+    phase_statuses: Optional[Dict[str, Any]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -179,6 +189,26 @@ def _prepare_room_update_dict(existing: Any, update_dict: Dict[str, Any], app_ro
             if "phase_lock_overrides" in update_dict:
                 new_areas[0]["phase_lock_overrides"] = update_dict["phase_lock_overrides"]
             update_dict["areas"] = new_areas
+
+
+async def _sync_phase_statuses_on_update(
+    db: AsyncSession, existing: Any, update_dict: Dict[str, Any]
+) -> None:
+    """Keep room.phase and phase_statuses consistent with project workflow keys."""
+    if "phase_statuses" not in update_dict and "phase" not in update_dict:
+        return
+    keys_wf = await workflow_keys_for_room(db, existing)
+    rp_existing = getattr(existing, "phase", None)
+    if "phase_statuses" in update_dict:
+        merged = merge_resolve_phase_statuses(
+            update_dict["phase_statuses"], rp_existing, keys_wf
+        )
+        update_dict["phase_statuses"] = merged
+        update_dict["phase"] = primary_focus_phase(rp_existing, merged, keys_wf)
+    elif "phase" in update_dict:
+        ph = normalize_room_phase(update_dict.get("phase"), keys_wf)
+        update_dict["phase"] = ph
+        update_dict["phase_statuses"] = derive_linear_phase_statuses(ph, keys_wf)
 
 
 # ---------- Routes ----------
@@ -373,6 +403,7 @@ async def update_roomss_batch(
             existing_b = await service.get_by_id(item.id, user_id=str(current_user.id))
             if existing_b:
                 _prepare_room_update_dict(existing_b, update_dict, app_role)
+                await _sync_phase_statuses_on_update(db, existing_b, update_dict)
             result = await service.update(item.id, update_dict, user_id=str(current_user.id))
             if result:
                 results.append(result)
@@ -415,6 +446,7 @@ async def update_rooms(
             update_dict.pop("is_locked", None)
             update_dict.pop("phase_lock_overrides", None)
             update_dict.pop("phase", None)
+            update_dict.pop("phase_statuses", None)
             update_dict.pop("areas", None)
             update_dict.pop("deadline_at", None)
             update_dict.pop("checklist_labels", None)
@@ -426,6 +458,8 @@ async def update_rooms(
             _prepare_room_update_dict(existing, update_dict, app_role)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
+        if app_role == ROLE_ADMIN:
+            await _sync_phase_statuses_on_update(db, existing, update_dict)
         result = await service.update(id, update_dict, user_id=str(current_user.id))
         if not result:
             logger.warning(f"Rooms with id {id} not found for update")

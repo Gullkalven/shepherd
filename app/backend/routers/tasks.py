@@ -233,9 +233,10 @@ async def create_tasks(
         payload = data.model_dump()
         aid = norm_area_id(payload.get("area_id"))
         area_rp = room_phase_for_area(room_obj, aid, keys)
+        phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
         if payload.get("phase") is None or str(payload.get("phase") or "").strip() == "":
-            payload["phase"] = effective_task_phase(None, area_rp, keys)
-        eff = effective_task_phase(payload.get("phase"), area_rp, keys)
+            payload["phase"] = effective_task_phase(None, area_rp, keys, phase_statuses_raw)
+        eff = effective_task_phase(payload.get("phase"), area_rp, keys, phase_statuses_raw)
         await ensure_room_phase_editable_for_worker(
             db, data.room_id, str(current_user.id), app_role, eff, area_id=aid
         )
@@ -279,9 +280,10 @@ async def create_taskss_batch(
             payload = item_data.model_dump()
             aid = norm_area_id(payload.get("area_id"))
             area_rp = room_phase_for_area(room_obj, aid, keys)
+            phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
             if payload.get("phase") is None or str(payload.get("phase") or "").strip() == "":
-                payload["phase"] = effective_task_phase(None, area_rp, keys)
-            eff = effective_task_phase(payload.get("phase"), area_rp, keys)
+                payload["phase"] = effective_task_phase(None, area_rp, keys, phase_statuses_raw)
+            eff = effective_task_phase(payload.get("phase"), area_rp, keys, phase_statuses_raw)
             await ensure_room_phase_editable_for_worker(
                 db, item_data.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
@@ -331,7 +333,8 @@ async def update_taskss_batch(
                 merged_phase = update_dict.get("phase", getattr(task, "phase", None))
                 aid = norm_area_id(update_dict.get("area_id", getattr(task, "area_id", None)))
                 area_rp = room_phase_for_area(room_obj, aid, keys)
-                eff = effective_task_phase(merged_phase, area_rp, keys)
+                phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+                eff = effective_task_phase(merged_phase, area_rp, keys, phase_statuses_raw)
                 await ensure_room_phase_editable_for_worker(
                     db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
@@ -380,7 +383,8 @@ async def update_tasks(
             merged_phase = update_dict.get("phase", getattr(task, "phase", None))
             aid = norm_area_id(update_dict.get("area_id", getattr(task, "area_id", None)))
             area_rp = room_phase_for_area(room_obj, aid, keys)
-            eff = effective_task_phase(merged_phase, area_rp, keys)
+            phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+            eff = effective_task_phase(merged_phase, area_rp, keys, phase_statuses_raw)
             await ensure_room_phase_editable_for_worker(
                 db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
@@ -426,8 +430,9 @@ async def delete_taskss_batch(
                 keys = await workflow_keys_for_room(db, room_obj)
                 aid = norm_area_id(getattr(task, "area_id", None))
                 area_rp = room_phase_for_area(room_obj, aid, keys)
+                phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
                 eff = effective_task_phase(
-                    getattr(task, "phase", None), area_rp, keys
+                    getattr(task, "phase", None), area_rp, keys, phase_statuses_raw
                 )
                 await ensure_room_phase_editable_for_worker(
                     db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
@@ -470,8 +475,9 @@ async def delete_tasks(
             keys = await workflow_keys_for_room(db, room_obj)
             aid = norm_area_id(getattr(task, "area_id", None))
             area_rp = room_phase_for_area(room_obj, aid, keys)
+            phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
             eff = effective_task_phase(
-                getattr(task, "phase", None), area_rp, keys
+                getattr(task, "phase", None), area_rp, keys, phase_statuses_raw
             )
             await ensure_room_phase_editable_for_worker(
                 db, task.room_id, str(current_user.id), app_role, eff, area_id=aid

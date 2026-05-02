@@ -215,7 +215,8 @@ async def create_room_visits(
             keys = await workflow_keys_for_room(db, room_obj)
             aid = norm_area_id(data.area_id)
             area_rp = room_phase_for_area(room_obj, aid, keys)
-            eff = effective_media_phase(data.phase, area_rp, keys)
+            phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+            eff = effective_media_phase(data.phase, area_rp, keys, phase_statuses_raw)
             await ensure_room_phase_editable_for_worker(
                 db, data.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
@@ -257,7 +258,8 @@ async def create_room_visitss_batch(
                 keys = await workflow_keys_for_room(db, room_obj)
                 aid = norm_area_id(item_data.area_id)
                 area_rp = room_phase_for_area(room_obj, aid, keys)
-                eff = effective_media_phase(item_data.phase, area_rp, keys)
+                phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+                eff = effective_media_phase(item_data.phase, area_rp, keys, phase_statuses_raw)
                 await ensure_room_phase_editable_for_worker(
                     db, item_data.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
@@ -307,7 +309,8 @@ async def update_room_visitss_batch(
                 merged_ph = update_dict.get("phase", getattr(row, "phase", None))
                 aid = norm_area_id(update_dict.get("area_id", getattr(row, "area_id", None)))
                 area_rp = room_phase_for_area(room_obj, aid, keys)
-                eff = effective_media_phase(merged_ph, area_rp, keys)
+                phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+                eff = effective_media_phase(merged_ph, area_rp, keys, phase_statuses_raw)
                 await ensure_room_phase_editable_for_worker(
                     db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
                 )
@@ -356,7 +359,8 @@ async def update_room_visits(
             merged_ph = update_dict.get("phase", getattr(row, "phase", None))
             aid = norm_area_id(update_dict.get("area_id", getattr(row, "area_id", None)))
             area_rp = room_phase_for_area(room_obj, aid, keys)
-            eff = effective_media_phase(merged_ph, area_rp, keys)
+            phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
+            eff = effective_media_phase(merged_ph, area_rp, keys, phase_statuses_raw)
             await ensure_room_phase_editable_for_worker(
                 db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
             )
@@ -402,8 +406,9 @@ async def delete_room_visitss_batch(
                 keys = await workflow_keys_for_room(db, room_obj)
                 aid = norm_area_id(getattr(row, "area_id", None))
                 area_rp = room_phase_for_area(room_obj, aid, keys)
+                phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
                 eff = effective_media_phase(
-                    getattr(row, "phase", None), area_rp, keys
+                    getattr(row, "phase", None), area_rp, keys, phase_statuses_raw
                 )
                 await ensure_room_phase_editable_for_worker(
                     db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
@@ -446,8 +451,9 @@ async def delete_room_visits(
             keys = await workflow_keys_for_room(db, room_obj)
             aid = norm_area_id(getattr(row, "area_id", None))
             area_rp = room_phase_for_area(room_obj, aid, keys)
+            phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
             eff = effective_media_phase(
-                getattr(row, "phase", None), area_rp, keys
+                getattr(row, "phase", None), area_rp, keys, phase_statuses_raw
             )
             await ensure_room_phase_editable_for_worker(
                 db, row.room_id, str(current_user.id), app_role, eff, area_id=aid

@@ -7,12 +7,16 @@ import RoomDashboardCard from '@/components/RoomDashboardCard';
 import RoomFloorCardContextMenu from '@/components/RoomFloorCardContextMenu';
 import {
   computeFloorPhaseProgress,
+  deriveLinearPhaseStatusesFromPointer,
   DEFAULT_PHASE_WORKFLOW,
   formatPhaseStrip,
   normalizeRoomPhase,
   phaseLabel,
+  resolvePhaseStepStatuses,
+  roomHasPhaseActiveOnBoard,
   storedChecklistPhase,
   type FloorPhaseProgressEntry,
+  type PhaseStepStatus,
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import { taskCountsForFloorBoard } from '@/lib/roomAreas';
@@ -52,6 +56,7 @@ interface Room {
   room_number: string;
   status: string;
   phase?: string;
+  phase_statuses?: Record<string, PhaseStepStatus | string> | null;
   assigned_worker?: string;
   comment?: string;
   blocked_reason?: string;
@@ -472,17 +477,25 @@ export default function FloorDetail() {
   };
 
   const handlePhaseChange = async (roomId: number, newPhase: string) => {
-    const room = rooms.find((r) => r.id === roomId);
-    const oldPhase = normalizeRoomPhase(room?.phase, phaseWorkflow);
+    const row = rooms.find((r) => r.id === roomId);
+    const oldPhase = normalizeRoomPhase(row?.phase, phaseWorkflow);
     const nextPhase = normalizeRoomPhase(newPhase, phaseWorkflow);
     if (oldPhase === nextPhase) return;
+    const prevResolved = resolvePhaseStepStatuses(
+      row?.phase_statuses as Record<string, unknown> | undefined,
+      oldPhase,
+      phaseWorkflow
+    );
+    const nextStatuses = { ...prevResolved, [nextPhase]: 'in_progress' as const };
     try {
       await client.entities.rooms.update({
         id: String(roomId),
-        data: { phase: nextPhase },
+        data: { phase: nextPhase, phase_statuses: nextStatuses },
       });
       setRooms((prev) =>
-        prev.map((r) => (r.id === roomId ? { ...r, phase: nextPhase } : r))
+        prev.map((r) =>
+          r.id === roomId ? { ...r, phase: nextPhase, phase_statuses: nextStatuses } : r
+        )
       );
       toast.success('Phase updated');
       await loadData();
@@ -616,9 +629,10 @@ export default function FloorDetail() {
         continue;
       }
       try {
+        const linear = deriveLinearPhaseStatusesFromPointer(nextPhase, phaseWorkflow);
         await client.entities.rooms.update({
           id: String(roomId),
-          data: { phase: nextPhase },
+          data: { phase: nextPhase, phase_statuses: linear },
         });
         succeeded.push(roomId);
       } catch {
@@ -627,7 +641,11 @@ export default function FloorDetail() {
     }
     if (succeeded.length > 0) {
       setRooms((prev) =>
-        prev.map((r) => (succeeded.includes(r.id) ? { ...r, phase: nextPhase } : r))
+        prev.map((r) =>
+          succeeded.includes(r.id)
+            ? { ...r, phase: nextPhase, phase_statuses: deriveLinearPhaseStatusesFromPointer(nextPhase, phaseWorkflow) }
+            : r
+        )
       );
       await loadData();
     }
@@ -1229,6 +1247,11 @@ export default function FloorDetail() {
                 const completed = summary?.completed ?? 0;
                 const total = summary?.total ?? 0;
                 const rp = normalizeRoomPhase(room.phase, phaseWorkflow);
+                const resolvedStrip = resolvePhaseStepStatuses(
+                  room.phase_statuses as Record<string, unknown> | undefined,
+                  rp,
+                  phaseWorkflow
+                );
                 const heatingStatus = deriveHeatingCableStatus(room.heating_cable_doc);
                 return (
                   <RoomFloorCardContextMenu
@@ -1244,7 +1267,7 @@ export default function FloorDetail() {
                         (floor?.floor_number != null ? `Floor ${floor.floor_number}` : undefined)
                       }
                       phaseLabel={phaseLabel(rp, phaseWorkflow)}
-                      phaseStrip={formatPhaseStrip(rp, phaseWorkflow)}
+                      phaseStrip={formatPhaseStrip(rp, phaseWorkflow, resolvedStrip)}
                       completed={completed}
                       total={total}
                       blocked={room.status === 'blocked'}
