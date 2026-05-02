@@ -1764,17 +1764,6 @@ export default function RoomDetail() {
     !phaseReadOnly &&
     selectedPhaseWorkReady;
 
-  const workerRoomStatus = (() => {
-    if (workerPhaseCompleteEligible) {
-      const ready = STATUS_OPTIONS.find((s) => s.value === 'ready_for_inspection') ?? STATUS_OPTIONS[2];
-      return { ...ready, label: 'Ready for handoff' };
-    }
-    if (normalizedRoomStatus === 'not_started' && boardPhaseWorkReady) {
-      return STATUS_OPTIONS.find((s) => s.value === 'in_progress') ?? STATUS_OPTIONS[1];
-    }
-    return currentStatus;
-  })();
-
   const floorNavLabel =
     floor?.name?.trim()
       ? floor.name
@@ -1843,6 +1832,9 @@ export default function RoomDetail() {
               activeAreaId={activeAreaId}
               onAreaChange={setActiveAreaId}
               phaseWorkflow={phaseWorkflow}
+              phaseStepStatuses={resolvedPhaseStatuses}
+              roomPhasePointer={areaMainPhaseNorm}
+              phaseLockOverrides={lockOv}
               boardPhaseKey={focusPhaseKey}
               inProgressPhaseKeys={inProgressKeys}
               selectedPhaseStepStatus={resolvedPhaseStatuses[selPhase] ?? 'not_started'}
@@ -1897,8 +1889,6 @@ export default function RoomDetail() {
               onAddDeviation={() => void handleAddDeviation()}
               canAddDeviation={canInteractChecklist && !editsBlocked}
               savingDeviations={savingDeviations}
-              roomStatusLabel={workerRoomStatus.label}
-              roomStatusClassName={`${workerRoomStatus.color} border-0`}
               blockedReason={room.status === 'blocked' ? room.blocked_reason : null}
               dueLine={dueLine}
               duePast={duePast}

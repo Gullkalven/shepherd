@@ -42,7 +42,10 @@ export function RoomLocationNav({
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <nav
-        className="flex min-w-0 flex-wrap items-center gap-1 text-sm text-muted-foreground"
+        className={cn(
+          'min-w-0 flex-wrap items-center gap-1 text-sm text-muted-foreground',
+          isWorker ? 'hidden sm:flex' : 'flex'
+        )}
         aria-label="Location"
       >
         <Link to="/" className={linkCls}>

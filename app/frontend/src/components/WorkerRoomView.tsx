@@ -18,7 +18,6 @@ import {
   Lock,
   User,
   AlertTriangle,
-  XCircle,
 } from 'lucide-react';
 import {
   HEATING_CABLE_STAGES,
@@ -37,7 +36,13 @@ import {
   type HeatingCableStageKey,
 } from '@/lib/heatingCable';
 import type { PhaseStepStatus, PhaseWorkflowEntry } from '@/lib/roomPhases';
-import { phaseLabel, phaseTimelineFromStepStatus, phaseTimelineState } from '@/lib/roomPhases';
+import {
+  phaseLabel,
+  phaseTabReadOnlyForWorker,
+  phaseTimelineFromStepStatus,
+  phaseTimelineState,
+} from '@/lib/roomPhases';
+import { WORKER_ROOM_CHECKLIST_ANCHOR } from '@/lib/workerLastRoom';
 import { cn } from '@/lib/utils';
 
 export type WorkerTask = {
@@ -69,6 +74,11 @@ type Props = {
   onAreaChange: (id: string) => void;
 
   phaseWorkflow: PhaseWorkflowEntry[];
+  /** Resolved per-step statuses for phase chips in the hero */
+  phaseStepStatuses: Record<string, PhaseStepStatus>;
+  /** Room / area phase pointer for lock rules */
+  roomPhasePointer: string;
+  phaseLockOverrides?: Record<string, boolean> | null;
   /** Floor-board focus: first in-progress step (hero metrics / default tab target) */
   boardPhaseKey: string;
   /** All steps currently in progress (parallel work); defaults to [boardPhaseKey] when omitted */
@@ -147,8 +157,6 @@ type Props = {
   canAddDeviation: boolean;
   savingDeviations: boolean;
 
-  roomStatusLabel: string;
-  roomStatusClassName: string;
   blockedReason?: string | null;
   dueLine: string | null;
   duePast: boolean;
@@ -157,6 +165,28 @@ type Props = {
   onCompletePhase: () => void;
   completingPhase?: boolean;
 };
+
+type HeroPhaseChipState = 'complete' | 'active' | 'pending' | 'blocked';
+
+function heroPhaseChipState(st: PhaseStepStatus | undefined): HeroPhaseChipState {
+  if (st === 'blocked') return 'blocked';
+  if (st === 'complete') return 'complete';
+  if (st === 'in_progress') return 'active';
+  return 'pending';
+}
+
+function heroPhaseStateLabel(s: HeroPhaseChipState): string {
+  switch (s) {
+    case 'complete':
+      return 'Complete';
+    case 'active':
+      return 'Active';
+    case 'blocked':
+      return 'Blocked';
+    default:
+      return 'Pending';
+  }
+}
 
 function formatVisitDateShort(dateStr: string): string {
   try {
@@ -341,8 +371,8 @@ function heatingStageCollapseSummary(stage: HeatingCableStage): string {
 }
 
 export function WorkerRoomView(p: Props) {
+  const [reportIssueOpen, setReportIssueOpen] = useState(false);
   const selectedLabel = phaseLabel(p.selectedPhaseKey, p.phaseWorkflow);
-  const boardLabel = phaseLabel(p.boardPhaseKey, p.phaseWorkflow);
   const inProgressKeys =
     p.inProgressPhaseKeys && p.inProgressPhaseKeys.length > 0
       ? p.inProgressPhaseKeys
@@ -526,13 +556,6 @@ export function WorkerRoomView(p: Props) {
     p.activityEntries.length,
   ]);
 
-  const nextPhaseLabel = useMemo(() => {
-    const keys = p.phaseWorkflow.map((x) => x.key);
-    const i = keys.indexOf(p.boardPhaseKey);
-    if (i < 0 || i >= keys.length - 1) return null;
-    return phaseLabel(keys[i + 1], p.phaseWorkflow);
-  }, [p.boardPhaseKey, p.phaseWorkflow]);
-
   const workerDecisionStatus = useMemo(() => {
     if (p.blockedReason) {
       return {
@@ -555,78 +578,15 @@ export function WorkerRoomView(p: Props) {
     };
   }, [p.blockedReason, p.phaseCompleteEligible, p.phaseReadOnly]);
 
-  const workHereNow = useMemo(() => {
-    if (p.blockedReason) {
-      return {
-        ok: false as const,
-        detail: 'Work is blocked until this is cleared — see Blockers.',
-      };
-    }
-    if (p.editsBlocked) {
-      return { ok: false as const, detail: 'This room is locked for editing.' };
-    }
-    if (viewingNonBoard) {
-      return {
-        ok: false as const,
-        detail: 'Switch to an active phase below to log work.',
-      };
-    }
-    if (p.phaseTabLocked) {
-      return { ok: false as const, detail: 'This phase is locked — view only.' };
-    }
-    return { ok: true as const, detail: null as string | null };
-  }, [p.blockedReason, p.editsBlocked, viewingNonBoard, p.phaseTabLocked]);
-
   const openDeviationsCount = useMemo(
     () => p.deviations.filter((d) => d.status === 'open').length,
     [p.deviations]
   );
 
-  const lastActivitySummary = useMemo(() => {
-    const row = p.activityEntries[0];
-    if (!row) return null;
-    return { when: p.formatActivityWhen(row.t), msg: row.msg };
-  }, [p.activityEntries, p.formatActivityWhen]);
-
-  /** One scannable line for what to do next on the active phase (no vague labels). */
-  const decisionFocusLine = useMemo(() => {
-    if (p.blockedReason || p.editsBlocked || viewingNonBoard) return null;
-    if (p.phaseCompleteEligible && !p.phaseReadOnly) {
-      return nextPhaseLabel
-        ? `Hand off when done — next is ${nextPhaseLabel}.`
-        : 'Hand off when the site matches your documentation.';
-    }
-    const firstIncomplete = p.tasksForSelectedPhase.find((t) => !t.is_completed);
-    if (firstIncomplete) {
-      return `Next checklist: ${firstIncomplete.name}`;
-    }
-    if (p.boardPhaseShowHeating && !p.boardPhaseWorkReady) {
-      if (focusStageLabel) {
-        return `Finish heating documentation — ${focusStageLabel}.`;
-      }
-      if (boardHeatingDocProgress) {
-        return `Heating documentation ${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} stages complete.`;
-      }
-    }
-    return null;
-  }, [
-    p.blockedReason,
-    p.editsBlocked,
-    viewingNonBoard,
-    p.phaseCompleteEligible,
-    p.phaseReadOnly,
-    nextPhaseLabel,
-    p.tasksForSelectedPhase,
-    p.boardPhaseShowHeating,
-    p.boardPhaseWorkReady,
-    focusStageLabel,
-    boardHeatingDocProgress,
-  ]);
-
   const heroStatPrimary = useMemo(() => {
     if (p.boardPhaseTotalCount > 0) {
       return {
-        label: 'Open work',
+        label: 'Open items',
         value: String(p.boardPhaseIncompleteCount),
         sub:
           p.boardPhaseTotalCount > 0
@@ -637,31 +597,57 @@ export function WorkerRoomView(p: Props) {
     if (p.boardPhaseShowHeating && boardHeatingDocProgress) {
       const left = boardHeatingDocProgress.total - boardHeatingDocProgress.complete;
       return {
-        label: 'Open work',
+        label: 'Open items',
         value: String(Math.max(0, left)),
         sub: `${boardHeatingDocProgress.complete}/${boardHeatingDocProgress.total} heating stages done`,
       };
     }
     return {
-      label: 'Open work',
+      label: 'Open items',
       value: '0',
       sub: 'Nothing queued this phase',
     };
   }, [p.boardPhaseTotalCount, p.boardPhaseIncompleteCount, p.boardPhaseShowHeating, boardHeatingDocProgress]);
 
+  const scrollToWorkAnchor = () => {
+    const checklistEl = document.getElementById(WORKER_ROOM_CHECKLIST_ANCHOR);
+    const heatingEl = document.getElementById('worker-heating-block');
+    const completeEl = document.getElementById('worker-complete-phase');
+    const el =
+      p.showChecklistSection && checklistEl
+        ? checklistEl
+        : p.showHeatingModule && heatingEl
+          ? heatingEl
+          : completeEl ?? checklistEl ?? heatingEl;
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const onContinueWork = () => {
+    if (viewingNonBoard) {
+      p.onPhaseSelect(p.boardPhaseKey);
+      window.setTimeout(() => scrollToWorkAnchor(), 260);
+      return;
+    }
+    scrollToWorkAnchor();
+  };
+
+  const onReportIssueClick = () => {
+    setReportIssueOpen(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById('worker-report-issue')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   return (
     <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4 lg:max-w-xl">
-      {/* Room decision card — field-first: status, due, can work, phases, work left, blockers, last touch */}
+      {/* Room hero — minimal scan: room, status, due, open count, phase chips, actions */}
       <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.09] via-background to-background shadow-md ring-1 ring-black/[0.03] dark:from-blue-950/45 dark:via-background dark:to-background dark:ring-white/[0.06]">
-        <div className="space-y-3 p-4 sm:space-y-4 sm:p-5">
+        <div className="space-y-3 p-4 sm:space-y-3.5 sm:p-5">
           <div className="flex flex-col gap-3 min-[400px]:flex-row min-[400px]:items-start min-[400px]:justify-between min-[400px]:gap-4">
             <div className="min-w-0 space-y-0.5">
               {p.areaName ? (
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/90">
-                  {p.areaName}
-                </p>
+                <p className="text-[11px] font-medium leading-tight text-muted-foreground">{p.areaName}</p>
               ) : null}
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Room</p>
               <h1 className="text-[1.85rem] font-bold leading-[1.08] tracking-tight text-foreground sm:text-[2.1rem]">
                 {p.roomNumber}
               </h1>
@@ -688,102 +674,99 @@ export function WorkerRoomView(p: Props) {
                     {p.duePast ? <span className="font-bold"> · Overdue</span> : null}
                   </span>
                 </span>
-              ) : (
-                <span className="text-[11px] font-medium text-muted-foreground min-[400px]:self-end">No due date</span>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border/45 bg-background/65 px-3.5 py-3 shadow-sm dark:bg-background/40 sm:px-4 sm:py-3.5">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Can you work here now?
-            </p>
-            <div className="mt-2 flex items-start gap-2.5">
-              {workHereNow.ok ? (
-                <CheckCircle2
-                  className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400"
-                  aria-hidden
-                />
-              ) : (
-                <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="text-base font-bold leading-tight text-foreground sm:text-lg">
-                  {workHereNow.ok ? 'Yes' : 'No'}
-                </p>
-                {workHereNow.detail ? (
-                  <p className="mt-1 text-sm leading-snug text-muted-foreground">{workHereNow.detail}</p>
-                ) : (
-                  <p className="mt-1 text-sm leading-snug text-muted-foreground">
-                    Checklist and documentation below apply to the active phase.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              {inProgressKeys.length > 1 ? 'Active phases' : 'Active phase'}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {inProgressKeys.map((k) => (
-                <span
-                  key={k}
-                  className="inline-flex max-w-full items-center rounded-full border border-[#1E3A5F]/25 bg-[#1E3A5F]/[0.07] px-2.5 py-1 text-[11px] font-semibold leading-snug text-foreground dark:border-blue-800/50 dark:bg-blue-950/35 dark:text-blue-50 sm:text-xs"
-                >
-                  <span className="truncate">{phaseLabel(k, p.phaseWorkflow)}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-            <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                {heroStatPrimary.label}
-              </p>
-              <p className="mt-1.5 text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-3xl">
-                {heroStatPrimary.value}
-              </p>
-              {heroStatPrimary.sub ? (
-                <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground sm:text-xs">
-                  {heroStatPrimary.sub}
-                </p>
               ) : null}
             </div>
-            <div className="flex flex-col justify-between rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Schedule
-              </p>
-              <div className="mt-1.5 flex flex-1 flex-col justify-center gap-1.5">
-                <Badge
-                  className={cn(
-                    'w-fit max-w-full justify-start border-0 text-[10px] font-semibold uppercase tracking-wide',
-                    p.roomStatusClassName
-                  )}
-                >
-                  {p.roomStatusLabel}
-                </Badge>
-                {p.boardPhaseShowHeating ? (
-                  <p className="text-[11px] leading-snug text-muted-foreground">
-                    Heating ·{' '}
-                    <span className="font-medium text-foreground/90">
-                      {p.boardPhaseWorkReady
-                        ? 'Complete'
-                        : HEATING_CABLE_DERIVED_STATUS_LABEL[p.heatingDerived.status]}
-                    </span>
-                  </p>
-                ) : null}
-              </div>
-            </div>
           </div>
 
-          {decisionFocusLine ? (
-            <p className="rounded-lg border border-[#1E3A5F]/20 bg-[#1E3A5F]/[0.06] px-3 py-2.5 text-sm font-medium leading-snug text-foreground dark:border-blue-800/40 dark:bg-blue-950/30 dark:text-blue-50">
-              {decisionFocusLine}
+          <div className="rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              {heroStatPrimary.label}
             </p>
+            <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-3xl">
+              {heroStatPrimary.value}
+            </p>
+            {heroStatPrimary.sub ? (
+              <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground sm:text-xs">{heroStatPrimary.sub}</p>
+            ) : null}
+          </div>
+
+          {workflowKeys.length > 1 ? (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                {inProgressKeys.length > 1 ? 'Active phases' : 'Phase'}
+              </p>
+              <div className="-mx-0.5 overflow-x-auto overscroll-x-contain px-0.5 [-webkit-overflow-scrolling:touch]">
+                <div className="flex w-max max-w-none gap-2 pb-0.5">
+                  {workflowKeys.map((key) => {
+                    const st = heroPhaseChipState(p.phaseStepStatuses[key]);
+                    const stateLabel = heroPhaseStateLabel(st);
+                    const sel = key === p.selectedPhaseKey;
+                    const locked = phaseTabReadOnlyForWorker(
+                      p.roomPhasePointer,
+                      key,
+                      p.phaseWorkflow,
+                      p.phaseLockOverrides ?? null,
+                      p.phaseStepStatuses
+                    );
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => p.onPhaseSelect(key)}
+                        className={cn(
+                          'flex max-w-[10.5rem] shrink-0 flex-col items-start gap-0.5 rounded-xl border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                          sel &&
+                            'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm ring-1 ring-[#1E3A5F]/20 dark:border-blue-600 dark:bg-blue-700 dark:ring-blue-500/30',
+                          !sel && st === 'complete' && 'border-emerald-300/70 bg-emerald-50/50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100',
+                          !sel && st === 'active' && 'border-[#1E3A5F]/35 bg-[#1E3A5F]/[0.08] text-foreground dark:border-blue-800/50 dark:bg-blue-950/35',
+                          !sel && st === 'blocked' && 'border-orange-400/70 bg-orange-50/90 text-orange-950 dark:border-orange-800 dark:bg-orange-950/40 dark:text-orange-50',
+                          !sel && st === 'pending' && 'border-border/45 bg-background/80 text-muted-foreground',
+                          locked && !sel && 'opacity-[0.72]'
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            'w-full truncate text-[11px] font-semibold leading-tight sm:text-xs',
+                            sel && 'text-white'
+                          )}
+                        >
+                          {phaseLabel(key, p.phaseWorkflow)}
+                        </span>
+                        <span
+                          className={cn(
+                            'text-[9px] font-semibold uppercase tracking-[0.08em]',
+                            sel ? 'text-white/85' : 'text-muted-foreground',
+                            !sel && st === 'blocked' && 'text-orange-900/90 dark:text-orange-100',
+                            !sel && st === 'complete' && 'text-emerald-800 dark:text-emerald-200'
+                          )}
+                        >
+                          {stateLabel}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
           ) : null}
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+            <Button
+              type="button"
+              className="h-12 min-h-12 w-full bg-[#1E3A5F] text-base font-semibold hover:bg-[#1E3A5F]/90 dark:bg-blue-700 dark:hover:bg-blue-700/90 sm:h-11 sm:min-h-11 sm:flex-1 sm:text-sm"
+              onClick={() => onContinueWork()}
+            >
+              Continue work
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 min-h-12 w-full border-border/60 text-base font-medium sm:h-11 sm:min-h-11 sm:flex-1 sm:text-sm"
+              onClick={() => onReportIssueClick()}
+            >
+              Report issue
+            </Button>
+          </div>
 
           {(p.blockedReason || openDeviationsCount > 0) && (
             <div
@@ -826,26 +809,9 @@ export function WorkerRoomView(p: Props) {
                       : 'text-amber-950 dark:text-amber-100'
                   )}
                 >
-                  {openDeviationsCount} open issue{openDeviationsCount === 1 ? '' : 's'} — see below.
+                  {openDeviationsCount} open issue{openDeviationsCount === 1 ? '' : 's'}
                 </p>
               ) : null}
-            </div>
-          )}
-
-          {lastActivitySummary ? (
-            <div className="flex gap-2 border-t border-border/30 pt-3 text-xs text-muted-foreground">
-              <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-              <div className="min-w-0 leading-snug">
-                <span className="font-semibold text-foreground/90">Last update · </span>
-                <span className="tabular-nums text-muted-foreground">{lastActivitySummary.when}</span>
-                <span className="mx-1.5 text-muted-foreground/50">·</span>
-                <span className="text-foreground/85">{lastActivitySummary.msg}</span>
-              </div>
-            </div>
-          ) : (
-            <div className="border-t border-border/30 pt-3 text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground/80">Last update · </span>
-              Nothing logged for this phase yet.
             </div>
           )}
         </div>
@@ -875,59 +841,6 @@ export function WorkerRoomView(p: Props) {
             ))}
           </div>
         </div>
-      ) : null}
-
-      {/* Phase switcher — collapsed by default */}
-      {workflowKeys.length > 1 ? (
-        <Collapsible defaultOpen={false} className="rounded-lg border border-border/25 bg-muted/[0.04]">
-          <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:py-2">
-            <span className="min-w-0">
-              <span className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-                Phase view
-              </span>
-              <span className="mt-0.5 block truncate text-sm font-medium text-foreground">{selectedLabel}</span>
-            </span>
-            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="border-t border-border/20 px-2 pb-2 pt-1">
-              <div className="-mx-0.5 overflow-x-auto overscroll-x-contain px-0.5 [-webkit-overflow-scrolling:touch]">
-                <div className="flex w-max max-w-none gap-1.5 pb-1">
-                  {workflowKeys.map((key) => {
-                    const isBoard =
-                      (p.inProgressPhaseKeys?.includes(key) ?? false) || key === p.boardPhaseKey;
-                    const isSel = key === p.selectedPhaseKey;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        className={cn(
-                          'flex max-w-[14rem] shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-left text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:max-w-none sm:py-1.5 sm:text-xs',
-                          isSel
-                            ? 'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm dark:border-blue-600 dark:bg-blue-700'
-                            : 'border-border/30 bg-background/80 text-muted-foreground hover:bg-muted/40 hover:text-foreground',
-                          !isSel && !isBoard && 'opacity-80'
-                        )}
-                        onClick={() => p.onPhaseSelect(key)}
-                      >
-                        {isBoard ? (
-                          <span
-                            className={cn(
-                              'h-1.5 w-1.5 shrink-0 rounded-full',
-                              isSel ? 'bg-amber-300' : 'bg-amber-500/90'
-                            )}
-                            aria-hidden
-                          />
-                        ) : null}
-                        <span className="truncate">{phaseLabel(key, p.phaseWorkflow)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
       ) : null}
 
       {viewingNonBoard ? (
@@ -1156,7 +1069,7 @@ export function WorkerRoomView(p: Props) {
 
       {/* Heating cable — collapsible stages, defaults on active step */}
       {showFullPhaseDetails && p.showHeatingModule ? (
-        <Card className="overflow-hidden border-border/60 shadow-sm">
+        <Card id="worker-heating-block" className="scroll-mt-20 overflow-hidden border-border/60 shadow-sm">
           <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1.5">
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
               <h2 className="text-base font-semibold tracking-tight sm:text-lg">Heating cable</h2>
@@ -1663,11 +1576,14 @@ export function WorkerRoomView(p: Props) {
           <p className="border-b border-border/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
             More on this phase
           </p>
-          <Collapsible defaultOpen={false}>
-            <CollapsibleTrigger className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted/25 sm:min-h-0">
+          <Collapsible open={reportIssueOpen} onOpenChange={setReportIssueOpen}>
+            <CollapsibleTrigger
+              id="worker-report-issue"
+              className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted/25 sm:min-h-0"
+            >
               <span className="flex min-w-0 flex-1 items-center gap-2.5">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600/90" />
-                <span className="leading-snug">Report issue</span>
+                <span className="leading-snug">Issue details</span>
                 {p.deviations.length > 0 ? (
                   <Badge variant="secondary" className="text-[10px]">
                     {p.deviations.length}
