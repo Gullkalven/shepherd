@@ -1289,7 +1289,7 @@ export default function FloorDetail() {
             />
           </div>
         ) : (
-          <div className="mx-auto min-h-0 w-full max-w-lg flex-1 overflow-y-auto px-4 pb-4 lg:mx-0 lg:max-w-none lg:px-6 xl:px-8">
+          <div className="mx-auto min-h-0 w-full max-w-lg flex-1 overflow-y-auto px-4 pb-4 max-lg:scroll-pb-[max(5.5rem,30dvh)] lg:mx-0 lg:max-w-none lg:px-6 xl:px-8">
             <div className="grid grid-cols-1 gap-2 md:grid-cols-2 md:gap-3 lg:grid-cols-3 lg:gap-3 xl:grid-cols-4">
               {rooms.map((room) => {
                 const summary = checklistByRoomId[room.id];

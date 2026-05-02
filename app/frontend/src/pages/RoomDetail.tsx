@@ -620,8 +620,12 @@ export default function RoomDetail() {
     if (permissionsLoading || !isWorker || loading || !room) return;
     if (location.hash !== `#${WORKER_ROOM_CHECKLIST_ANCHOR}`) return;
     const id = requestAnimationFrame(() => {
+      const smooth =
+        typeof window !== 'undefined' &&
+        !window.matchMedia('(max-width: 1023.98px)').matches &&
+        !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       document.getElementById(WORKER_ROOM_CHECKLIST_ANCHOR)?.scrollIntoView({
-        behavior: 'smooth',
+        behavior: smooth ? 'smooth' : 'auto',
         block: 'start',
       });
     });

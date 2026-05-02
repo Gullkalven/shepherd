@@ -9,6 +9,7 @@ import { APP_NAME_PARTS } from '@/lib/branding';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import { initCalmInputFocusScroll } from '@/lib/calmInputFocusScroll';
 
 export type AppShellOutletContext = {
   onLogoutClearServer: () => void;
@@ -60,6 +61,67 @@ export default function AppShellLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    return initCalmInputFocusScroll();
+  }, []);
+
+  /** Hint scrollports (including the UA) to leave space for sticky header + keyboard — reduces jump-to-center. */
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023.98px)');
+    const style = document.createElement('style');
+    style.setAttribute('data-shepherd-mobile-scroll-padding', '');
+    style.textContent = `
+@media (max-width: 1023.98px) {
+  html {
+    scroll-padding-top: 2.75rem;
+    scroll-padding-bottom: max(5.5rem, 30dvh);
+  }
+}`;
+    const apply = () => {
+      if (mq.matches) {
+        if (!style.parentNode) document.head.appendChild(style);
+      } else if (style.parentNode) {
+        style.remove();
+      }
+    };
+    apply();
+    mq.addEventListener('change', apply);
+    return () => {
+      mq.removeEventListener('change', apply);
+      style.remove();
+    };
+  }, []);
+
+  /**
+   * On supported Chromium-based mobile browsers, prefer resizing the layout with the on-screen
+   * keyboard (less overlay reflow) — helps stability next to our focus handler.
+   * iOS Safari ignores this; no effect on desktop if viewport meta is missing.
+   */
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1023.98px)');
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return;
+
+    const orig = meta.getAttribute('content') || '';
+    const sync = () => {
+      if (mq.matches) {
+        if (orig.includes('interactive-widget')) return;
+        const next = orig.trim()
+          ? `${orig.trim()}, interactive-widget=resizes-content`
+          : 'interactive-widget=resizes-content';
+        meta.setAttribute('content', next);
+      } else {
+        meta.setAttribute('content', orig);
+      }
+    };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => {
+      mq.removeEventListener('change', sync);
+      meta.setAttribute('content', orig);
+    };
+  }, []);
 
   useEffect(() => {
     if (checking) return;
