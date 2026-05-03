@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { client } from '@/lib/api';
-import { DEV_ROLE_CHANGED_EVENT, readDemoLocalStorageUser } from '@/lib/devRole';
+import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
 import { readAdminSession, ADMIN_AUTH_EVENT } from '@/lib/adminSession';
 import { readWorkerSession, WORKER_AUTH_EVENT } from '@/lib/workerSession';
 
@@ -165,26 +165,6 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
       setSessionIsProvisionalAdmin(false);
       setRole(normalizeAppRole(localRole));
       setDisplayName(localUser?.name || null);
-      setLoading(false);
-      return;
-    }
-
-    const demoLocal = readDemoLocalStorageUser();
-    const demoRole = demoLocal?.role as string | undefined;
-    if (
-      !isDevMode &&
-      isAuthenticated &&
-      demoLocal &&
-      (demoRole === 'admin' ||
-        demoRole === 'manager' ||
-        demoRole === 'electrician' ||
-        demoRole === 'apprentice' ||
-        demoRole === 'worker')
-    ) {
-      setSessionIsPinWorker(false);
-      setSessionIsProvisionalAdmin(false);
-      setRole(normalizeAppRole(demoRole));
-      setDisplayName((demoLocal.name as string) || null);
       setLoading(false);
       return;
     }

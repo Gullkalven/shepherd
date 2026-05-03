@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { client } from '@/lib/api';
-import { readDemoLocalStorageUser } from '@/lib/devRole';
 
 interface SiteRow {
   id: number;
@@ -63,8 +62,7 @@ export function useWorkerRoomEnrichment(
   const enrichmentSeq = useRef(0);
 
   const loadEnrichment = useCallback(async () => {
-    const demoOrUser = readDemoLocalStorageUser() !== null || hasUser;
-    if (!demoOrUser) {
+    if (!hasUser) {
       setRoomsFlat([]);
       setTasks([]);
       setTaskSummaryUnavailable(false);

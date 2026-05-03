@@ -26,6 +26,7 @@ const DEMO_USER_IDS = new Set([
 /** Writes demo user + role and notifies `PermissionProvider` (same pattern as dev role switcher). */
 export function persistDemoSignIn(role: DevAppRole): void {
   if (typeof window === 'undefined') return;
+  if (!isDevRoleSwitcherHost()) return;
   clearClientLogoutGate();
   const preset = DEMO_USER_PRESETS[role];
   localStorage.setItem(
@@ -54,11 +55,12 @@ export function getLocalDevUser(): Record<string, unknown> | null {
 }
 
 /**
- * Deployed demo sign-in: same `localStorage` `user` key as localhost, identified by `id`.
- * Used when there is no API session but the demo user was stored explicitly.
+ * Localhost-only demo user in `localStorage.user` (same key as dev role switcher).
+ * Deployed hosts ignore this so production cannot use passwordless demo sign-in.
  */
 export function readDemoLocalStorageUser(): Record<string, unknown> | null {
   if (typeof window === 'undefined') return null;
+  if (!isDevRoleSwitcherHost()) return null;
   try {
     const raw = localStorage.getItem('user');
     if (!raw) return null;
@@ -75,10 +77,10 @@ export function readDemoLocalStorageUser(): Record<string, unknown> | null {
 /** Must match `LOCAL_DEV_TOKEN` in `app/backend/dependencies/auth.py`. The web SDK sends Authorization only when `localStorage.token` is set. */
 const DEMO_BEARER_TOKEN = '__local_dev_auth__';
 
-/** On deployed hosts, demo sign-in stores `user` but not `token`; the API client then sends no credentials and the backend returns 401 (localhost-only auto-auth does not apply). */
+/** Sets the localhost demo bearer token when a demo user row exists (never used on deployed hosts). */
 export function ensureDemoBearerToken(): void {
   if (typeof window === 'undefined') return;
-  if (isDevRoleSwitcherHost()) return;
+  if (!isDevRoleSwitcherHost()) return;
   if (!readDemoLocalStorageUser()) return;
   try {
     if (!localStorage.getItem('token')) {

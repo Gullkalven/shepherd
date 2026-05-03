@@ -18,7 +18,6 @@ import {
   getLocalDevUser,
   isDevRoleSwitcherHost,
   persistDemoSignIn,
-  readDemoLocalStorageUser,
   type DevAppRole,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
@@ -92,23 +91,21 @@ function IndexContent({
       return;
     }
 
-    // Deployed: demo user comes from localStorage. Do not call auth.me() after logout (gate) with no demo user,
-    // or a still-valid cookie will repopulate `user` while the shell stays logged out (no sidebar).
-    const demo = readDemoLocalStorageUser();
-    setUser(demo);
+    // Deployed hosts: real API session only (worker/admin JWT or OIDC cookie). No passwordless demo.
     setLoading(false);
-    if (isClientLogoutGateActive() && !demo) {
+    if (isClientLogoutGateActive()) {
+      setUser(null);
       return;
     }
     const startEpoch = getAuthMeEpoch();
-    void client.auth
-      .me()
-      .then((res) => {
-        if (startEpoch !== getAuthMeEpoch()) return;
-        if (isClientLogoutGateActive() && !readDemoLocalStorageUser()) return;
-        if (res?.data) setUser(res.data);
-      })
-      .catch(() => {});
+    try {
+      const res = await client.auth.me();
+      if (startEpoch !== getAuthMeEpoch()) return;
+      if (isClientLogoutGateActive()) return;
+      setUser(res?.data ?? null);
+    } catch {
+      setUser(null);
+    }
   }, [sessionActive]);
 
   useEffect(() => {
@@ -127,8 +124,7 @@ function IndexContent({
     const ws = readWorkerSession();
     const pinProjectId = ws?.token && ws.projectId ? ws.projectId : null;
     // Localhost: list only when signed in. Deployed: load from /all whenever demo session or API user exists (no auth.me gate).
-    const canLoad =
-      devHost ? !!user : readDemoLocalStorageUser() !== null || !!user;
+    const canLoad = !!user;
     if (!canLoad) {
       setProjectsLoading(false);
       setProjectsLoadFailed(false);
@@ -306,21 +302,25 @@ function IndexContent({
           <p className="text-white/70 text-lg">
             Project and task management for teams
           </p>
-          <p className="text-white/55 text-sm">
-            Demo sign-in — choose a role (no password)
-          </p>
+          {isDevRoleSwitcherHost() ? (
+            <p className="text-white/55 text-sm">Demo sign-in — choose a role (no password)</p>
+          ) : (
+            <p className="text-white/55 text-sm">Sign in with your credentials</p>
+          )}
           <div className="w-full space-y-2 pt-1">
-            {DEMO_ROLE_SIGN_IN.map(({ role, label }) => (
-              <Button
-                key={role}
-                type="button"
-                onClick={() => signInAsDemoRole(role)}
-                size="lg"
-                className="w-full bg-amber-400 hover:bg-amber-500 text-[#1E3A5F] font-semibold text-base h-12 rounded-xl"
-              >
-                {label}
-              </Button>
-            ))}
+            {isDevRoleSwitcherHost()
+              ? DEMO_ROLE_SIGN_IN.map(({ role, label }) => (
+                  <Button
+                    key={role}
+                    type="button"
+                    onClick={() => signInAsDemoRole(role)}
+                    size="lg"
+                    className="w-full bg-amber-400 hover:bg-amber-500 text-[#1E3A5F] font-semibold text-base h-12 rounded-xl"
+                  >
+                    {label}
+                  </Button>
+                ))
+              : null}
             <Button
               type="button"
               variant="outline"
@@ -330,6 +330,17 @@ function IndexContent({
             >
               Site worker sign-in (PIN)
             </Button>
+            {!isDevRoleSwitcherHost() ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                className="w-full border-white/35 bg-white/10 text-white hover:bg-white/15"
+                onClick={() => navigate('/admin/login')}
+              >
+                Administrator sign-in
+              </Button>
+            ) : null}
           </div>
         </div>
       </div>

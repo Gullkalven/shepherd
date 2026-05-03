@@ -10,7 +10,6 @@ import {
   ensureDemoBearerToken,
   getLocalDevUser,
   isDevRoleSwitcherHost,
-  readDemoLocalStorageUser,
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import { getAuthMeEpoch, isClientLogoutGateActive } from '@/lib/appLogout';
@@ -77,20 +76,19 @@ export default function WorkerRoomsPage() {
       setUser(sessionActive && stored ? stored : null);
       return;
     }
-    const demo = readDemoLocalStorageUser();
-    setUser(demo);
-    if (isClientLogoutGateActive() && !demo) {
+    if (isClientLogoutGateActive()) {
+      setUser(null);
       return;
     }
     const startEpoch = getAuthMeEpoch();
-    void client.auth
-      .me()
-      .then((res) => {
-        if (startEpoch !== getAuthMeEpoch()) return;
-        if (isClientLogoutGateActive() && !readDemoLocalStorageUser()) return;
-        if (res?.data) setUser(res.data);
-      })
-      .catch(() => {});
+    try {
+      const res = await client.auth.me();
+      if (startEpoch !== getAuthMeEpoch()) return;
+      if (isClientLogoutGateActive()) return;
+      setUser(res?.data ?? null);
+    } catch {
+      setUser(null);
+    }
   }, [sessionActive]);
 
   useEffect(() => {
@@ -113,7 +111,7 @@ export default function WorkerRoomsPage() {
     const useProjectsAll = !devHost;
     const ws = readWorkerSession();
     const pinProjectId = ws?.token && ws.projectId ? ws.projectId : null;
-    const canLoad = devHost ? !!user : readDemoLocalStorageUser() !== null || !!user;
+    const canLoad = !!user;
     if (!canLoad) {
       setProjectsLoading(false);
       setProjectsLoadFailed(false);
@@ -167,8 +165,7 @@ export default function WorkerRoomsPage() {
     return () => window.removeEventListener(DEV_ROLE_CHANGED_EVENT, onRole);
   }, [checkAuth]);
 
-  const hasUser =
-    isDevRoleSwitcherHost() ? !!user && sessionActive : readDemoLocalStorageUser() !== null || !!user;
+  const hasUser = isDevRoleSwitcherHost() ? !!user && sessionActive : !!user;
 
   const { roomsFlat, tasks, enrichmentLoading, taskSummaryUnavailable } = useWorkerRoomEnrichment(
     projects,

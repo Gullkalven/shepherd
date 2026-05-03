@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     public_backend_url: str = ""
     frontend_origin: str = "https://shepherd-frontend.onrender.com"
 
+    #: Comma-separated extra browser origins for CORS (preview URLs, etc.). Merged in main.py with defaults.
+    cors_origins: str = ""
+
     @property
     def backend_url(self) -> str:
         """Generate backend URL from host and port."""

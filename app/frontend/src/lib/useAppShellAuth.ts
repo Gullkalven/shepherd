@@ -108,8 +108,6 @@ export function useAppShellAuth() {
         return;
       }
 
-      ensureDemoBearerToken();
-
       if (ws?.token) {
         const startEpoch = getAuthMeEpoch();
         try {
@@ -140,21 +138,21 @@ export function useAppShellAuth() {
         return;
       }
 
-      const demo = readDemoLocalStorageUser();
-      setApiUser(demo);
-      setChecking(false);
+      // Production: no passwordless demo — only Bearer (worker/admin PIN) or server session (cookie/OIDC).
       const startEpoch = getAuthMeEpoch();
-      if (isClientLogoutGateActive() && !demo) {
-        return;
+      try {
+        const res = await client.auth.me();
+        if (startEpoch !== getAuthMeEpoch()) return;
+        if (isClientLogoutGateActive()) {
+          setApiUser(null);
+        } else {
+          setApiUser(res?.data ?? null);
+        }
+      } catch {
+        setApiUser(null);
+      } finally {
+        setChecking(false);
       }
-      void client.auth
-        .me()
-        .then((res) => {
-          if (startEpoch !== getAuthMeEpoch()) return;
-          if (isClientLogoutGateActive() && !readDemoLocalStorageUser()) return;
-          if (res?.data) setApiUser(res.data);
-        })
-        .catch(() => {});
     })();
   }, []);
 

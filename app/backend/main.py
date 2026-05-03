@@ -95,18 +95,36 @@ app = FastAPI(
 )
 
 
-cors_origins = [
-    settings.frontend_origin,
-    "http://localhost:4173",
-    "http://127.0.0.1:4173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
+def _build_cors_allow_origins() -> list[str]:
+    """Merge FRONTEND_ORIGIN, required defaults, and CORS_ORIGINS (comma-separated). Preserves order, dedupes."""
+    merged: list[str] = []
+    for o in (
+        settings.frontend_origin,
+        "https://shepherd-frontend.onrender.com",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ):
+        t = (o or "").strip()
+        if t:
+            merged.append(t)
+    extra = (settings.cors_origins or "").strip()
+    if extra:
+        for part in extra.split(","):
+            p = part.strip()
+            if p:
+                merged.append(p)
+    return list(dict.fromkeys(merged))
 
+
+# Single CORS middleware — avoid stacking duplicate CORSMiddleware instances.
 # MODULE_MIDDLEWARE_START
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=list(dict.fromkeys([o for o in cors_origins if o])),
+    allow_origins=_build_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
