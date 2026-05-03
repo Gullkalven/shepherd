@@ -1,5 +1,8 @@
 const STORAGE_KEY = 'shepherd_worker_last_room';
 
+/** Hash on `/` — bottom nav Search focuses the worker home room finder (see `WorkerTodayView`). */
+export const WORKER_HOME_FIND_ROOM_HASH = 'find-room';
+
 export type WorkerLastRoom = {
   projectId: number;
   floorId: number;

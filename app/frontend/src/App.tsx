@@ -2,7 +2,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
-import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@/lib/theme';
 import { DevPresentationSessionProvider } from '@/lib/devPresentationSession';
 import { I18nProvider } from '@/lib/i18n';
@@ -32,7 +32,8 @@ const App = () => (
               <Route path="/" element={<AppShellLayout />}>
                 <Route index element={<Index />} />
                 <Route path="worker/rooms" element={<WorkerRoomsPage />} />
-                <Route path="worker/me" element={<WorkerMePage />} />
+                <Route path="worker/me" element={<Navigate to="/worker/settings" replace />} />
+                <Route path="worker/settings" element={<WorkerMePage />} />
                 <Route path="admin/users" element={<AdminUsers />} />
                 <Route path="project/:projectId" element={<Outlet />}>
                   <Route index element={<ProjectDetail />} />

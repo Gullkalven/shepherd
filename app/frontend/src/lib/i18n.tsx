@@ -26,7 +26,11 @@ type TranslationKey =
   | 'save'
   | 'delete'
   | 'uploadPhoto'
-  | 'deadline';
+  | 'deadline'
+  | 'workerNavHome'
+  | 'workerNavWork'
+  | 'workerNavSearch'
+  | 'workerNavSettings';
 
 const DICTIONARY: Record<TranslationKey, string> = {
   projects: 'Projects',
@@ -55,6 +59,10 @@ const DICTIONARY: Record<TranslationKey, string> = {
   delete: 'Delete',
   uploadPhoto: 'Upload photo',
   deadline: 'Deadline',
+  workerNavHome: 'Home',
+  workerNavWork: 'Work',
+  workerNavSearch: 'Search',
+  workerNavSettings: 'Settings',
 };
 
 type I18nContextValue = {

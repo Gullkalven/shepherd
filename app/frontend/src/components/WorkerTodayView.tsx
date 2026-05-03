@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { usePermissions } from '@/lib/permissions';
 import {
   readWorkerLastRoom,
   workerRoomPath,
   clearWorkerLastRoom,
+  WORKER_HOME_FIND_ROOM_HASH,
   type WorkerLastRoom,
 } from '@/lib/workerLastRoom';
 import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
@@ -163,6 +164,8 @@ export default function WorkerTodayView({
   onRefreshSites,
 }: WorkerTodayViewProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { displayName } = usePermissions();
   const [lastLocal, setLastLocal] = useState<WorkerLastRoom | null>(() => readWorkerLastRoom());
   const [roomSearch, setRoomSearch] = useState('');
@@ -184,6 +187,20 @@ export default function WorkerTodayView({
   useEffect(() => {
     setLastLocal(readWorkerLastRoom());
   }, [roomsFlat]);
+
+  /** Bottom nav “Search” opens `/#find-room` and focuses the room finder. */
+  useEffect(() => {
+    const h = location.hash.replace(/^#/, '');
+    if (h !== WORKER_HOME_FIND_ROOM_HASH) return;
+    const id = window.requestAnimationFrame(() => {
+      const el = searchInputRef.current;
+      if (el) {
+        el.focus({ preventScroll: false });
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [location.hash, location.pathname]);
 
   const roomById = useMemo(() => new Map(roomsFlat.map((r) => [r.id, r])), [roomsFlat]);
 
@@ -522,7 +539,11 @@ export default function WorkerTodayView({
               </div>
             </section>
 
-            <section className="space-y-2" aria-labelledby="room-search-heading">
+            <section
+              id="worker-find-room-anchor"
+              className="scroll-mt-24 space-y-2"
+              aria-labelledby="room-search-heading"
+            >
               <h2 id="room-search-heading" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Find a room
               </h2>
@@ -530,6 +551,7 @@ export default function WorkerTodayView({
                 Search by room number
               </label>
               <Input
+                ref={searchInputRef}
                 id="worker-today-room-search"
                 type="search"
                 placeholder="Room number or site"
