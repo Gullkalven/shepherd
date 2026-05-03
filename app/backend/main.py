@@ -15,7 +15,7 @@ from fastapi.routing import APIRouter
 # MODULE_IMPORTS_START
 from services.database import initialize_database, close_database
 from services.mock_data import initialize_mock_data
-from services.auth import initialize_admin_user
+from services.auth import ensure_bootstrap_admin_user_record, initialize_admin_user
 # MODULE_IMPORTS_END
 
 
@@ -78,6 +78,7 @@ async def lifespan(app: FastAPI):
             from services.provisional_admin_auth import ensure_seed_from_env
 
             await ensure_seed_from_env(_s)
+            await ensure_bootstrap_admin_user_record(_s)
     # MODULE_STARTUP_END
 
     logger.info("=== Application startup completed successfully ===")

@@ -8,7 +8,7 @@ from core.auth import create_access_token
 from core.config import settings
 from core.database import db_manager
 from models.auth import OIDCState, User
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -142,3 +142,39 @@ async def initialize_admin_user():
             db.add(admin_user)
             await db.commit()
             logger.debug(f"Created admin user: {admin_user_id} with email: {admin_user_email}")
+
+
+ENV_BOOTSTRAP_ADMIN_USER_ID = "env-bootstrap-admin"
+
+
+async def ensure_bootstrap_admin_user_record(db: AsyncSession) -> None:
+    """If no admin exists in `users`, optionally add one placeholder row from ADMIN_USERNAME (PIN login stays provisional).
+
+    Does nothing when any user has role admin, or ADMIN_USERNAME is unset, or the bootstrap row already exists.
+    """
+    username = (os.getenv("ADMIN_USERNAME") or "").strip()
+    if not username:
+        return
+
+    admin_count = await db.scalar(select(func.count()).select_from(User).where(User.role == "admin"))
+    if admin_count and admin_count > 0:
+        return
+
+    result = await db.execute(select(User).where(User.id == ENV_BOOTSTRAP_ADMIN_USER_ID))
+    if result.scalar_one_or_none():
+        return
+
+    email = username if "@" in username else f"{username}@admin.bootstrap.local"
+    db.add(
+        User(
+            id=ENV_BOOTSTRAP_ADMIN_USER_ID,
+            email=email[:255],
+            name=username[:255],
+            role="admin",
+        )
+    )
+    await db.commit()
+    logger.info(
+        "Created bootstrap admin user id=%s (use ADMIN_PASSWORD + /admin/login for access; OIDC separate)",
+        ENV_BOOTSTRAP_ADMIN_USER_ID,
+    )
