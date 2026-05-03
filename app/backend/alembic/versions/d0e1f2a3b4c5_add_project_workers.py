@@ -19,21 +19,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "project_workers",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("project_id", sa.Integer(), nullable=False),
-        sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("pin_hash", sa.String(length=512), nullable=False),
-        sa.Column("role", sa.String(length=32), nullable=False, server_default="worker"),
-        sa.Column("active", sa.Boolean(), nullable=False, server_default="1"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(op.f("ix_project_workers_project_id"), "project_workers", ["project_id"], unique=False)
+    inspector = sa.inspect(op.get_bind())
+    if "project_workers" not in inspector.get_table_names():
+        op.create_table(
+            "project_workers",
+            sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column("project_id", sa.Integer(), nullable=False),
+            sa.Column("name", sa.String(length=255), nullable=False),
+            sa.Column("pin_hash", sa.String(length=512), nullable=False),
+            sa.Column("role", sa.String(length=32), nullable=False, server_default="worker"),
+            sa.Column("active", sa.Boolean(), nullable=False, server_default="1"),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        op.create_index(op.f("ix_project_workers_project_id"), "project_workers", ["project_id"], unique=False)
 
 
 def downgrade() -> None:
-    op.drop_index(op.f("ix_project_workers_project_id"), table_name="project_workers")
-    op.drop_table("project_workers")
+    inspector = sa.inspect(op.get_bind())
+    if "project_workers" in inspector.get_table_names():
+        op.drop_index(op.f("ix_project_workers_project_id"), table_name="project_workers")
+        op.drop_table("project_workers")
