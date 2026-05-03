@@ -30,6 +30,7 @@ import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
 import { readAdminSession } from '@/lib/adminSession';
 import { shepherdDebug } from '@/lib/shepherdDebug';
+import { sanitizeProjectListItems, unwrapProjectBody } from '@/lib/projectEntity';
 
 interface Project {
   id: number;
@@ -166,13 +167,13 @@ function IndexContent({
       let items: Project[];
       if (pinProjectId) {
         const res = await client.entities.projects.get({ id: String(pinProjectId) });
-        const row = res?.data;
+        const row = unwrapProjectBody(res?.data);
         items = row ? [{ id: row.id, name: row.name }] : [];
       } else {
         const res = useProjectsAll
           ? await fetchProjectsListAll()
           : await client.entities.projects.query({ sort: '-created_at' });
-        items = extractProjectItemsFromListBody(res?.data ?? res) as Project[];
+        items = sanitizeProjectListItems(extractProjectItemsFromListBody(res?.data ?? res) as unknown[]);
       }
       setProjects(items);
       if (import.meta.env.DEV) {

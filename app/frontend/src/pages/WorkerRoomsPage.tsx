@@ -15,6 +15,7 @@ import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import { getAuthMeEpoch, isClientLogoutGateActive } from '@/lib/appLogout';
 import { useWorkerRoomEnrichment, type EnrichedRoom } from '@/hooks/useWorkerRoomEnrichment';
 import { workerRoomPath } from '@/lib/workerLastRoom';
+import { sanitizeProjectListItems, unwrapProjectBody } from '@/lib/projectEntity';
 import { phaseLabel } from '@/lib/roomPhases';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -122,13 +123,13 @@ export default function WorkerRoomsPage() {
     try {
       if (pinProjectId) {
         const res = await client.entities.projects.get({ id: String(pinProjectId) });
-        const row = res?.data;
+        const row = unwrapProjectBody(res?.data);
         setProjects(row ? [{ id: row.id, name: row.name }] : []);
       } else {
         const res = useProjectsAll
           ? await fetchProjectsListAll()
           : await client.entities.projects.query({ sort: '-created_at' });
-        const items = extractProjectItemsFromListBody(res?.data ?? res) as Project[];
+        const items = sanitizeProjectListItems(extractProjectItemsFromListBody(res?.data ?? res) as unknown[]);
         setProjects(items);
       }
     } catch {

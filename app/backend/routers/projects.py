@@ -173,13 +173,23 @@ async def get_projects(
     service = ProjectsService(db)
     try:
         owner_uid = None if app_role == ROLE_ADMIN else str(current_user.id)
+        worker_scope = worker_project_scope(current_user)
         result = await service.get_by_id(
             id,
             user_id=owner_uid,
-            worker_project_id=worker_project_scope(current_user),
+            worker_project_id=worker_scope,
         )
         if not result:
-            logger.warning(f"Projects with id {id} not found")
+            logger.warning(
+                "GET /entities/projects/%s -> 404. app_role=%s owner_uid=%s worker_project_scope=%s user_type=%s",
+                id,
+                app_role,
+                owner_uid,
+                worker_scope,
+                "worker_session"
+                if getattr(current_user, "is_worker_session", False)
+                else ("provisional_admin" if getattr(current_user, "is_provisional_admin", False) else "standard"),
+            )
             raise HTTPException(status_code=404, detail="Projects not found")
         
         return result

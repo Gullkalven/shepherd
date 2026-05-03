@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { PROJECTS_NAV_REFRESH_EVENT } from '@/lib/runAppLogout';
 
 type LoginResponse = {
   access_token: string;
@@ -75,6 +76,7 @@ export default function AdminLoginPage() {
         expiresAt: loginAt + ttlMs,
       });
       toast.success('Admin session started');
+      window.dispatchEvent(new CustomEvent(PROJECTS_NAV_REFRESH_EVENT));
       navigate('/', { replace: true });
     } catch {
       toast.error('Network error');

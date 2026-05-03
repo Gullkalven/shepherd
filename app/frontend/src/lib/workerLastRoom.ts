@@ -93,3 +93,11 @@ export function clearWorkerLastRoom(): void {
     /* ignore */
   }
 }
+
+/** Clears saved room shortcut if it pointed at this project (stale id after delete or 404). */
+export function clearWorkerLastRoomIfMatchesProject(projectId: number): void {
+  const last = readWorkerLastRoom();
+  if (last && last.projectId === projectId) {
+    clearWorkerLastRoom();
+  }
+}

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import DevRoleSwitcher from '@/components/DevRoleSwitcher';
 import { cn } from '@/lib/utils';
+import { parseProjectRouteParam, unwrapProjectBody } from '@/lib/projectEntity';
 
 interface FloorRow {
   id: number;
@@ -152,21 +153,37 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
       setTreeLoading(false);
       return;
     }
+    const parsed = parseProjectRouteParam(projectId);
+    if (parsed === null) {
+      setProject(null);
+      setFloors([]);
+      setRooms([]);
+      setTreeLoading(false);
+      return;
+    }
     setTreeLoading(true);
     try {
-      const [projRes, floorsRes, roomsRes] = await Promise.all([
-        client.entities.projects.get({ id: projectId }),
+      const projRes = await client.entities.projects.get({ id: String(parsed) });
+      const row = unwrapProjectBody(projRes?.data);
+      if (!row) {
+        setProject(null);
+        setFloors([]);
+        setRooms([]);
+        return;
+      }
+      const resolvedId = row.id;
+      const [floorsRes, roomsRes] = await Promise.all([
         client.entities.floors.query({
-          query: { project_id: Number(projectId) },
+          query: { project_id: resolvedId },
           sort: 'floor_number',
           limit: 100,
         }),
         client.entities.rooms.query({
-          query: { project_id: Number(projectId) },
+          query: { project_id: resolvedId },
           limit: 500,
         }),
       ]);
-      setProject(projRes?.data ? { id: projRes.data.id, name: projRes.data.name } : null);
+      setProject({ id: row.id, name: row.name });
       setFloors((floorsRes?.data?.items || []) as FloorRow[]);
       setRooms((roomsRes?.data?.items || []) as RoomRow[]);
     } catch {

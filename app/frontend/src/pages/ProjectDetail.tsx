@@ -21,6 +21,12 @@ import ProjectWorkersPanel from '@/components/ProjectWorkersPanel';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { apiFailureMessage, devLogApiFailure, httpStatusFromError } from '@/lib/apiErrors';
 import { shepherdDebug } from '@/lib/shepherdDebug';
+import {
+  parseProjectRouteParam,
+  unwrapProjectBody,
+  type ProjectRecord,
+} from '@/lib/projectEntity';
+import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
 
 /** Compact labels for default phases; other keys use first letter */
 function phaseProgressLetter(key: string): string {
@@ -58,10 +64,7 @@ interface ProjectTaskRow {
   area_id?: string | null;
 }
 
-interface Project {
-  id: number;
-  name: string;
-}
+type Project = ProjectRecord;
 
 export default function ProjectDetail() {
   const desktopAutoFocus = useDesktopAutoFocus();
@@ -79,6 +82,8 @@ export default function ProjectDetail() {
   const [creating, setCreating] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [loading, setLoading] = useState(true);
+  /** Non-404 failure — show retry without pretending the project exists. */
+  const [loadError, setLoadError] = useState(false);
   const { t } = useI18n();
 
   // Inline edit state for project name
@@ -90,65 +95,107 @@ export default function ProjectDetail() {
   const [editFloorName, setEditFloorName] = useState('');
 
   const reloadProjectState = useCallback(async () => {
-    if (!projectId) return;
-    const [projRes, floorsRes, roomsRes, tasksRes, wfRes] = await Promise.all([
-      client.entities.projects.get({ id: projectId }),
-      client.entities.floors.query({ query: { project_id: Number(projectId) }, sort: 'floor_number', limit: 100 }),
-      client.entities.rooms.query({ query: { project_id: Number(projectId) }, limit: 500 }),
+    const parsed = parseProjectRouteParam(projectId);
+    if (parsed === null) {
+      toast.error('Invalid project link.');
+      navigate('/', { replace: true });
+      throw new Error('invalid project route');
+    }
+
+    const projRes = await client.entities.projects.get({ id: String(parsed) });
+    const row = unwrapProjectBody(projRes?.data);
+    if (!row) {
+      devLogApiFailure('ProjectDetail.unwrapProject', new Error('missing project payload'));
+      throw Object.assign(new Error('Projects not found'), { response: { status: 404 } });
+    }
+
+    const resolvedId = row.id;
+    const [floorsRes, roomsRes, tasksRes] = await Promise.all([
+      client.entities.floors.query({
+        query: { project_id: resolvedId },
+        sort: 'floor_number',
+        limit: 100,
+      }),
+      client.entities.rooms.query({
+        query: { project_id: resolvedId },
+        limit: 500,
+      }),
       client.entities.tasks.query({ limit: 2000, sort: 'room_id' }),
-      client.apiCall.invoke({
-        url: `/api/v1/projects/${projectId}/workflow`,
+    ]);
+
+    let wf: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW;
+    try {
+      const wfRes = await client.apiCall.invoke({
+        url: `/api/v1/projects/${resolvedId}/workflow`,
         method: 'GET',
         data: {},
-      }),
-    ]);
-    setProject(projRes?.data || null);
+      });
+      const rawPhases = wfRes?.data?.phases;
+      if (Array.isArray(rawPhases) && rawPhases.length > 0) {
+        const parsedPhases = rawPhases
+          .filter((p: { key?: string; label?: string }) => p?.key && p?.label)
+          .map((p: { key: string; label: string }) => ({ key: String(p.key), label: String(p.label) }));
+        if (parsedPhases.length > 0) wf = parsedPhases;
+      }
+    } catch (wfErr) {
+      devLogApiFailure('ProjectDetail.workflow', wfErr);
+    }
+
+    setProject({ id: resolvedId, name: row.name });
     setFloors(floorsRes?.data?.items || []);
     const roomItems: Room[] = roomsRes?.data?.items || [];
     setAllRooms(roomItems);
     setProjectTasks((tasksRes?.data?.items || []) as ProjectTaskRow[]);
-    const rawPhases = wfRes?.data?.phases;
-    let wf: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW;
-    if (Array.isArray(rawPhases) && rawPhases.length > 0) {
-      const parsed = rawPhases
-        .filter((p: { key?: string; label?: string }) => p?.key && p?.label)
-        .map((p: { key: string; label: string }) => ({ key: String(p.key), label: String(p.label) }));
-      if (parsed.length > 0) wf = parsed;
-    }
     setPhaseWorkflow(wf);
     if (import.meta.env.DEV) {
-      shepherdDebug('ProjectDetail.loaded', { projectId, projectRowId: projRes?.data?.id });
+      shepherdDebug('ProjectDetail.loaded', { routeParam: projectId, resolvedId });
     }
-  }, [projectId]);
+  }, [projectId, navigate]);
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
+    setLoading(true);
+    setLoadError(false);
     try {
       await reloadProjectState();
     } catch (err) {
       devLogApiFailure('ProjectDetail.loadData', err);
-      const msg = apiFailureMessage(err) ?? 'Failed to load project';
-      toast.error(msg);
       const st = httpStatusFromError(err);
+      const msg = apiFailureMessage(err) ?? 'Failed to load project';
       if (st === 404) {
+        const pid = parseProjectRouteParam(projectId);
+        if (pid !== null) clearWorkerLastRoomIfMatchesProject(pid);
+        toast.error(msg.includes('not found') ? 'Project not found. Returning to your projects.' : msg);
         navigate('/', { replace: true });
+        return;
       }
+      toast.error(msg);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
   }, [projectId, reloadProjectState, navigate]);
 
   useEffect(() => {
+    setFloors([]);
+    setAllRooms([]);
+    setProjectTasks([]);
+    setPhaseWorkflow(DEFAULT_PHASE_WORKFLOW);
+    setProject(null);
+    setLoadError(false);
+  }, [projectId]);
+
+  useEffect(() => {
     loadData();
   }, [loadData]);
 
   const handleCreateFloor = async () => {
-    if (!floorNumber.trim()) return;
+    if (!floorNumber.trim() || !project?.id) return;
     setCreating(true);
     try {
       await client.entities.floors.create({
         data: {
-          project_id: Number(projectId),
+          project_id: project.id,
           floor_number: Number(floorNumber),
           name: floorName.trim() || `Floor ${floorNumber}`,
         },
@@ -278,6 +325,34 @@ export default function ProjectDetail() {
     );
   }
 
+  if (loadError) {
+    return (
+      <div className="min-h-dvh bg-slate-50 dark:bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full space-y-4 p-6 text-center">
+          <p className="text-muted-foreground">Could not load this project.</p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Button type="button" className="h-11 rounded-xl" onClick={() => void loadData()}>
+              Retry
+            </Button>
+            <Button type="button" variant="outline" className="h-11 rounded-xl" onClick={() => navigate('/')}>
+              All projects
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
+        <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  const routeProjectPath = `/project/${project.id}`;
+
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
@@ -351,7 +426,7 @@ export default function ProjectDetail() {
           )}
         </div>
 
-        {isAdmin && projectId ? <ProjectWorkersPanel projectId={Number(projectId)} /> : null}
+        {isAdmin ? <ProjectWorkersPanel projectId={project.id} /> : null}
 
         {/* Floors */}
         <div className="flex items-center justify-between">
@@ -395,7 +470,9 @@ export default function ProjectDetail() {
                 <Card
                   key={floor.id}
                   className="p-4 shepherd-interactive-card"
-                  onClick={() => editingFloorId !== floor.id && navigate(`/project/${projectId}/floor/${floor.id}`)}
+                  onClick={() =>
+                    editingFloorId !== floor.id && navigate(`${routeProjectPath}/floor/${floor.id}`)
+                  }
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">

@@ -9,14 +9,11 @@ import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
 import { queryClient } from '@/lib/queryClient';
 import { clearAdminSession } from '@/lib/adminSession';
 import { clearWorkerSession } from '@/lib/workerSession';
-import { clearWorkerLastRoom } from '@/lib/workerLastRoom';
-
 export const APP_LOGOUT_EVENT = 'shepherd-app-logout';
 
 /** Sidebar / shell: clear all client auth state, invalidate in-flight auth checks, then navigate home. */
 export async function runAppLogout(navigate: NavigateFunction, endSession: () => void) {
   endSession();
-  clearWorkerLastRoom();
   clearLocalAuthMarks();
   setClientLogoutGate();
   bumpAuthMeEpoch();

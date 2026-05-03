@@ -1,6 +1,7 @@
 import { getAPIBaseURL } from '@/lib/config';
 import { clearAdminSession } from '@/lib/adminSession';
 import { clearWorkerSession } from '@/lib/workerSession';
+import { clearWorkerLastRoom } from '@/lib/workerLastRoom';
 
 const LOGOUT_GATE_KEY = 'shepherd_logout_gate';
 
@@ -43,6 +44,7 @@ export function getAuthMeEpoch(): number {
  * Does not touch the network.
  */
 export function clearLocalAuthMarks(): void {
+  clearWorkerLastRoom();
   clearWorkerSession();
   clearAdminSession();
   try {
