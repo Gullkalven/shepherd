@@ -1,13 +1,26 @@
 import logging
 import os
-from typing import Any
+from typing import Any, Optional
 
-from pydantic_settings import BaseSettings
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
 
+def _env_has_nonempty(key: str) -> bool:
+    raw = os.environ.get(key)
+    return raw is not None and bool(str(raw).strip())
+
+
+def log_jwt_secret_env_status(log: logging.Logger) -> None:
+    """Log whether JWT-related env vars are present (never log values)."""
+    log.info("JWT_SECRET_KEY configured: %s", "yes" if _env_has_nonempty("JWT_SECRET_KEY") else "no")
+    log.info("SECRET_KEY configured: %s", "yes" if _env_has_nonempty("SECRET_KEY") else "no")
+
+
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(case_sensitive=False, extra="ignore")
 
     database_url: str = "sqlite:///./construction.db"
 
@@ -34,6 +47,15 @@ class Settings(BaseSettings):
     #: Comma-separated extra browser origins for CORS (preview URLs, etc.). Merged in main.py with defaults.
     cors_origins: str = ""
 
+    #: Primary JWT signing secret (env: JWT_SECRET_KEY)
+    jwt_secret_key: Optional[str] = Field(default=None)
+    #: Fallback application secret used for JWT signing if JWT_SECRET_KEY is unset (env: SECRET_KEY)
+    secret_key: Optional[str] = Field(default=None)
+    #: Signing algorithm for app-issued JWTs (env: JWT_ALGORITHM). Required at runtime — default avoids prod misconfig.
+    jwt_algorithm: str = Field(default="HS256")
+    #: Default access-token lifetime in minutes (env: JWT_EXPIRE_MINUTES)
+    jwt_expire_minutes: int = Field(default=60)
+
     @property
     def backend_url(self) -> str:
         """Generate backend URL from host and port."""
@@ -54,10 +76,6 @@ class Settings(BaseSettings):
         if explicit:
             return explicit.rstrip("/")
         return self.backend_url.rstrip("/")
-
-    class Config:
-        case_sensitive = False
-        extra = "ignore"
 
     def __getattr__(self, name: str) -> Any:
         """
@@ -90,3 +108,23 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+
+def get_jwt_signing_secret() -> Optional[str]:
+    """Return the secret used to sign/verify app JWTs.
+
+    Priority: ``JWT_SECRET_KEY`` (primary), then ``SECRET_KEY`` (fallback), then
+    :attr:`Settings.jwt_secret_key` / :attr:`Settings.secret_key` from pydantic env loading.
+
+    Reads ``os.environ`` first so production uses the live process environment.
+    Never log the return value.
+    """
+    for env_key in ("JWT_SECRET_KEY", "SECRET_KEY"):
+        raw = os.environ.get(env_key)
+        if raw is not None and str(raw).strip():
+            return str(raw).strip()
+    if settings.jwt_secret_key and str(settings.jwt_secret_key).strip():
+        return str(settings.jwt_secret_key).strip()
+    if settings.secret_key and str(settings.secret_key).strip():
+        return str(settings.secret_key).strip()
+    return None

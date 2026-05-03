@@ -1,10 +1,9 @@
 """Provisional admin PIN login — isolated from worker PIN and OIDC (replace with SSO later)."""
 
 import logging
-import os
 
 from core.auth import create_access_token
-from core.config import settings
+from core.config import get_jwt_signing_secret
 from core.database import get_db
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -30,26 +29,20 @@ class AdminProvisionalLoginResponse(BaseModel):
     expires_in_minutes: int
 
 
-def _jwt_can_issue_tokens() -> bool:
-    """True if app JWT can be signed (avoids uncaught ValueError/AttributeError from create_access_token)."""
-    if (os.environ.get("JWT_SECRET_KEY") or "").strip():
-        return True
-    try:
-        s = settings.jwt_secret_key
-        return bool(s and str(s).strip())
-    except AttributeError:
-        return False
-
-
 @router.post("/login", response_model=AdminProvisionalLoginResponse)
 async def provisional_admin_login(body: AdminProvisionalLoginRequest, db: AsyncSession = Depends(get_db)):
-    if not _jwt_can_issue_tokens():
+    signing_available = bool(get_jwt_signing_secret())
+    logger.info(
+        "provisional_admin_login: jwt signing secret available=%s",
+        "yes" if signing_available else "no",
+    )
+    if not signing_available:
         logger.error(
-            "provisional_admin_login blocked: JWT_SECRET_KEY is missing or empty (cannot sign provisional admin token)"
+            "provisional_admin_login blocked: no JWT signing secret (set JWT_SECRET_KEY, or SECRET_KEY as fallback)"
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Server is not configured to issue tokens (set JWT_SECRET_KEY on the backend).",
+            detail="Server is not configured to issue tokens (set JWT_SECRET_KEY, or SECRET_KEY as fallback).",
         )
 
     try:
@@ -72,10 +65,13 @@ async def provisional_admin_login(body: AdminProvisionalLoginRequest, db: AsyncS
         }
         token = create_access_token(claims, expires_minutes=ADMIN_PROVISIONAL_TOKEN_MINUTES)
     except (AttributeError, ValueError) as e:
-        logger.exception("provisional_admin_login: create_access_token failed: %s", e)
+        logger.exception(
+            "provisional_admin_login: create_access_token failed (%s)",
+            type(e).__name__,
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Server is not configured to issue tokens (check JWT_SECRET_KEY).",
+            detail="Server could not issue a token (check JWT_SECRET_KEY or SECRET_KEY, and JWT_ALGORITHM / JWT_EXPIRE_MINUTES).",
         ) from e
 
     logger.info("provisional_admin_login: success (provisional admin token issued)")

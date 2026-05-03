@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 import httpx
-from core.config import settings
+from core.config import get_jwt_signing_secret, settings
 from jose import JWTError, jwt
 from jose.exceptions import ExpiredSignatureError, JWSSignatureError, JWTClaimsError
 
@@ -75,8 +75,9 @@ class AccessTokenError(Exception):
 
 def create_access_token(claims: Dict[str, Any], expires_minutes: Optional[int] = None) -> str:
     """Create signed JWT access token from provided claims."""
-    if not settings.jwt_secret_key:
-        logger.error("JWT secret key is not configured")
+    signing_secret = get_jwt_signing_secret()
+    if not signing_secret:
+        logger.error("JWT signing secret is not configured (set JWT_SECRET_KEY, or SECRET_KEY as fallback)")
         raise ValueError("JWT secret key is not configured")
 
     now = datetime.now(timezone.utc)
@@ -93,7 +94,7 @@ def create_access_token(claims: Dict[str, Any], expires_minutes: Optional[int] =
         }
     )
 
-    token = jwt.encode(token_claims, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+    token = jwt.encode(token_claims, signing_secret, algorithm=settings.jwt_algorithm)
     # Log user hash instead of actual user ID to avoid exposing sensitive information
     user_id = token_claims.get("sub", "unknown")
     user_hash = hashlib.sha256(str(user_id).encode()).hexdigest()[:8] if user_id != "unknown" else "unknown"
@@ -103,12 +104,13 @@ def create_access_token(claims: Dict[str, Any], expires_minutes: Optional[int] =
 
 def decode_access_token(token: str) -> Dict[str, Any]:
     """Decode and validate JWT access token."""
-    if not settings.jwt_secret_key:
-        logger.error("JWT secret key is not configured")
+    signing_secret = get_jwt_signing_secret()
+    if not signing_secret:
+        logger.error("JWT signing secret is not configured (set JWT_SECRET_KEY, or SECRET_KEY as fallback)")
         raise AccessTokenError("Authentication service is misconfigured")
 
     try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(token, signing_secret, algorithms=[settings.jwt_algorithm])
         # Log user hash instead of actual user ID to avoid exposing sensitive information
         user_id = payload.get("sub", "unknown")
         user_hash = hashlib.sha256(str(user_id).encode()).hexdigest()[:8] if user_id != "unknown" else "unknown"

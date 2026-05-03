@@ -6,7 +6,7 @@ import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from core.config import settings
+from core.config import get_jwt_signing_secret, log_jwt_secret_env_status, settings
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -68,6 +68,8 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("=== Application startup initiated ===")
 
+    log_jwt_secret_env_status(logger)
+
     # MODULE_STARTUP_START
     await initialize_database()
     await initialize_mock_data()
@@ -98,9 +100,10 @@ async def lifespan(app: FastAPI):
                         "Provisional admin login disabled: set ADMIN_PASSWORD or SHEPHERD_PROVISIONAL_ADMIN_PIN "
                         "in the backend environment."
                     )
-            if not (os.environ.get("JWT_SECRET_KEY") or "").strip():
+            if not get_jwt_signing_secret():
                 logger.error(
-                    "JWT_SECRET_KEY is not set — POST /api/v1/admin/provisional/login will fail until it is set."
+                    "No JWT signing secret — set JWT_SECRET_KEY (primary) or SECRET_KEY (fallback) so "
+                    "POST /api/v1/admin/provisional/login can issue tokens."
                 )
     # MODULE_STARTUP_END
 
