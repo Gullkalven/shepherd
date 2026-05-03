@@ -18,11 +18,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "rooms",
-        sa.Column("heating_cable_doc", sa.JSON(), nullable=True),
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    columns = [column["name"] for column in inspector.get_columns("rooms")]
+
+    if "heating_cable_doc" not in columns:
+        op.add_column(
+            "rooms",
+            sa.Column("heating_cable_doc", sa.JSON(), nullable=True),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("rooms", "heating_cable_doc")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    columns = [column["name"] for column in inspector.get_columns("rooms")]
+
+    if "heating_cable_doc" in columns:
+        op.drop_column("rooms", "heating_cable_doc")
