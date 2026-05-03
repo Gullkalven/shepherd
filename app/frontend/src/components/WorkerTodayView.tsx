@@ -296,7 +296,7 @@ export default function WorkerTodayView({
 
   if (sitesLoading && sites.length === 0) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-slate-50 dark:bg-background lg:pb-10">
+      <div className="flex min-h-dvh min-w-0 max-w-full items-center justify-center overflow-x-hidden bg-slate-50 dark:bg-background lg:pb-10">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1E3A5F] border-t-transparent dark:border-blue-400" />
       </div>
     );
@@ -318,8 +318,8 @@ export default function WorkerTodayView({
   })();
 
   return (
-    <div className="min-h-dvh bg-slate-50 dark:bg-background pb-4 lg:pb-10">
-      <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
+    <div className="min-h-dvh min-w-0 max-w-full overflow-x-hidden bg-slate-50 pb-4 dark:bg-background lg:pb-10">
+      <div className="mx-auto w-full min-w-0 max-w-lg space-y-4 pb-4 pt-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:max-w-none lg:px-6 xl:px-8">
         <header className="space-y-2">
           <p className="text-base font-semibold text-slate-900 dark:text-foreground">
             Logged in as {loginLabel}

@@ -40,7 +40,7 @@ export function RoomLocationNav({
   );
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+    <div className="flex min-w-0 max-w-full flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <nav
         className={cn(
           'min-w-0 flex-wrap items-center gap-1 text-sm text-muted-foreground',
@@ -74,7 +74,7 @@ export function RoomLocationNav({
         </span>
       </nav>
 
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm shrink-0">
+      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-x-2 gap-y-1 text-sm shrink-0">
         {prevRoom ? (
           <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5" asChild>
             <Link

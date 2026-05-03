@@ -105,10 +105,10 @@ export default function WorkerMobileBottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-md lg:hidden"
+      className="fixed bottom-0 left-0 right-0 z-50 box-border w-full min-w-0 max-w-full border-t border-border bg-background/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] backdrop-blur-md lg:hidden"
       aria-label="Worker navigation"
     >
-      <ul className="mx-auto flex max-w-lg items-stretch justify-evenly gap-3 px-4">
+      <ul className="mx-auto flex w-full min-w-0 max-w-lg items-stretch justify-evenly gap-2 sm:gap-3">
         {items.map(({ key, label, icon: Icon, active, onClick }) => (
           <li key={key} className="min-w-0 flex-1">
             <button

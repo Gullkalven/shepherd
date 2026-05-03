@@ -1875,8 +1875,8 @@ export default function RoomDetail() {
         : 'Last room on this floor';
 
   return (
-    <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
-      <div className="mx-auto w-full max-w-lg space-y-4 px-3 py-3 sm:px-4 sm:py-4 lg:max-w-none lg:mx-0 lg:px-6 xl:px-8">
+    <div className="min-h-dvh min-w-0 max-w-full bg-slate-50 dark:bg-background pb-8">
+      <div className="mx-auto w-full min-w-0 max-w-lg space-y-4 py-3 pl-[max(0.75rem,env(safe-area-inset-left))] pr-[max(0.75rem,env(safe-area-inset-right))] sm:py-4 lg:mx-0 lg:max-w-none lg:pl-6 lg:pr-6 xl:pl-8 xl:pr-8">
         {projectId && floorId ? (
           <RoomLocationNav
             projectId={projectId}

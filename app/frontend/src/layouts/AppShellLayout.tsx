@@ -46,7 +46,7 @@ function MobileNavHeader({
             <Menu className="h-5 w-5" />
           </Button>
         </SheetTrigger>
-        <SheetContent side="left" className="flex w-[min(100vw-2rem,18rem)] flex-col p-0">
+        <SheetContent side="left" className="flex w-[min(calc(100%-2rem),18rem)] flex-col p-0">
           <AppNavSidebar variant="sheet" onNavigate={() => setMobileOpen(false)} />
         </SheetContent>
       </Sheet>
@@ -66,7 +66,7 @@ function AuthenticatedShellLayout({ outletContext }: { outletContext: AppShellOu
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="min-h-dvh bg-slate-50 dark:bg-background">
+    <div className="min-h-dvh min-w-0 max-w-full overflow-x-hidden bg-slate-50 dark:bg-background">
       <AppNavSidebar variant="desktop" />
 
       <MobileNavHeader mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
@@ -75,9 +75,9 @@ function AuthenticatedShellLayout({ outletContext }: { outletContext: AppShellOu
 
       <div
         className={cn(
-          'min-h-0 lg:pl-56',
+          'min-h-0 min-w-0 max-w-full lg:pl-56',
           isWorker &&
-            'max-lg:pb-[calc(3.75rem+env(safe-area-inset-bottom))] max-lg:pt-[max(0.25rem,env(safe-area-inset-top))]'
+            'max-lg:pb-[calc(4.25rem+env(safe-area-inset-bottom))] max-lg:pt-[max(0.25rem,env(safe-area-inset-top))]'
         )}
       >
         <Outlet context={outletContext} />

@@ -679,7 +679,7 @@ export function WorkerRoomView(p: Props) {
   }, [p.showChecklistSection, p.tasksForSelectedPhase, p.showHeatingModule, selectedHeatingDocProgress]);
 
   return (
-    <div className="mx-auto w-full max-w-lg space-y-3 px-3 py-3 sm:space-y-4 sm:px-4 sm:py-4 lg:max-w-xl">
+    <div className="mx-auto w-full min-w-0 max-w-lg space-y-3 py-3 sm:space-y-4 sm:py-4 lg:max-w-xl">
       {/* Room hero — decision-critical: room, status, due, open work, phases */}
       <Card className="overflow-hidden border-[#1E3A5F]/20 bg-gradient-to-br from-[#1E3A5F]/[0.09] via-background to-background shadow-md ring-1 ring-black/[0.03] dark:from-blue-950/45 dark:via-background dark:to-background dark:ring-white/[0.06]">
         <div className="space-y-3 p-4 sm:space-y-3.5 sm:p-5">
@@ -731,12 +731,12 @@ export function WorkerRoomView(p: Props) {
           </div>
 
           {workflowKeys.length > 1 ? (
-            <div className="space-y-1.5">
+            <div className="min-w-0 space-y-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 Phases
               </p>
-              <div className="-mx-0.5 overflow-x-auto overscroll-x-contain px-0.5 [-webkit-overflow-scrolling:touch]">
-                <div className="flex w-max max-w-none gap-2 pb-0.5">
+              <div className="min-w-0 max-w-full">
+                <div className="flex flex-wrap gap-1.5 sm:gap-2">
                   {workflowKeys.map((key) => {
                     const st = heroPhaseChipState(p.phaseStepStatuses[key]);
                     const stateLabel = heroPhaseStateLabel(st);
@@ -754,7 +754,7 @@ export function WorkerRoomView(p: Props) {
                         type="button"
                         onClick={() => p.onPhaseSelect(key)}
                         className={cn(
-                          'flex max-w-[10.5rem] shrink-0 flex-col items-start gap-0.5 rounded-xl border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+                          'flex min-w-0 max-w-[10.5rem] flex-[1_1_7.5rem] flex-col items-start gap-0.5 rounded-xl border px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
                           sel &&
                             'border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm ring-1 ring-[#1E3A5F]/20 dark:border-blue-600 dark:bg-blue-700 dark:ring-blue-500/30',
                           !sel && st === 'complete' && 'border-emerald-300/70 bg-emerald-50/50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-100',
