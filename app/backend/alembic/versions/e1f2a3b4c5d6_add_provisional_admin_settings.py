@@ -19,15 +19,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "provisional_admin_settings",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("pin_hash", sa.String(), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.PrimaryKeyConstraint("id"),
-        sa.CheckConstraint("id = 1", name="ck_provisional_admin_single_row"),
-    )
+    inspector = sa.inspect(op.get_bind())
+    if "provisional_admin_settings" not in inspector.get_table_names():
+        op.create_table(
+            "provisional_admin_settings",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("pin_hash", sa.String(), nullable=True),
+            sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+            sa.PrimaryKeyConstraint("id"),
+            sa.CheckConstraint("id = 1", name="ck_provisional_admin_single_row"),
+        )
 
 
 def downgrade() -> None:
-    op.drop_table("provisional_admin_settings")
+    inspector = sa.inspect(op.get_bind())
+    if "provisional_admin_settings" in inspector.get_table_names():
+        op.drop_table("provisional_admin_settings")
