@@ -8,9 +8,12 @@ from datetime import datetime
 
 from core.config import settings
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
 
 # MODULE_IMPORTS_START
 from services.database import initialize_database, close_database
@@ -79,6 +82,26 @@ async def lifespan(app: FastAPI):
 
             await ensure_seed_from_env(_s)
             await ensure_bootstrap_admin_user_record(_s)
+
+            from services.provisional_admin_auth import _plaintext_pin_from_env, get_settings_row
+
+            row = await get_settings_row(_s)
+            if not row or not row.pin_hash:
+                pin_plain, _src = _plaintext_pin_from_env()
+                if pin_plain:
+                    logger.error(
+                        "provisional_admin_settings.pin_hash is empty after startup seed — "
+                        "run database migrations (alembic upgrade head) so provisional admin login can work."
+                    )
+                else:
+                    logger.error(
+                        "Provisional admin login disabled: set ADMIN_PASSWORD or SHEPHERD_PROVISIONAL_ADMIN_PIN "
+                        "in the backend environment."
+                    )
+            if not (os.environ.get("JWT_SECRET_KEY") or "").strip():
+                logger.error(
+                    "JWT_SECRET_KEY is not set — POST /api/v1/admin/provisional/login will fail until it is set."
+                )
     # MODULE_STARTUP_END
 
     logger.info("=== Application startup completed successfully ===")
@@ -119,6 +142,24 @@ def _build_cors_allow_origins() -> list[str]:
             if p:
                 merged.append(p)
     return list(dict.fromkeys(merged))
+
+
+def _cors_header_dict(request: Request) -> dict[str, str]:
+    """Mirror CORSMiddleware allowlist so JSON error responses from handlers include CORS headers."""
+    origin = request.headers.get("origin")
+    allow = _build_cors_allow_origins()
+    if origin and origin in allow:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+        }
+    return {}
+
+
+def add_cors_headers(request: Request, response: Response) -> Response:
+    for key, val in _cors_header_dict(request).items():
+        response.headers[key] = val
+    return response
 
 
 # Single CORS middleware — avoid stacking duplicate CORSMiddleware instances.
@@ -188,37 +229,49 @@ setup_logging()
 include_routers_from_package(app, "routers")
 
 
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Include CORS on validation failures (browser shows them as network/CORS when headers missing)."""
+    return add_cors_headers(
+        request,
+        JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content={"detail": exc.errors()}),
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def starlette_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """HTTPException (FastAPI) subclasses this — ensures CORS headers on 401/403/503 etc."""
+    return add_cors_headers(
+        request,
+        JSONResponse(status_code=exc.status_code, content={"detail": exc.detail}),
+    )
+
+
 # Add exception handler for all exceptions except HTTPException
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    """Handle all exceptions except HTTPException
-
-    - Dev environment: Return full stack trace and exception details
-    - Prod environment: Return only "Internal server error"
-    """
-    # Re-raise HTTPException to let FastAPI handle it normally
-    if isinstance(exc, HTTPException):
-        raise exc
+    """Handle unexpected exceptions with JSON + CORS (failed handlers bypass CORSMiddleware response path)."""
+    if isinstance(exc, StarletteHTTPException):
+        return await starlette_http_exception_handler(request, exc)
 
     logger = logging.getLogger(__name__)
     error_message = str(exc)
     error_type = type(exc).__name__
 
-    # Log full error details regardless of environment
-    logger.error(f"Exception: {error_type}: {error_message}\n{traceback.format_exc()}")
+    logger.error("Unhandled exception: %s: %s\n%s", error_type, error_message, traceback.format_exc())
 
-    # Determine if we're in dev environment
     is_dev = os.getenv("ENVIRONMENT", "prod").lower() == "dev"
 
     if is_dev:
-        # Dev environment: return full stack trace and exception details
         error_detail = f"{error_type}: {error_message}\n{traceback.format_exc()}"
-        return JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": error_detail})
+        body = {"detail": error_detail}
     else:
-        # Prod environment: return only generic error message
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content={"detail": "Internal Server Error"}
-        )
+        body = {"detail": "Internal Server Error"}
+
+    return add_cors_headers(
+        request,
+        JSONResponse(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, content=body),
+    )
 
 
 @app.get("/")
