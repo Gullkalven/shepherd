@@ -30,7 +30,8 @@ type TranslationKey =
   | 'workerNavHome'
   | 'workerNavWork'
   | 'workerNavSearch'
-  | 'workerNavSettings';
+  | 'workerNavSettings'
+  | 'workerNavRoom';
 
 const DICTIONARY: Record<TranslationKey, string> = {
   projects: 'Projects',
@@ -63,6 +64,7 @@ const DICTIONARY: Record<TranslationKey, string> = {
   workerNavWork: 'Work',
   workerNavSearch: 'Search',
   workerNavSettings: 'Settings',
+  workerNavRoom: 'Room',
 };
 
 type I18nContextValue = {

@@ -1,7 +1,25 @@
 const STORAGE_KEY = 'shepherd_worker_last_room';
 
+/** Fired after `persistWorkerLastRoom` writes — lets Worker UI (e.g. bottom nav) re-read storage immediately. */
+export const WORKER_LAST_ROOM_PERSISTED_EVENT = 'shepherd-worker-last-room-persisted';
+
 /** Hash on `/` — bottom nav Search focuses the worker home room finder (see `WorkerTodayView`). */
 export const WORKER_HOME_FIND_ROOM_HASH = 'find-room';
+
+/** Match `/project/:projectId/floor/:floorId/room/:roomId` (no trailing segment). */
+export function parseWorkerRoomPath(pathname: string): {
+  projectId: number;
+  floorId: number;
+  roomId: number;
+} | null {
+  const m = pathname.match(/^\/project\/(\d+)\/floor\/(\d+)\/room\/(\d+)$/);
+  if (!m) return null;
+  const projectId = Number(m[1]);
+  const floorId = Number(m[2]);
+  const roomId = Number(m[3]);
+  if (!Number.isFinite(projectId) || !Number.isFinite(floorId) || !Number.isFinite(roomId)) return null;
+  return { projectId, floorId, roomId };
+}
 
 export type WorkerLastRoom = {
   projectId: number;
@@ -62,6 +80,7 @@ export function persistWorkerLastRoom(entry: {
       savedAt: new Date().toISOString(),
     };
     globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(payload));
+    globalThis.window?.dispatchEvent(new CustomEvent(WORKER_LAST_ROOM_PERSISTED_EVENT));
   } catch {
     /* ignore */
   }

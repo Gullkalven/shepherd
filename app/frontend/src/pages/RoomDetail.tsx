@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { client, postWorkerPhaseHandoff } from '@/lib/api';
 import { persistWorkerLastRoom, WORKER_ROOM_CHECKLIST_ANCHOR, WORKER_ROOM_DOCUMENTATION_ANCHOR } from '@/lib/workerLastRoom';
@@ -639,7 +639,8 @@ export default function RoomDetail() {
     loadData();
   }, [loadData]);
 
-  useEffect(() => {
+  /** Persist before paint so worker bottom nav can read updated last-room label on room switches. */
+  useLayoutEffect(() => {
     if (permissionsLoading || !isWorker) return;
     if (!room || !projectId || !floorId || !roomId) return;
     persistWorkerLastRoom({

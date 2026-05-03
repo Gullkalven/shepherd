@@ -1,11 +1,24 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { House, DoorOpen, Search, Cog } from 'lucide-react';
 import { usePermissions } from '@/lib/permissions';
-import { readWorkerLastRoom, workerRoomPath, WORKER_HOME_FIND_ROOM_HASH } from '@/lib/workerLastRoom';
+import {
+  readWorkerLastRoom,
+  workerRoomPath,
+  WORKER_HOME_FIND_ROOM_HASH,
+  WORKER_LAST_ROOM_PERSISTED_EVENT,
+  parseWorkerRoomPath,
+} from '@/lib/workerLastRoom';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 type NavKey = 'home' | 'currentRoom' | 'findRoom' | 'settings';
+
+function truncateRoomLabel(s: string, max = 8): string {
+  const t = s.trim();
+  if (!t) return '';
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+}
 
 export default function WorkerMobileBottomNav() {
   const navigate = useNavigate();
@@ -15,31 +28,50 @@ export default function WorkerMobileBottomNav() {
   const pathname = location.pathname;
   const hash = location.hash.replace(/^#/, '');
 
-  if (loading || !isWorker) return null;
+  /** Re-render when last-room storage updates (same route, new room data). */
+  const [, setStorageEpoch] = useState(0);
+  useEffect(() => {
+    const onPersist = () => setStorageEpoch((n) => n + 1);
+    window.addEventListener(WORKER_LAST_ROOM_PERSISTED_EVENT, onPersist);
+    return () => window.removeEventListener(WORKER_LAST_ROOM_PERSISTED_EVENT, onPersist);
+  }, []);
 
+  const roomRoute = useMemo(() => parseWorkerRoomPath(pathname), [pathname]);
   const last = readWorkerLastRoom();
-  const currentRoomPath = last
-    ? `/project/${last.projectId}/floor/${last.floorId}/room/${last.roomId}`
-    : null;
 
-  const roomLabelShort = (() => {
+  const idsMatch = Boolean(
+    roomRoute &&
+      last &&
+      last.projectId === roomRoute.projectId &&
+      last.floorId === roomRoute.floorId &&
+      last.roomId === roomRoute.roomId
+  );
+
+  const roomLabelShort = useMemo(() => {
+    if (roomRoute) {
+      if (idsMatch && last?.roomNumber?.trim()) {
+        return truncateRoomLabel(last.roomNumber);
+      }
+      return t('workerNavRoom');
+    }
     if (!last) return t('workerNavWork');
     const n = last.roomNumber?.trim();
-    if (n) return n.length > 8 ? `${n.slice(0, 7)}…` : n;
+    if (n) return truncateRoomLabel(n);
     return t('workerNavWork');
-  })();
+  }, [roomRoute, idsMatch, last, t]);
 
   const isHomeActive = pathname === '/' && hash !== WORKER_HOME_FIND_ROOM_HASH;
   const isSearchActive = pathname === '/' && hash === WORKER_HOME_FIND_ROOM_HASH;
-  const isRoomActive = Boolean(currentRoomPath && pathname === currentRoomPath);
+  const isRoomActive = Boolean(roomRoute);
   const isSettingsActive = pathname === '/worker/settings';
 
   const goCurrentRoom = () => {
-    if (!last) {
+    const snap = readWorkerLastRoom();
+    if (!snap) {
       navigate('/');
       return;
     }
-    navigate(workerRoomPath(last.projectId, last.floorId, last.roomId, { focusChecklist: true }));
+    navigate(workerRoomPath(snap.projectId, snap.floorId, snap.roomId, { focusChecklist: true }));
   };
 
   const goFindRoom = () => {
@@ -82,6 +114,8 @@ export default function WorkerMobileBottomNav() {
       onClick: () => navigate('/worker/settings'),
     },
   ];
+
+  if (loading || !isWorker) return null;
 
   return (
     <nav
