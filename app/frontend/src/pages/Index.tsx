@@ -28,6 +28,7 @@ import {
 } from '@/lib/appLogout';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
+import { readAdminSession } from '@/lib/adminSession';
 
 interface Project {
   id: number;
@@ -61,6 +62,7 @@ function IndexContent({
     canDeleteProject,
     canEdit,
     isWorker,
+    isAdmin,
     loading: permLoading,
     sessionIsPinWorker,
     sessionIsProvisionalAdmin,
@@ -86,6 +88,28 @@ function IndexContent({
     const devHost = isDevRoleSwitcherHost();
     if (devHost) {
       const stored = getLocalDevUser();
+      const pinOrAdmin =
+        !!(readWorkerSession()?.token || readAdminSession()?.token);
+      if (pinOrAdmin) {
+        setLoading(true);
+        if (isClientLogoutGateActive()) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+        const startEpoch = getAuthMeEpoch();
+        try {
+          const res = await client.auth.me();
+          if (startEpoch !== getAuthMeEpoch()) return;
+          if (isClientLogoutGateActive()) return;
+          setUser(res?.data ?? null);
+        } catch {
+          setUser(null);
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
       setUser(sessionActive && stored ? stored : null);
       setLoading(false);
       return;
@@ -120,7 +144,8 @@ function IndexContent({
 
   const loadProjects = useCallback(async () => {
     const devHost = isDevRoleSwitcherHost();
-    const useProjectsAll = !devHost;
+    /** Deployed admins use `/projects/all` (Bearer); workers use scoped GET list (backend filters by role). */
+    const useProjectsAll = !devHost && isAdmin;
     const ws = readWorkerSession();
     const pinProjectId = ws?.token && ws.projectId ? ws.projectId : null;
     // Localhost: list only when signed in. Deployed: load from /all whenever demo session or API user exists (no auth.me gate).
@@ -168,7 +193,7 @@ function IndexContent({
     } finally {
       setProjectsLoading(false);
     }
-  }, [user]);
+  }, [user, isAdmin]);
 
   useEffect(() => {
     void loadProjects();
@@ -412,13 +437,23 @@ function IndexContent({
         </div>
 
         {projects.length === 0 ? (
-          <Card className="p-8 text-center">
+          <Card className="p-8 text-center space-y-4">
             <FolderOpen className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
             <p className="text-muted-foreground">No projects yet</p>
             {canCreateProject && (
-              <p className="text-sm text-muted-foreground mt-1">
-                Create your first project to get started
-              </p>
+              <>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Create your first project to add floors, rooms, and site workers.
+                </p>
+                <Button
+                  type="button"
+                  onClick={() => setShowCreate(true)}
+                  className="bg-[#1E3A5F] hover:bg-[#2a4f7a] dark:bg-blue-600 dark:hover:bg-blue-700 h-10 rounded-xl"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Create project
+                </Button>
+              </>
             )}
           </Card>
         ) : (

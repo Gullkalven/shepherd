@@ -17,9 +17,8 @@ from services.pin_hash import hash_pin, verify_pin
 logger = logging.getLogger(__name__)
 
 
-async def list_for_project(db: AsyncSession, *, project_id: int, owner_user_id: str) -> List[Project_workers]:
-    ok = await _project_owned_by(db, project_id, owner_user_id)
-    if not ok:
+async def list_for_project(db: AsyncSession, *, project_id: int) -> List[Project_workers]:
+    if not await _project_exists(db, project_id):
         return []
     r = await db.execute(
         select(Project_workers).where(Project_workers.project_id == project_id).order_by(Project_workers.id.asc())
@@ -31,12 +30,11 @@ async def create_worker(
     db: AsyncSession,
     *,
     project_id: int,
-    owner_user_id: str,
     name: str,
     pin: str,
     role: str = "worker",
 ) -> Optional[Project_workers]:
-    if not await _project_owned_by(db, project_id, owner_user_id):
+    if not await _project_exists(db, project_id):
         return None
     nm = (name or "").strip()
     if not nm:
@@ -64,13 +62,12 @@ async def update_worker(
     *,
     project_id: int,
     worker_id: int,
-    owner_user_id: str,
     name: Optional[str] = None,
     pin: Optional[str] = None,
     active: Optional[bool] = None,
     role: Optional[str] = None,
 ) -> Optional[Project_workers]:
-    if not await _project_owned_by(db, project_id, owner_user_id):
+    if not await _project_exists(db, project_id):
         return None
     r = await db.execute(
         select(Project_workers).where(
@@ -119,10 +116,8 @@ async def verify_worker_login(
     return None
 
 
-async def get_worker_by_id(
-    db: AsyncSession, worker_id: int, project_id: int, owner_user_id: str
-) -> Optional[Project_workers]:
-    if not await _project_owned_by(db, project_id, owner_user_id):
+async def get_worker_by_id(db: AsyncSession, worker_id: int, project_id: int) -> Optional[Project_workers]:
+    if not await _project_exists(db, project_id):
         return None
     r = await db.execute(
         select(Project_workers).where(
@@ -138,8 +133,8 @@ async def worker_row_by_id(db: AsyncSession, worker_id: int) -> Optional[Project
     return r.scalar_one_or_none()
 
 
-async def _project_owned_by(db: AsyncSession, project_id: int, user_id: str) -> bool:
-    pr = await db.execute(select(Projects).where(Projects.id == project_id, Projects.user_id == user_id))
+async def _project_exists(db: AsyncSession, project_id: int) -> bool:
+    pr = await db.execute(select(Projects).where(Projects.id == project_id))
     return pr.scalar_one_or_none() is not None
 
 

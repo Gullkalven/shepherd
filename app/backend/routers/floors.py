@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.floors import FloorsService
 from dependencies.auth import get_current_user
+from dependencies.entity_scope import entity_owner_user_id
+from dependencies.roles import ROLE_ADMIN, get_current_app_role, require_admin_role
 from dependencies.worker_scope import worker_project_scope
-from dependencies.roles import require_admin_role
 from schemas.auth import UserResponse
 
 # Set up logging
@@ -89,6 +90,7 @@ async def query_floorss(
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
     current_user: UserResponse = Depends(get_current_user),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Query floorss with filtering, sorting, and pagination (user can only see their own records)"""
@@ -109,7 +111,7 @@ async def query_floorss(
             limit=limit,
             query_dict=query_dict,
             sort=sort,
-            user_id=str(current_user.id),
+            user_id=owner_uid,
             worker_project_id=worker_project_scope(current_user),
         )
         logger.debug(f"Found {result['total']} floorss")
@@ -128,9 +130,11 @@ async def query_floorss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
-    # Query floorss with filtering, sorting, and pagination without user limitation
+    """Global floors listing — admins only (Bearer required)."""
     logger.debug(f"Querying floorss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
 
     service = FloorsService(db)
@@ -163,6 +167,7 @@ async def get_floors(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single floors by ID (user can only see their own records)"""
@@ -170,9 +175,10 @@ async def get_floors(
     
     service = FloorsService(db)
     try:
+        owner_uid = None if app_role == ROLE_ADMIN else str(current_user.id)
         result = await service.get_by_id(
             id,
-            user_id=str(current_user.id),
+            user_id=owner_uid,
             worker_project_id=worker_project_scope(current_user),
         )
         if not result:
@@ -260,8 +266,8 @@ async def update_floorss_batch(
             result = await service.update(
                 item.id,
                 update_dict,
-                user_id=str(current_user.id),
-                worker_project_id=worker_project_scope(current_user),
+                user_id=None,
+                worker_project_id=None,
             )
             if result:
                 results.append(result)
@@ -292,8 +298,8 @@ async def update_floors(
         result = await service.update(
             id,
             update_dict,
-            user_id=str(current_user.id),
-            worker_project_id=worker_project_scope(current_user),
+            user_id=None,
+            worker_project_id=None,
         )
         if not result:
             logger.warning(f"Floors with id {id} not found for update")
@@ -328,8 +334,8 @@ async def delete_floorss_batch(
         for item_id in request.ids:
             success = await service.delete(
                 item_id,
-                user_id=str(current_user.id),
-                worker_project_id=worker_project_scope(current_user),
+                user_id=None,
+                worker_project_id=None,
             )
             if success:
                 deleted_count += 1
@@ -356,8 +362,8 @@ async def delete_floors(
     try:
         success = await service.delete(
             id,
-            user_id=str(current_user.id),
-            worker_project_id=worker_project_scope(current_user),
+            user_id=None,
+            worker_project_id=None,
         )
         if not success:
             logger.warning(f"Floors with id {id} not found for deletion")

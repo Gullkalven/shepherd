@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.rooms import RoomsService
 from dependencies.auth import get_current_user
+from dependencies.entity_scope import entity_owner_user_id
 from dependencies.worker_scope import worker_project_scope
 from dependencies.room_lock import ROOM_LOCKED_DETAIL, ensure_room_mutable
 from dependencies.roles import (
@@ -327,6 +328,7 @@ async def query_roomss(
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
     current_user: UserResponse = Depends(get_current_user),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Query roomss with filtering, sorting, and pagination (user can only see their own records)"""
@@ -347,7 +349,7 @@ async def query_roomss(
             limit=limit,
             query_dict=query_dict,
             sort=sort,
-            user_id=str(current_user.id),
+            user_id=owner_uid,
             worker_project_id=worker_project_scope(current_user),
         )
         logger.debug(f"Found {result['total']} roomss")
@@ -366,9 +368,11 @@ async def query_roomss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
-    # Query roomss with filtering, sorting, and pagination without user limitation
+    """Global rooms listing — admins only (Bearer required)."""
     logger.debug(f"Querying roomss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
 
     service = RoomsService(db)
@@ -401,6 +405,7 @@ async def get_rooms(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single rooms by ID (user can only see their own records)"""
@@ -408,9 +413,10 @@ async def get_rooms(
     
     service = RoomsService(db)
     try:
+        owner_uid = None if app_role == ROLE_ADMIN else str(current_user.id)
         result = await service.get_by_id(
             id,
-            user_id=str(current_user.id),
+            user_id=owner_uid,
             worker_project_id=worker_project_scope(current_user),
         )
         if not result:

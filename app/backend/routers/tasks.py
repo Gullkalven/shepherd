@@ -12,7 +12,7 @@ from core.database import get_db
 from models.rooms import Rooms
 from services.tasks import TasksService
 from dependencies.auth import get_current_user
-from dependencies.worker_scope import worker_project_scope
+from dependencies.entity_scope import entity_owner_user_id
 from dependencies.phase_edit import (
     effective_task_phase,
     ensure_room_phase_editable_for_worker,
@@ -20,7 +20,8 @@ from dependencies.phase_edit import (
 )
 from dependencies.room_areas import norm_area_id, room_phase_for_area
 from dependencies.room_lock import ensure_room_mutable
-from dependencies.roles import get_current_app_role
+from dependencies.roles import ROLE_ADMIN, get_current_app_role, require_admin_role
+from dependencies.worker_scope import worker_project_scope
 from schemas.auth import UserResponse
 from services.room_activity import actor_display, append_room_activity, phase_display_label
 
@@ -242,6 +243,7 @@ async def query_taskss(
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
     current_user: UserResponse = Depends(get_current_user),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Query taskss with filtering, sorting, and pagination (user can only see their own records)"""
@@ -262,7 +264,7 @@ async def query_taskss(
             limit=limit,
             query_dict=query_dict,
             sort=sort,
-            user_id=str(current_user.id),
+            user_id=owner_uid,
             worker_project_id=worker_project_scope(current_user),
         )
         logger.debug(f"Found {result['total']} taskss")
@@ -281,9 +283,11 @@ async def query_taskss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
-    # Query taskss with filtering, sorting, and pagination without user limitation
+    """Global tasks listing — admins only (Bearer required)."""
     logger.debug(f"Querying taskss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
 
     service = TasksService(db)
@@ -316,6 +320,7 @@ async def get_tasks(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single tasks by ID (user can only see their own records)"""
@@ -323,9 +328,10 @@ async def get_tasks(
     
     service = TasksService(db)
     try:
+        owner_uid = None if app_role == ROLE_ADMIN else str(current_user.id)
         result = await service.get_by_id(
             id,
-            user_id=str(current_user.id),
+            user_id=owner_uid,
             worker_project_id=worker_project_scope(current_user),
         )
         if not result:

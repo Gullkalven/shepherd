@@ -343,9 +343,24 @@ export default function ProjectDetail() {
         </div>
 
         {floors.length === 0 ? (
-          <Card className="p-8 text-center">
+          <Card className="p-8 text-center space-y-4">
             <Layers className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
             <p className="text-muted-foreground">No floors yet</p>
+            {canCreateFloor && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Add a floor, then open it to create rooms and checklist tasks.
+                </p>
+                <Button
+                  type="button"
+                  onClick={() => setShowCreate(true)}
+                  className="bg-[#1E3A5F] hover:bg-[#2a4f7a] dark:bg-blue-600 dark:hover:bg-blue-700 h-10 rounded-xl"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add floor
+                </Button>
+              </>
+            )}
           </Card>
         ) : (
           <div className="space-y-3">

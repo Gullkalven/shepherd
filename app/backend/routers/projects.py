@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.projects import ProjectsService
 from dependencies.auth import get_current_user
-from dependencies.roles import require_admin_role
+from dependencies.entity_scope import entity_owner_user_id
+from dependencies.roles import ROLE_ADMIN, get_current_app_role, require_admin_role
 from dependencies.worker_scope import worker_project_scope
 from schemas.auth import UserResponse
 
@@ -86,6 +87,7 @@ async def query_projectss(
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
     current_user: UserResponse = Depends(get_current_user),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Query projectss with filtering, sorting, and pagination (user can only see their own records)"""
@@ -106,7 +108,7 @@ async def query_projectss(
             limit=limit,
             query_dict=query_dict,
             sort=sort,
-            user_id=str(current_user.id),
+            user_id=owner_uid,
             worker_project_id=worker_project_scope(current_user),
         )
         logger.debug(f"Found {result['total']} projectss")
@@ -125,9 +127,11 @@ async def query_projectss_all(
     skip: int = Query(0, ge=0, description="Number of records to skip"),
     limit: int = Query(20, ge=1, le=2000, description="Max number of records to return"),
     fields: str = Query(None, description="Comma-separated list of fields to return"),
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ):
-    # Query projectss with filtering, sorting, and pagination without user limitation
+    """List projects across all owners — admins only (Bearer required)."""
     logger.debug(f"Querying projectss: query={query}, sort={sort}, skip={skip}, limit={limit}, fields={fields}")
 
     service = ProjectsService(db)
@@ -160,6 +164,7 @@ async def get_projects(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
     current_user: UserResponse = Depends(get_current_user),
+    app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single projects by ID (user can only see their own records)"""
@@ -167,9 +172,10 @@ async def get_projects(
     
     service = ProjectsService(db)
     try:
+        owner_uid = None if app_role == ROLE_ADMIN else str(current_user.id)
         result = await service.get_by_id(
             id,
-            user_id=str(current_user.id),
+            user_id=owner_uid,
             worker_project_id=worker_project_scope(current_user),
         )
         if not result:
@@ -254,7 +260,7 @@ async def update_projectss_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            result = await service.update(item.id, update_dict, user_id=str(current_user.id))
+            result = await service.update(item.id, update_dict, user_id=None)
             if result:
                 results.append(result)
         
@@ -281,7 +287,7 @@ async def update_projects(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        result = await service.update(id, update_dict, user_id=str(current_user.id))
+        result = await service.update(id, update_dict, user_id=None)
         if not result:
             logger.warning(f"Projects with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Projects not found")
@@ -313,7 +319,7 @@ async def delete_projectss_batch(
     
     try:
         for item_id in request.ids:
-            success = await service.delete(item_id, user_id=str(current_user.id))
+            success = await service.delete(item_id, user_id=None)
             if success:
                 deleted_count += 1
         
@@ -337,7 +343,7 @@ async def delete_projects(
     
     service = ProjectsService(db)
     try:
-        success = await service.delete(id, user_id=str(current_user.id))
+        success = await service.delete(id, user_id=None)
         if not success:
             logger.warning(f"Projects with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Projects not found")

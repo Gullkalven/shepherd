@@ -27,7 +27,7 @@ export default function AdminLoginPage() {
 
   useLayoutEffect(() => {
     if (readAdminSession()) {
-      navigate('/admin/users', { replace: true });
+      navigate('/', { replace: true });
       return;
     }
     setBootReady(true);
@@ -36,7 +36,7 @@ export default function AdminLoginPage() {
   useEffect(() => {
     if (!bootReady || permLoading) return;
     if (isAdmin && !sessionIsProvisionalAdmin) {
-      navigate('/admin/users', { replace: true });
+      navigate('/', { replace: true });
     }
   }, [bootReady, permLoading, isAdmin, sessionIsProvisionalAdmin, navigate]);
 
@@ -75,7 +75,7 @@ export default function AdminLoginPage() {
         expiresAt: loginAt + ttlMs,
       });
       toast.success('Admin session started');
-      navigate('/admin/users', { replace: true });
+      navigate('/', { replace: true });
     } catch {
       toast.error('Network error');
     } finally {

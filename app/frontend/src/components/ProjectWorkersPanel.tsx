@@ -141,7 +141,22 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : workers.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No PIN workers yet. Add one for site use.</p>
+        <div className="space-y-3 rounded-md border border-dashed border-border p-4 text-center">
+          <p className="text-sm text-muted-foreground">No PIN workers yet. Add one for workers to sign in at /worker/login.</p>
+          <Button
+            type="button"
+            size="sm"
+            className="h-9"
+            onClick={() => {
+              setNewName('');
+              setNewPin('');
+              setCreateOpen(true);
+            }}
+          >
+            <Plus className="mr-1 h-4 w-4" />
+            Add worker
+          </Button>
+        </div>
       ) : (
         <ul className="divide-y divide-border rounded-md border border-border">
           {workers.map((w) => (

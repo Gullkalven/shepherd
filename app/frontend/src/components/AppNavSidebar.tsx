@@ -114,7 +114,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true);
     try {
-      const useProjectsAll = !isDevRoleSwitcherHost();
+      const useProjectsAll = !isDevRoleSwitcherHost() && isAdmin;
       const res = useProjectsAll
         ? await fetchProjectsListAll()
         : await client.entities.projects.query({ sort: '-created_at' });
@@ -124,7 +124,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
     } finally {
       setProjectsLoading(false);
     }
-  }, []);
+  }, [isAdmin]);
 
   useEffect(() => {
     void loadProjects();
@@ -261,7 +261,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
 
   const activeProjectId = projectId ? Number(projectId) : NaN;
   const { t } = useI18n();
-  const { isWorker } = usePermissions();
+  const { isWorker, isAdmin } = usePermissions();
 
   const navProjectsTitle = isWorker ? t('sites') : t('projects');
   const searchRootPlaceholder = isWorker ? t('findSite') : t('searchProjects');

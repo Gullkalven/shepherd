@@ -46,7 +46,7 @@ async def list_workers(
     admin: UserResponse = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = await pw_svc.list_for_project(db, project_id=project_id, owner_user_id=str(admin.id))
+    rows = await pw_svc.list_for_project(db, project_id=project_id)
     return [ProjectWorkerResponse(**pw_svc.public_worker_dict(r)) for r in rows]
 
 
@@ -61,7 +61,6 @@ async def create_worker_route(
         row = await pw_svc.create_worker(
             db,
             project_id=project_id,
-            owner_user_id=str(admin.id),
             name=body.name,
             pin=body.pin,
             role=body.role,
@@ -86,7 +85,6 @@ async def patch_worker_route(
             db,
             project_id=project_id,
             worker_id=worker_id,
-            owner_user_id=str(admin.id),
             name=body.name,
             pin=body.pin,
             active=body.active,
