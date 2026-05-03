@@ -62,10 +62,11 @@ async def append_room_activity(
     photo_id: Optional[int] = None,
     at_iso: Optional[str] = None,
     meta: Optional[Dict[str, Any]] = None,
+    worker_project_id: Optional[int] = None,
 ) -> bool:
     """Persist one immutable activity row. Never call this to revise prior rows."""
     svc = RoomsService(db)
-    room = await svc.get_by_id(room_id, user_id=user_id)
+    room = await svc.get_by_id(room_id, user_id=user_id, worker_project_id=worker_project_id)
     if not room:
         return False
     raw = getattr(room, "activity_log", None)
@@ -85,7 +86,12 @@ async def append_room_activity(
         "meta": meta if isinstance(meta, dict) else {},
     }
     log.append(entry)
-    updated = await svc.update(room_id, {"activity_log": log}, user_id=user_id)
+    updated = await svc.update(
+        room_id,
+        {"activity_log": log},
+        user_id=user_id,
+        worker_project_id=worker_project_id,
+    )
     return updated is not None
 
 
@@ -215,6 +221,7 @@ async def append_room_patch_activity(
     update_dict: Dict[str, Any],
     actor_user: Any,
     user_id: str,
+    worker_project_id: Optional[int] = None,
 ) -> None:
     """Emit structured activity lines for supported room PATCH fields (best-effort)."""
     from dependencies.phase_edit import (
@@ -246,6 +253,7 @@ async def append_room_patch_activity(
                 phase_key=rp,
                 phase_label=phase_lab_default,
                 meta={"from": old_s, "to": new_s},
+                worker_project_id=worker_project_id,
             )
 
     if "deadline_at" in update_dict:
@@ -261,6 +269,7 @@ async def append_room_patch_activity(
                 phase_key=rp,
                 phase_label=phase_lab_default,
                 meta={"from": old_d, "to": new_d},
+                worker_project_id=worker_project_id,
             )
 
     if "comment" in update_dict:
@@ -277,6 +286,7 @@ async def append_room_patch_activity(
                 phase_key=rp,
                 phase_label=phase_lab_default,
                 meta={"previous_len": len(old_c), "new_len": len(new_c)},
+                worker_project_id=worker_project_id,
             )
 
     if "heating_cable_doc" in update_dict:
@@ -294,6 +304,7 @@ async def append_room_patch_activity(
             phase_key=hk,
             phase_label=hlab,
             meta={},
+            worker_project_id=worker_project_id,
         )
 
     if "phase_statuses" in update_dict and isinstance(update_dict.get("phase_statuses"), dict):
@@ -316,6 +327,7 @@ async def append_room_patch_activity(
                         phase_key=pk.strip(),
                         phase_label=plab,
                         meta={"from": ov, "to": nv},
+                        worker_project_id=worker_project_id,
                     )
 
     if "phase_lock_overrides" in update_dict:
@@ -337,6 +349,7 @@ async def append_room_patch_activity(
                 phase_key=pk,
                 phase_label=plab,
                 meta={"from": ov, "to": nv},
+                worker_project_id=worker_project_id,
             )
 
     if "workflow_deviations" in update_dict:
@@ -354,6 +367,7 @@ async def append_room_patch_activity(
                 phase_key=rp,
                 phase_label=phase_lab_default,
                 meta={},
+                worker_project_id=worker_project_id,
             )
 
     if "checklist_labels" in update_dict:
@@ -366,6 +380,7 @@ async def append_room_patch_activity(
             phase_key=rp,
             phase_label=phase_lab_default,
             meta={},
+            worker_project_id=worker_project_id,
         )
 
     if "phase_tool_overrides" in update_dict:
@@ -378,4 +393,5 @@ async def append_room_patch_activity(
             phase_key=rp,
             phase_label=phase_lab_default,
             meta={},
+            worker_project_id=worker_project_id,
         )

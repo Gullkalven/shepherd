@@ -14,9 +14,12 @@ import ProjectDetail from './pages/ProjectDetail';
 import FloorDetail from './pages/FloorDetail';
 import RoomDetail from './pages/RoomDetail';
 import AdminUsers from './pages/AdminUsers';
+import AdminLoginPage from './pages/AdminLoginPage';
 import WorkerMePage from './pages/WorkerMePage';
 import WorkerRoomsPage from './pages/WorkerRoomsPage';
+import WorkerLoginPage from './pages/WorkerLoginPage';
 import NotFound from './pages/NotFound';
+import RequireAdminAccess from './components/RequireAdminAccess';
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -31,10 +34,19 @@ const App = () => (
               <Route path="/auth/error" element={<AuthError />} />
               <Route path="/" element={<AppShellLayout />}>
                 <Route index element={<Index />} />
+                <Route path="worker/login" element={<WorkerLoginPage />} />
                 <Route path="worker/rooms" element={<WorkerRoomsPage />} />
                 <Route path="worker/me" element={<Navigate to="/worker/settings" replace />} />
                 <Route path="worker/settings" element={<WorkerMePage />} />
-                <Route path="admin/users" element={<AdminUsers />} />
+                <Route path="admin/login" element={<AdminLoginPage />} />
+                <Route
+                  path="admin/users"
+                  element={
+                    <RequireAdminAccess>
+                      <AdminUsers />
+                    </RequireAdminAccess>
+                  }
+                />
                 <Route path="project/:projectId" element={<Outlet />}>
                   <Route index element={<ProjectDetail />} />
                   <Route path="floor/:floorId" element={<FloorDetail />} />

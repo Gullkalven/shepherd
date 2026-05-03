@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.floors import FloorsService
 from dependencies.auth import get_current_user
+from dependencies.worker_scope import worker_project_scope
 from dependencies.roles import require_admin_role
 from schemas.auth import UserResponse
 
@@ -109,6 +110,7 @@ async def query_floorss(
             query_dict=query_dict,
             sort=sort,
             user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
         )
         logger.debug(f"Found {result['total']} floorss")
         return result
@@ -168,7 +170,11 @@ async def get_floors(
     
     service = FloorsService(db)
     try:
-        result = await service.get_by_id(id, user_id=str(current_user.id))
+        result = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not result:
             logger.warning(f"Floors with id {id} not found")
             raise HTTPException(status_code=404, detail="Floors not found")
@@ -251,7 +257,12 @@ async def update_floorss_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            result = await service.update(item.id, update_dict, user_id=str(current_user.id))
+            result = await service.update(
+                item.id,
+                update_dict,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if result:
                 results.append(result)
         
@@ -278,7 +289,12 @@ async def update_floors(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        result = await service.update(id, update_dict, user_id=str(current_user.id))
+        result = await service.update(
+            id,
+            update_dict,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not result:
             logger.warning(f"Floors with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Floors not found")
@@ -310,7 +326,11 @@ async def delete_floorss_batch(
     
     try:
         for item_id in request.ids:
-            success = await service.delete(item_id, user_id=str(current_user.id))
+            success = await service.delete(
+                item_id,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if success:
                 deleted_count += 1
         
@@ -334,7 +354,11 @@ async def delete_floors(
     
     service = FloorsService(db)
     try:
-        success = await service.delete(id, user_id=str(current_user.id))
+        success = await service.delete(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not success:
             logger.warning(f"Floors with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Floors not found")

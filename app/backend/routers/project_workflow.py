@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user
+from dependencies.worker_scope import worker_project_scope
 from dependencies.roles import require_admin_role
 from models.rooms import Rooms
 from models.tasks import Tasks
@@ -136,7 +137,11 @@ async def get_project_workflow(
     db: AsyncSession = Depends(get_db),
 ):
     service = ProjectsService(db)
-    proj = await service.get_by_id(project_id, user_id=str(current_user.id))
+    proj = await service.get_by_id(
+        project_id,
+        user_id=str(current_user.id),
+        worker_project_id=worker_project_scope(current_user),
+    )
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
     parsed = _parse_stored_workflow(getattr(proj, "phase_workflow_json", None))
@@ -154,7 +159,11 @@ async def put_project_workflow(
     db: AsyncSession = Depends(get_db),
 ):
     service = ProjectsService(db)
-    proj = await service.get_by_id(project_id, user_id=str(current_user.id))
+    proj = await service.get_by_id(
+        project_id,
+        user_id=str(current_user.id),
+        worker_project_id=worker_project_scope(current_user),
+    )
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
 

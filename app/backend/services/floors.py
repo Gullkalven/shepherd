@@ -41,12 +41,19 @@ class FloorsService:
             logger.error(f"Error checking ownership for floors {obj_id}: {str(e)}")
             return False
 
-    async def get_by_id(self, obj_id: int, user_id: Optional[str] = None) -> Optional[Floors]:
+    async def get_by_id(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> Optional[Floors]:
         """Get floors by ID (user can only see their own records)"""
         try:
             query = select(Floors).where(Floors.id == obj_id)
             if user_id:
                 query = query.where(Floors.user_id == user_id)
+            if worker_project_id is not None:
+                query = query.where(Floors.project_id == worker_project_id)
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -60,6 +67,7 @@ class FloorsService:
         user_id: Optional[str] = None,
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of floorss (user can only see their own records)"""
         try:
@@ -69,6 +77,9 @@ class FloorsService:
             if user_id:
                 query = query.where(Floors.user_id == user_id)
                 count_query = count_query.where(Floors.user_id == user_id)
+            if worker_project_id is not None:
+                query = query.where(Floors.project_id == worker_project_id)
+                count_query = count_query.where(Floors.project_id == worker_project_id)
             
             if query_dict:
                 for field, value in query_dict.items():
@@ -103,10 +114,16 @@ class FloorsService:
             logger.error(f"Error fetching floors list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any], user_id: Optional[str] = None) -> Optional[Floors]:
+    async def update(
+        self,
+        obj_id: int,
+        update_data: Dict[str, Any],
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> Optional[Floors]:
         """Update floors (requires ownership)"""
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, user_id=user_id, worker_project_id=worker_project_id)
             if not obj:
                 logger.warning(f"Floors {obj_id} not found for update")
                 return None
@@ -123,10 +140,15 @@ class FloorsService:
             logger.error(f"Error updating floors {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int, user_id: Optional[str] = None) -> bool:
+    async def delete(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> bool:
         """Delete floors (requires ownership)"""
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, user_id=user_id, worker_project_id=worker_project_id)
             if not obj:
                 logger.warning(f"Floors {obj_id} not found for deletion")
                 return False

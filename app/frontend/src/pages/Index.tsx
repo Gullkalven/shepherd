@@ -28,6 +28,7 @@ import {
   isClientLogoutGateActive,
 } from '@/lib/appLogout';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
+import { readWorkerSession } from '@/lib/workerSession';
 
 interface Project {
   id: number;
@@ -55,7 +56,16 @@ function IndexContent({
 }) {
   const navigate = useNavigate();
   const { activateSession, endSession, sessionActive } = useDevPresentationSession();
-  const { role, canCreateProject, canDeleteProject, canEdit, isWorker, loading: permLoading } = usePermissions();
+  const {
+    role,
+    canCreateProject,
+    canDeleteProject,
+    canEdit,
+    isWorker,
+    loading: permLoading,
+    sessionIsPinWorker,
+    sessionIsProvisionalAdmin,
+  } = usePermissions();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -105,9 +115,17 @@ function IndexContent({
     checkAuth();
   }, [checkAuth]);
 
+  useEffect(() => {
+    if (permLoading) return;
+    if (!isWorker || !sessionIsPinWorker) return;
+    if (!readWorkerSession()?.token) navigate('/worker/login', { replace: true });
+  }, [permLoading, isWorker, sessionIsPinWorker, navigate]);
+
   const loadProjects = useCallback(async () => {
     const devHost = isDevRoleSwitcherHost();
     const useProjectsAll = !devHost;
+    const ws = readWorkerSession();
+    const pinProjectId = ws?.token && ws.projectId ? ws.projectId : null;
     // Localhost: list only when signed in. Deployed: load from /all whenever demo session or API user exists (no auth.me gate).
     const canLoad =
       devHost ? !!user : readDemoLocalStorageUser() !== null || !!user;
@@ -119,10 +137,17 @@ function IndexContent({
     setProjectsLoading(true);
     setProjectsLoadFailed(false);
     try {
-      const res = useProjectsAll
-        ? await fetchProjectsListAll()
-        : await client.entities.projects.query({ sort: '-created_at' });
-      const items = extractProjectItemsFromListBody(res?.data ?? res) as Project[];
+      let items: Project[];
+      if (pinProjectId) {
+        const res = await client.entities.projects.get({ id: String(pinProjectId) });
+        const row = res?.data;
+        items = row ? [{ id: row.id, name: row.name }] : [];
+      } else {
+        const res = useProjectsAll
+          ? await fetchProjectsListAll()
+          : await client.entities.projects.query({ sort: '-created_at' });
+        items = extractProjectItemsFromListBody(res?.data ?? res) as Project[];
+      }
       setProjects(items);
     } catch (err: unknown) {
       const ax = err as {
@@ -296,6 +321,15 @@ function IndexContent({
                 {label}
               </Button>
             ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="w-full border-white/35 bg-white/10 text-white hover:bg-white/15"
+              onClick={() => navigate('/worker/login')}
+            >
+              Site worker sign-in (PIN)
+            </Button>
           </div>
         </div>
       </div>
@@ -327,12 +361,31 @@ function IndexContent({
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
-        <div className="flex items-center justify-start">
+        <div className="flex flex-wrap items-center justify-start gap-2">
           <Badge className={`${roleBadge.bg} ${roleBadge.color} border-0 gap-1`}>
             {roleBadge.icon}
             {roleBadge.label}
           </Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs text-muted-foreground"
+            onClick={() => navigate('/worker/login')}
+          >
+            Site worker (PIN)
+          </Button>
         </div>
+        {sessionIsProvisionalAdmin ? (
+          <p className="text-xs text-muted-foreground">
+            Session: <strong className="text-foreground">Administrator (provisional PIN)</strong> — this is not a site
+            worker sign-in.
+          </p>
+        ) : sessionIsPinWorker ? (
+          <p className="text-xs text-muted-foreground">
+            Session: <strong className="text-foreground">Site worker (PIN)</strong>
+          </p>
+        ) : null}
 
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold text-slate-800 dark:text-foreground">My Projects</h2>

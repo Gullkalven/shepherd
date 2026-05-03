@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from services.rooms import RoomsService
 from dependencies.auth import get_current_user
+from dependencies.worker_scope import worker_project_scope
 from dependencies.room_lock import ROOM_LOCKED_DETAIL, ensure_room_mutable
 from dependencies.roles import (
     ROLE_ADMIN,
@@ -347,6 +348,7 @@ async def query_roomss(
             query_dict=query_dict,
             sort=sort,
             user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
         )
         logger.debug(f"Found {result['total']} roomss")
         return result
@@ -406,7 +408,11 @@ async def get_rooms(
     
     service = RoomsService(db)
     try:
-        result = await service.get_by_id(id, user_id=str(current_user.id))
+        result = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not result:
             logger.warning(f"Rooms with id {id} not found")
             raise HTTPException(status_code=404, detail="Rooms not found")
@@ -437,10 +443,14 @@ async def worker_phase_handoff(
     if not name:
         raise HTTPException(status_code=400, detail="Worker name is required")
 
-    await ensure_room_mutable(db, id, str(current_user.id), app_role)
+    await ensure_room_mutable(db, id, str(current_user.id), app_role, worker_project_scope(current_user))
 
     service = RoomsService(db)
-    room_obj = await service.get_by_id(id, user_id=str(current_user.id))
+    room_obj = await service.get_by_id(
+        id,
+        user_id=str(current_user.id),
+        worker_project_id=worker_project_scope(current_user),
+    )
     if not room_obj:
         raise HTTPException(status_code=404, detail="Rooms not found")
 
@@ -482,7 +492,12 @@ async def worker_phase_handoff(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    result = await service.update(id, lock_part, user_id=str(current_user.id))
+    result = await service.update(
+        id,
+        lock_part,
+        user_id=str(current_user.id),
+        worker_project_id=worker_project_scope(current_user),
+    )
     if not result:
         raise HTTPException(status_code=404, detail="Rooms not found")
 
@@ -496,8 +511,13 @@ async def worker_phase_handoff(
         phase_label=label,
         area_id=aid,
         meta={"detail": visit_data["action"]},
+        worker_project_id=worker_project_scope(current_user),
     )
-    refreshed = await service.get_by_id(id, user_id=str(current_user.id))
+    refreshed = await service.get_by_id(
+        id,
+        user_id=str(current_user.id),
+        worker_project_id=worker_project_scope(current_user),
+    )
     return refreshed if refreshed else result
 
 
@@ -593,11 +613,20 @@ async def update_roomss_batch(
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
             update_dict.pop("activity_log", None)
-            existing_b = await service.get_by_id(item.id, user_id=str(current_user.id))
+            existing_b = await service.get_by_id(
+                item.id,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if existing_b:
                 _prepare_room_update_dict(existing_b, update_dict, app_role)
                 await _sync_phase_statuses_on_update(db, existing_b, update_dict)
-            result = await service.update(item.id, update_dict, user_id=str(current_user.id))
+            result = await service.update(
+                item.id,
+                update_dict,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if result:
                 if existing_b:
                     await append_room_patch_activity(
@@ -606,6 +635,7 @@ async def update_roomss_batch(
                         update_dict,
                         current_user,
                         str(current_user.id),
+                        worker_project_scope(current_user),
                     )
                 results.append(result)
         
@@ -640,7 +670,11 @@ async def update_rooms(
             elif k in ("deadline_at", "checklist_labels", "heating_cable_doc", "phase_tool_overrides"):
                 update_dict[k] = None
         update_dict.pop("activity_log", None)
-        existing = await service.get_by_id(id, user_id=str(current_user.id))
+        existing = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not existing:
             logger.warning(f"Rooms with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Rooms not found")
@@ -668,15 +702,31 @@ async def update_rooms(
             raise HTTPException(status_code=400, detail=str(e)) from e
         if app_role == ROLE_ADMIN:
             await _sync_phase_statuses_on_update(db, existing, update_dict)
-        result = await service.update(id, update_dict, user_id=str(current_user.id))
+        result = await service.update(
+            id,
+            update_dict,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not result:
             logger.warning(f"Rooms with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Rooms not found")
 
-        await append_room_patch_activity(db, existing, update_dict, current_user, str(current_user.id))
+        await append_room_patch_activity(
+            db,
+            existing,
+            update_dict,
+            current_user,
+            str(current_user.id),
+            worker_project_scope(current_user),
+        )
 
         logger.info(f"Rooms {id} updated successfully")
-        refreshed = await service.get_by_id(id, user_id=str(current_user.id))
+        refreshed = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         return refreshed if refreshed else result
     except HTTPException:
         raise
@@ -703,7 +753,11 @@ async def delete_roomss_batch(
     
     try:
         for item_id in request.ids:
-            success = await service.delete(item_id, user_id=str(current_user.id))
+            success = await service.delete(
+                item_id,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if success:
                 deleted_count += 1
         
@@ -727,7 +781,11 @@ async def delete_rooms(
     
     service = RoomsService(db)
     try:
-        success = await service.delete(id, user_id=str(current_user.id))
+        success = await service.delete(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not success:
             logger.warning(f"Rooms with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Rooms not found")

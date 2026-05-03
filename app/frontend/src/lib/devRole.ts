@@ -7,7 +7,8 @@ export const DEV_ROLE_CHANGED_EVENT = 'shepherd-dev-role-changed';
 
 export const DEMO_USER_PRESETS: Record<DevAppRole, { id: string; name: string }> = {
   admin: { id: 'local-admin', name: 'Demo Admin' },
-  worker: { id: 'local-worker', name: 'Demo Worker' },
+  /** Shown in header only — checklist/performer attribution uses PIN session or typed name (`workerIdentity`). */
+  worker: { id: 'local-worker', name: 'Dev preview worker' },
 };
 
 /** Recognize older demo sign-ins so deployed demos keep working after role simplification. */

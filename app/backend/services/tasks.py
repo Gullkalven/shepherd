@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any, List
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from models.rooms import Rooms
 from models.tasks import Tasks
 
 logger = logging.getLogger(__name__)
@@ -41,12 +42,28 @@ class TasksService:
             logger.error(f"Error checking ownership for tasks {obj_id}: {str(e)}")
             return False
 
-    async def get_by_id(self, obj_id: int, user_id: Optional[str] = None) -> Optional[Tasks]:
+    async def get_by_id(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> Optional[Tasks]:
         """Get tasks by ID (user can only see their own records)"""
         try:
-            query = select(Tasks).where(Tasks.id == obj_id)
-            if user_id:
-                query = query.where(Tasks.user_id == user_id)
+            if worker_project_id is None:
+                query = select(Tasks).where(Tasks.id == obj_id)
+                if user_id:
+                    query = query.where(Tasks.user_id == user_id)
+            else:
+                query = (
+                    select(Tasks)
+                    .join(Rooms, Tasks.room_id == Rooms.id)
+                    .where(
+                        Tasks.id == obj_id,
+                        Tasks.user_id == user_id,
+                        Rooms.project_id == worker_project_id,
+                    )
+                )
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -60,15 +77,28 @@ class TasksService:
         user_id: Optional[str] = None,
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of taskss (user can only see their own records)"""
         try:
-            query = select(Tasks)
-            count_query = select(func.count(Tasks.id))
-            
-            if user_id:
-                query = query.where(Tasks.user_id == user_id)
-                count_query = count_query.where(Tasks.user_id == user_id)
+            if worker_project_id is not None and user_id:
+                query = select(Tasks).join(Rooms, Tasks.room_id == Rooms.id).where(
+                    Tasks.user_id == user_id,
+                    Rooms.project_id == worker_project_id,
+                )
+                count_query = (
+                    select(func.count(Tasks.id)).select_from(Tasks).join(Rooms, Tasks.room_id == Rooms.id).where(
+                        Tasks.user_id == user_id,
+                        Rooms.project_id == worker_project_id,
+                    )
+                )
+            else:
+                query = select(Tasks)
+                count_query = select(func.count(Tasks.id))
+
+                if user_id:
+                    query = query.where(Tasks.user_id == user_id)
+                    count_query = count_query.where(Tasks.user_id == user_id)
             
             if query_dict:
                 for field, value in query_dict.items():
@@ -103,10 +133,16 @@ class TasksService:
             logger.error(f"Error fetching tasks list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any], user_id: Optional[str] = None) -> Optional[Tasks]:
+    async def update(
+        self,
+        obj_id: int,
+        update_data: Dict[str, Any],
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> Optional[Tasks]:
         """Update tasks (requires ownership)"""
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, user_id=user_id, worker_project_id=worker_project_id)
             if not obj:
                 logger.warning(f"Tasks {obj_id} not found for update")
                 return None
@@ -123,10 +159,15 @@ class TasksService:
             logger.error(f"Error updating tasks {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int, user_id: Optional[str] = None) -> bool:
+    async def delete(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> bool:
         """Delete tasks (requires ownership)"""
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, user_id=user_id, worker_project_id=worker_project_id)
             if not obj:
                 logger.warning(f"Tasks {obj_id} not found for deletion")
                 return False

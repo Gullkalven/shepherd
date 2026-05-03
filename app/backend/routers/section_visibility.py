@@ -58,6 +58,12 @@ async def require_admin(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
+    if getattr(current_user, "is_worker_session", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    if getattr(current_user, "is_provisional_admin", False):
+        return current_user
+
     result = await db.execute(
         select(User_roles).where(User_roles.user_id == str(current_user.id))
     )

@@ -52,6 +52,8 @@ class UserWithRoleResponse(BaseModel):
 class MyRoleResponse(BaseModel):
     app_role: str
     display_name: Optional[str] = None
+    is_worker_session: bool = False
+    is_provisional_admin: bool = False
 
 
 VALID_ROLES = {ROLE_ADMIN, ROLE_WORKER}
@@ -62,6 +64,12 @@ async def require_admin(
     db: AsyncSession = Depends(get_db),
 ) -> UserResponse:
     """Check if the current user is an admin in the app roles system."""
+    if getattr(current_user, "is_worker_session", False):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    if getattr(current_user, "is_provisional_admin", False):
+        return current_user
+
     result = await db.execute(
         select(User_roles).where(User_roles.user_id == str(current_user.id))
     )
@@ -96,6 +104,21 @@ async def get_my_role(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the current user's app role."""
+    if getattr(current_user, "is_worker_session", False):
+        return MyRoleResponse(
+            app_role=ROLE_WORKER,
+            display_name=current_user.name,
+            is_worker_session=True,
+        )
+
+    if getattr(current_user, "is_provisional_admin", False):
+        return MyRoleResponse(
+            app_role=ROLE_ADMIN,
+            display_name=current_user.name,
+            is_worker_session=False,
+            is_provisional_admin=True,
+        )
+
     result = await db.execute(
         select(User_roles).where(User_roles.user_id == str(current_user.id))
     )

@@ -69,6 +69,15 @@ async def lifespan(app: FastAPI):
     await initialize_database()
     await initialize_mock_data()
     await initialize_admin_user()
+    from core.database import db_manager
+    from services.project_workers import ensure_dev_seed_worker
+
+    if db_manager.async_session_maker:
+        async with db_manager.async_session_maker() as _s:
+            await ensure_dev_seed_worker(_s)
+            from services.provisional_admin_auth import ensure_seed_from_env
+
+            await ensure_seed_from_env(_s)
     # MODULE_STARTUP_END
 
     logger.info("=== Application startup completed successfully ===")

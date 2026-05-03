@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { client } from '@/lib/api';
 import { DEV_ROLE_CHANGED_EVENT, readDemoLocalStorageUser } from '@/lib/devRole';
+import { readAdminSession, ADMIN_AUTH_EVENT } from '@/lib/adminSession';
+import { readWorkerSession, WORKER_AUTH_EVENT } from '@/lib/workerSession';
 
 export type AppRole = 'admin' | 'worker';
 
@@ -59,6 +61,10 @@ interface PermissionContextType {
   sectionVisibility: SectionVisibility;
   refreshRole: () => Promise<void>;
   refreshVisibility: () => Promise<void>;
+  /** True when the server reports a project PIN worker JWT (field worker session). */
+  sessionIsPinWorker: boolean;
+  /** True when the server reports the provisional admin PIN JWT. */
+  sessionIsProvisionalAdmin: boolean;
 }
 
 const PermissionContext = createContext<PermissionContextType>({
@@ -88,17 +94,54 @@ const PermissionContext = createContext<PermissionContextType>({
   sectionVisibility: DEFAULT_VISIBILITY,
   refreshRole: async () => {},
   refreshVisibility: async () => {},
+  sessionIsPinWorker: false,
+  sessionIsProvisionalAdmin: false,
 });
 
 export function PermissionProvider({ children, isAuthenticated }: { children: ReactNode; isAuthenticated: boolean }) {
   const [role, setRole] = useState<AppRole>('worker');
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionIsPinWorker, setSessionIsPinWorker] = useState(false);
+  const [sessionIsProvisionalAdmin, setSessionIsProvisionalAdmin] = useState(false);
   const [sectionVisibility, setSectionVisibility] = useState<SectionVisibility>(DEFAULT_VISIBILITY);
 
   const fetchRole = useCallback(async () => {
     const host = window.location.hostname;
     const isDevMode = host === 'localhost' || host === '127.0.0.1';
+
+    if ((readWorkerSession()?.token || readAdminSession()?.token) && isAuthenticated) {
+      try {
+        const res = await client.apiCall.invoke({
+          url: '/api/v1/admin/roles/me',
+          method: 'GET',
+          data: {},
+        });
+        const data = res?.data as {
+          app_role?: string;
+          display_name?: string | null;
+          is_worker_session?: boolean;
+          is_provisional_admin?: boolean;
+        };
+        setSessionIsPinWorker(!!data?.is_worker_session);
+        setSessionIsProvisionalAdmin(!!data?.is_provisional_admin);
+        const pinLabel = readWorkerSession()?.name?.trim() || null;
+        if (data?.app_role) {
+          setRole(normalizeAppRole(data.app_role));
+          setDisplayName(data.display_name || pinLabel || null);
+        } else {
+          setRole('worker');
+        }
+      } catch {
+        setRole('worker');
+        setSessionIsPinWorker(false);
+        setSessionIsProvisionalAdmin(false);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     const localUser = (() => {
       if (!isDevMode) return null;
       try {
@@ -118,6 +161,8 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
         localRole === 'apprentice' ||
         localRole === 'worker')
     ) {
+      setSessionIsPinWorker(false);
+      setSessionIsProvisionalAdmin(false);
       setRole(normalizeAppRole(localRole));
       setDisplayName(localUser?.name || null);
       setLoading(false);
@@ -136,6 +181,8 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
         demoRole === 'apprentice' ||
         demoRole === 'worker')
     ) {
+      setSessionIsPinWorker(false);
+      setSessionIsProvisionalAdmin(false);
       setRole(normalizeAppRole(demoRole));
       setDisplayName((demoLocal.name as string) || null);
       setLoading(false);
@@ -145,6 +192,8 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
     if (!isAuthenticated) {
       setRole('worker');
       setDisplayName(null);
+      setSessionIsPinWorker(false);
+      setSessionIsProvisionalAdmin(false);
       setLoading(false);
       return;
     }
@@ -154,15 +203,25 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
         method: 'GET',
         data: {},
       });
-      const data = res?.data;
+      const data = res?.data as {
+        app_role?: string;
+        display_name?: string | null;
+        is_worker_session?: boolean;
+        is_provisional_admin?: boolean;
+      };
+      setSessionIsPinWorker(!!data?.is_worker_session);
+      setSessionIsProvisionalAdmin(!!data?.is_provisional_admin);
+      const pinLabel = readWorkerSession()?.name?.trim() || null;
       if (data?.app_role) {
         setRole(normalizeAppRole(data.app_role));
-        setDisplayName(data.display_name || null);
+        setDisplayName(data.display_name || pinLabel || null);
       } else {
         setRole('worker');
       }
     } catch {
       setRole('worker');
+      setSessionIsPinWorker(false);
+      setSessionIsProvisionalAdmin(false);
     } finally {
       setLoading(false);
     }
@@ -199,8 +258,20 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
     const onDevRoleChange = () => {
       void fetchRole();
     };
+    const onWorkerAuth = () => {
+      void fetchRole();
+    };
     window.addEventListener(DEV_ROLE_CHANGED_EVENT, onDevRoleChange);
-    return () => window.removeEventListener(DEV_ROLE_CHANGED_EVENT, onDevRoleChange);
+    const onAdminAuth = () => {
+      void fetchRole();
+    };
+    window.addEventListener(WORKER_AUTH_EVENT, onWorkerAuth);
+    window.addEventListener(ADMIN_AUTH_EVENT, onAdminAuth);
+    return () => {
+      window.removeEventListener(DEV_ROLE_CHANGED_EVENT, onDevRoleChange);
+      window.removeEventListener(WORKER_AUTH_EVENT, onWorkerAuth);
+      window.removeEventListener(ADMIN_AUTH_EVENT, onAdminAuth);
+    };
   }, [fetchRole]);
 
   useEffect(() => {
@@ -240,6 +311,8 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
     sectionVisibility,
     refreshRole: fetchRole,
     refreshVisibility: fetchVisibility,
+    sessionIsPinWorker,
+    sessionIsProvisionalAdmin,
   };
 
   return (

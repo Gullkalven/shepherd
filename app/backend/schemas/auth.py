@@ -10,6 +10,11 @@ class UserResponse(BaseModel):
     name: Optional[str] = None
     role: str = "user"  # user/admin
     last_login: Optional[datetime] = None
+    # Project-worker PIN session (JWT): actor name + single-project scope
+    is_worker_session: bool = False
+    worker_project_id: Optional[int] = None
+    # Provisional admin PIN session (JWT) — separate from workers and OIDC
+    is_provisional_admin: bool = False
 
     class Config:
         from_attributes = True

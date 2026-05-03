@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
+import { runAdminLogout } from '@/lib/runAppLogout';
+import { readAdminSession, ADMIN_SESSION_TTL_MS } from '@/lib/adminSession';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -64,7 +66,7 @@ const LEGACY_WORKER_ROLES = new Set(['worker', 'electrician', 'apprentice']);
 
 export default function AdminUsers() {
   const navigate = useNavigate();
-  const { isAdmin, loading: permLoading } = usePermissions();
+  const { isAdmin, loading: permLoading, sessionIsProvisionalAdmin } = usePermissions();
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
@@ -212,7 +214,9 @@ export default function AdminUsers() {
             <Shield className="h-12 w-12 text-red-400 mx-auto mb-3" />
             <h2 className="text-lg font-bold text-slate-800 dark:text-foreground mb-2">Access Denied</h2>
             <p className="text-muted-foreground text-sm">Only administrators can manage user roles.</p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/')}>Go Back</Button>
+            <Button variant="outline" className="mt-4" onClick={() => navigate('/admin/login')}>
+              Admin sign-in
+            </Button>
           </Card>
         </div>
       </div>
@@ -227,9 +231,44 @@ export default function AdminUsers() {
       u.app_role === 'apprentice'
   ).length;
 
+  const adminPinSession = sessionIsProvisionalAdmin ? readAdminSession() : null;
+  const adminSessionEndsLabel =
+    adminPinSession?.expiresAt != null
+      ? new Date(adminPinSession.expiresAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+      : null;
+
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="p-4 max-w-lg mx-auto space-y-4">
+        {sessionIsProvisionalAdmin ? (
+          <Card className="border-amber-200/80 bg-amber-50/90 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+              Provisional admin (PIN)
+            </p>
+            <p className="mt-1 text-sm text-amber-950/90 dark:text-amber-100/90">
+              You are signed in with the temporary administrator password — not as a site worker. Replace with SSO when
+              ready.
+            </p>
+            {adminSessionEndsLabel ? (
+              <p className="mt-2 text-xs text-amber-900/80 dark:text-amber-200/80">
+                Session ends {adminSessionEndsLabel} (~{Math.round(ADMIN_SESSION_TTL_MS / 3600000)}h).
+              </p>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3 w-full border-amber-300 bg-white/80 text-amber-950 hover:bg-white dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100"
+              onClick={() => runAdminLogout(navigate)}
+            >
+              Log out admin
+            </Button>
+          </Card>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Administrator session: <strong className="text-foreground">account / SSO</strong> (not site worker PIN).
+          </p>
+        )}
+
         <div className="flex bg-slate-200 dark:bg-slate-800 rounded-lg p-0.5">
           <Button
             variant="ghost"

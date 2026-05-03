@@ -5,6 +5,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.room_visits import Room_visits
+from models.rooms import Rooms
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +42,28 @@ class Room_visitsService:
             logger.error(f"Error checking ownership for room_visits {obj_id}: {str(e)}")
             return False
 
-    async def get_by_id(self, obj_id: int, user_id: Optional[str] = None) -> Optional[Room_visits]:
+    async def get_by_id(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> Optional[Room_visits]:
         """Get room_visits by ID (user can only see their own records)"""
         try:
-            query = select(Room_visits).where(Room_visits.id == obj_id)
-            if user_id:
-                query = query.where(Room_visits.user_id == user_id)
+            if worker_project_id is None:
+                query = select(Room_visits).where(Room_visits.id == obj_id)
+                if user_id:
+                    query = query.where(Room_visits.user_id == user_id)
+            else:
+                query = (
+                    select(Room_visits)
+                    .join(Rooms, Room_visits.room_id == Rooms.id)
+                    .where(
+                        Room_visits.id == obj_id,
+                        Room_visits.user_id == user_id,
+                        Rooms.project_id == worker_project_id,
+                    )
+                )
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -60,15 +77,31 @@ class Room_visitsService:
         user_id: Optional[str] = None,
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of room_visitss (user can only see their own records)"""
         try:
-            query = select(Room_visits)
-            count_query = select(func.count(Room_visits.id))
-            
-            if user_id:
-                query = query.where(Room_visits.user_id == user_id)
-                count_query = count_query.where(Room_visits.user_id == user_id)
+            if worker_project_id is not None and user_id:
+                query = select(Room_visits).join(Rooms, Room_visits.room_id == Rooms.id).where(
+                    Room_visits.user_id == user_id,
+                    Rooms.project_id == worker_project_id,
+                )
+                count_query = (
+                    select(func.count(Room_visits.id))
+                    .select_from(Room_visits)
+                    .join(Rooms, Room_visits.room_id == Rooms.id)
+                    .where(
+                        Room_visits.user_id == user_id,
+                        Rooms.project_id == worker_project_id,
+                    )
+                )
+            else:
+                query = select(Room_visits)
+                count_query = select(func.count(Room_visits.id))
+
+                if user_id:
+                    query = query.where(Room_visits.user_id == user_id)
+                    count_query = count_query.where(Room_visits.user_id == user_id)
             
             if query_dict:
                 for field, value in query_dict.items():
@@ -103,10 +136,16 @@ class Room_visitsService:
             logger.error(f"Error fetching room_visits list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any], user_id: Optional[str] = None) -> Optional[Room_visits]:
+    async def update(
+        self,
+        obj_id: int,
+        update_data: Dict[str, Any],
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> Optional[Room_visits]:
         """Update room_visits (requires ownership)"""
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, user_id=user_id, worker_project_id=worker_project_id)
             if not obj:
                 logger.warning(f"Room_visits {obj_id} not found for update")
                 return None
@@ -123,10 +162,15 @@ class Room_visitsService:
             logger.error(f"Error updating room_visits {obj_id}: {str(e)}")
             raise
 
-    async def delete(self, obj_id: int, user_id: Optional[str] = None) -> bool:
+    async def delete(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> bool:
         """Delete room_visits (requires ownership)"""
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, user_id=user_id, worker_project_id=worker_project_id)
             if not obj:
                 logger.warning(f"Room_visits {obj_id} not found for deletion")
                 return False

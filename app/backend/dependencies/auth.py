@@ -52,6 +52,33 @@ async def get_current_user(token: str = Depends(get_bearer_token)) -> UserRespon
         logger.warning("Token validation failed: %s", type(exc).__name__)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=exc.message)
 
+    if payload.get("shepherd_typ") == "project_worker":
+        owner_id = payload.get("sub")
+        pid = payload.get("pid")
+        wname = (payload.get("worker_name") or "").strip() or None
+        if not owner_id or pid is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid worker session")
+        return UserResponse(
+            id=str(owner_id),
+            email="",
+            name=wname,
+            role="user",
+            last_login=None,
+            is_worker_session=True,
+            worker_project_id=int(pid),
+        )
+
+    if payload.get("shepherd_typ") == "provisional_admin":
+        return UserResponse(
+            id="provisional-admin",
+            email="",
+            name="Provisional admin",
+            role="admin",
+            last_login=None,
+            is_worker_session=False,
+            is_provisional_admin=True,
+        )
+
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication token")

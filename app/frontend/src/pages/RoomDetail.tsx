@@ -47,6 +47,8 @@ import {
 import { buildActivityRows } from '@/lib/roomActivity';
 import { cn } from '@/lib/utils';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
+import { readWorkerSession } from '@/lib/workerSession';
+import { resolveWorkerActorLabel, LEGACY_WORKER_DISPLAY_NAME_KEY } from '@/lib/workerIdentity';
 import { useI18n } from '@/lib/i18n';
 import { WorkerRoomView, type WorkerTask } from '@/components/WorkerRoomView';
 import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationNav';
@@ -73,27 +75,14 @@ const STATUS_OPTIONS = [
   { value: 'blocked', label: 'Blocked', color: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' },
 ];
 
-const WORKER_NAME_KEY = 'trello_v2_worker_name';
-
 const HEATING_AUTOSAVE_DEBOUNCE_MS = 900;
 const HEATING_SAVE_UI_IDLE_MS = 2600;
-
-/** Prefer signed-in display name; legacy localStorage only when the profile has no name. */
-function resolveSessionWorkerLabel(displayName: string | null | undefined): string {
-  const fromSession = displayName?.trim();
-  if (fromSession) return fromSession;
-  try {
-    return localStorage.getItem(WORKER_NAME_KEY)?.trim() || '';
-  } catch {
-    return '';
-  }
-}
 
 function buildHeatingCablePayload(
   doc: HeatingCableDoc,
   displayName: string | null | undefined
 ): HeatingCableDoc {
-  const performerFallback = resolveSessionWorkerLabel(displayName);
+  const performerFallback = resolveWorkerActorLabel(displayName);
   const normalizedWithWorker: HeatingCableDoc = {
     ...doc,
   };
@@ -234,6 +223,7 @@ type WorkflowDeviation = {
   created_at: string;
   resolved_at?: string;
   area_id?: string;
+  reported_by?: string;
 };
 
 interface Visit {
@@ -279,8 +269,10 @@ function coerceWorkflowDeviations(raw: unknown): WorkflowDeviation[] {
     const created_at = typeof o.created_at === 'string' ? o.created_at : '';
     const resolved_at = typeof o.resolved_at === 'string' ? o.resolved_at : undefined;
     const area_id = typeof o.area_id === 'string' && o.area_id.trim() ? o.area_id.trim() : undefined;
+    const reported_by =
+      typeof o.reported_by === 'string' && o.reported_by.trim() ? o.reported_by.trim() : undefined;
     if (!id || !phase_key || !text || !created_at) continue;
-    out.push({ id, phase_key, text, status, created_at, resolved_at, area_id });
+    out.push({ id, phase_key, text, status, created_at, resolved_at, area_id, reported_by });
   }
   return out;
 }
@@ -367,6 +359,7 @@ export default function RoomDetail() {
     sectionVisibility,
     displayName,
     loading: permissionsLoading,
+    sessionIsPinWorker,
   } = usePermissions();
 
   const [project, setProject] = useState<any>(null);
@@ -400,8 +393,9 @@ export default function RoomDetail() {
   const legacySavedWorkerName = useMemo(() => {
     void workerFallbackRevision;
     if (displayName?.trim()) return '';
+    if (readWorkerSession()?.name?.trim()) return '';
     try {
-      return localStorage.getItem(WORKER_NAME_KEY)?.trim() || '';
+      return localStorage.getItem(LEGACY_WORKER_DISPLAY_NAME_KEY)?.trim() || '';
     } catch {
       return '';
     }
@@ -636,6 +630,12 @@ export default function RoomDetail() {
   );
 
   useEffect(() => {
+    if (permissionsLoading) return;
+    if (!sessionIsPinWorker) return;
+    if (!readWorkerSession()?.token) navigate('/worker/login', { replace: true });
+  }, [permissionsLoading, sessionIsPinWorker, navigate]);
+
+  useEffect(() => {
     loadData();
   }, [loadData]);
 
@@ -754,7 +754,7 @@ export default function RoomDetail() {
   }, [room?.deadline_at]);
 
   useEffect(() => {
-    const saved = localStorage.getItem(WORKER_NAME_KEY);
+    const saved = localStorage.getItem(LEGACY_WORKER_DISPLAY_NAME_KEY);
     if (saved) setCheckWorkerName(saved);
   }, []);
 
@@ -814,14 +814,19 @@ export default function RoomDetail() {
   const handleTaskClick = (task: Task) => {
     if (!canCheckItem) return;
     if (room?.is_locked && !canEdit) return;
-    const label = resolveSessionWorkerLabel(displayName);
+    const label = resolveWorkerActorLabel(displayName);
     if (label) {
       executeToggleTask(task, label);
       return;
     }
     if (permissionsLoading) return;
+    if (sessionIsPinWorker) {
+      toast.error('Sign in as a site worker (PIN) to check items.');
+      navigate('/worker/login', { replace: true });
+      return;
+    }
     setPendingTask(task);
-    setCheckWorkerName(localStorage.getItem(WORKER_NAME_KEY) || '');
+    setCheckWorkerName(localStorage.getItem(LEGACY_WORKER_DISPLAY_NAME_KEY) || '');
     setShowCheckNameDialog(true);
   };
 
@@ -878,7 +883,7 @@ export default function RoomDetail() {
   const handleConfirmCheckName = () => {
     if (!checkWorkerName.trim() || !pendingTask) return;
     const name = checkWorkerName.trim();
-    localStorage.setItem(WORKER_NAME_KEY, name);
+    localStorage.setItem(LEGACY_WORKER_DISPLAY_NAME_KEY, name);
     setWorkerFallbackRevision((r) => r + 1);
     setShowCheckNameDialog(false);
     executeToggleTask(pendingTask, name);
@@ -886,7 +891,7 @@ export default function RoomDetail() {
   };
 
   const handleClearSavedName = () => {
-    localStorage.removeItem(WORKER_NAME_KEY);
+    localStorage.removeItem(LEGACY_WORKER_DISPLAY_NAME_KEY);
     setCheckWorkerName('');
     setWorkerFallbackRevision((r) => r + 1);
     toast.success('Saved name cleared');
@@ -1057,6 +1062,16 @@ export default function RoomDetail() {
     if (!room) return;
     const text = newDeviationText.trim();
     if (!text) return;
+    const reporter = resolveWorkerActorLabel(displayName);
+    if (!reporter.trim()) {
+      if (sessionIsPinWorker) {
+        toast.error('Sign in as a site worker (PIN) to report issues.');
+        navigate('/worker/login', { replace: true });
+      } else {
+        toast.error('Enter your name first — tap a checklist item once to set your name.');
+      }
+      return;
+    }
     const phaseKey = normalizeRoomPhase(phaseTab, phaseWorkflow);
     const stamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
     const item: WorkflowDeviation = {
@@ -1065,6 +1080,7 @@ export default function RoomDetail() {
       text,
       status: 'open',
       created_at: stamp,
+      reported_by: reporter,
       ...(showAreasNav ? { area_id: activeAreaId } : {}),
     };
     await persistWorkflowDeviations([...deviations, item], 'Deviation added');
@@ -1295,12 +1311,18 @@ export default function RoomDetail() {
         });
       }
 
+      const actorLabel = resolveWorkerActorLabel(displayName);
+      const baseCaption = captionTask ? `Checklist: ${captionTask.name}` : '';
+      const caption =
+        [baseCaption, actorLabel ? `Uploaded by ${actorLabel}` : ''].filter(Boolean).join(' · ') ||
+        '';
+
       await client.entities.room_photos.create({
         data: {
           room_id: room.id,
           object_key: objectKey,
           filename: file.name,
-          caption: captionTask ? `Checklist: ${captionTask.name}` : '',
+          caption,
           phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
           ...taskPhotoVisitAreaPayload(),
         },
@@ -1343,10 +1365,15 @@ export default function RoomDetail() {
 
   const handleWorkerPhaseComplete = async (): Promise<boolean> => {
     if (!room) return false;
-    const workerName = resolveSessionWorkerLabel(displayName);
+    const workerName = resolveWorkerActorLabel(displayName);
     if (!workerName.trim()) {
-      toast.error('Add your name in your profile to record handoff.');
-      setShowCheckNameDialog(true);
+      if (sessionIsPinWorker) {
+        toast.error('Sign in as a site worker (PIN) to record handoff.');
+        navigate('/worker/login', { replace: true });
+      } else {
+        toast.error('Enter your name to record handoff.');
+        setShowCheckNameDialog(true);
+      }
       return false;
     }
     const phaseKey = normalizeRoomPhase(phaseTab, phaseWorkflow);
@@ -1539,7 +1566,7 @@ export default function RoomDetail() {
     field: 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
     value: string
   ) => {
-    const defaultPerformer = resolveSessionWorkerLabel(displayName);
+    const defaultPerformer = resolveWorkerActorLabel(displayName);
     setHeatingCableDoc((prev) => {
       const row: HeatingCableStage = {
         ...(prev[stageKey] || {}),
@@ -1585,7 +1612,7 @@ export default function RoomDetail() {
     field: 'label' | 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
     value: string
   ) => {
-    const defaultPerformer = resolveSessionWorkerLabel(displayName);
+    const defaultPerformer = resolveWorkerActorLabel(displayName);
     setHeatingCableDoc((prev) => {
       const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
       const step: HeatingCableStage = { ...(extra[stepIndex] || {}), [field]: value };
@@ -1649,12 +1676,17 @@ export default function RoomDetail() {
         headers: { 'Content-Type': file.type },
       });
     }
+    const actorLabel = resolveWorkerActorLabel(displayName);
+    const heatCap = heatingCableStageCaption(stageId);
+    const heatCaption =
+      [heatCap, actorLabel ? `Uploaded by ${actorLabel}` : ''].filter(Boolean).join(' · ') || '';
+
     await client.entities.room_photos.create({
       data: {
         room_id: room.id,
         object_key: objectKey,
         filename: file.name,
-        caption: heatingCableStageCaption(stageId),
+        caption: heatCaption,
         phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
         ...taskPhotoVisitAreaPayload(),
       },
@@ -1961,6 +1993,7 @@ export default function RoomDetail() {
                 id: d.id,
                 text: d.text,
                 status: d.status,
+                reported_by: d.reported_by,
               }))}
               newDeviationText={newDeviationText}
               onNewDeviationChange={setNewDeviationText}
@@ -1974,7 +2007,7 @@ export default function RoomDetail() {
               phaseExplicitWorkerLock={lockOv[selPhase] === true}
               onCompletePhase={() => handleWorkerPhaseComplete()}
               completingPhase={completingWorkerPhase}
-              heatingDefaultPerformedBy={resolveSessionWorkerLabel(displayName)}
+              heatingDefaultPerformedBy={resolveWorkerActorLabel(displayName)}
               heatingCableSeedResetKey={room.id}
             />
           </>
@@ -3602,6 +3635,11 @@ export default function RoomDetail() {
                                       {d.status === 'resolved' ? 'Resolved' : 'Open'}
                                     </Badge>
                                     <p className="text-foreground leading-snug">{d.text}</p>
+                                    {d.reported_by?.trim() ? (
+                                      <p className="mt-1 text-[10px] text-muted-foreground">
+                                        Reported by {d.reported_by.trim()}
+                                      </p>
+                                    ) : null}
                                   </div>
                                   {canEdit && !editsBlocked ? (
                                     <Button
@@ -3785,7 +3823,7 @@ export default function RoomDetail() {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Your account has no display name set. Enter a name once here to record checklist actions on this device, or set your name in your profile.
+              Site work must record who performed actions. Enter your name once on this device (saved locally), sign in with your supervisor&apos;s site worker PIN, or set your name on your account profile.
             </p>
             <Input
               placeholder="e.g., John Smith"

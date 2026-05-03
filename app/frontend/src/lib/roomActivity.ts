@@ -26,7 +26,7 @@ function q(s: string): string {
 
 /** Primary line (requirement wording for checklist). */
 export function formatActivityMessage(e: ActivityLogEntry): string {
-  const actor = (e.actor || 'Someone').trim();
+  const actor = (e.actor || 'Unknown').trim();
   const kind = e.kind || '';
   const item = (e.item_name || '').trim();
   const meta = e.meta && typeof e.meta === 'object' ? e.meta : {};

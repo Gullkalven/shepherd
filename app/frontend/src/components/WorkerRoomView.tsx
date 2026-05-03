@@ -77,6 +77,7 @@ export type WorkerDeviation = {
   id: string;
   text: string;
   status: 'open' | 'resolved';
+  reported_by?: string;
 };
 
 type Props = {
@@ -1732,7 +1733,12 @@ export function WorkerRoomView(p: Props) {
                             : 'border-amber-200/70 bg-amber-50/50 dark:bg-amber-950/25'
                         )}
                       >
-                        {d.text}
+                        <span className="block leading-snug">{d.text}</span>
+                        {d.reported_by?.trim() ? (
+                          <span className="mt-1 block text-[11px] text-muted-foreground">
+                            Reported by {d.reported_by.trim()}
+                          </span>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

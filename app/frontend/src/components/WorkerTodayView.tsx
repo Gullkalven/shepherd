@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { usePermissions } from '@/lib/permissions';
+import { resolveWorkerActorLabel } from '@/lib/workerIdentity';
 import {
   readWorkerLastRoom,
   workerRoomPath,
@@ -166,7 +167,7 @@ export default function WorkerTodayView({
   const navigate = useNavigate();
   const location = useLocation();
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { displayName } = usePermissions();
+  const { displayName, sessionIsPinWorker } = usePermissions();
   const [lastLocal, setLastLocal] = useState<WorkerLastRoom | null>(() => readWorkerLastRoom());
   const [roomSearch, setRoomSearch] = useState('');
 
@@ -260,7 +261,9 @@ export default function WorkerTodayView({
     return sites[0] ?? null;
   }, [resumeRoom, fallbackReady, sites]);
 
-  const loginLabel = displayName?.trim() || 'Worker';
+  const loginLabel =
+    resolveWorkerActorLabel(displayName) ||
+    (sessionIsPinWorker ? 'Sign in (PIN required)' : 'Set your name on a checklist item');
 
   const primaryRoom = resumeRoom ?? fallbackReady;
   const primaryRoomLabel =

@@ -95,8 +95,14 @@ export default function AppShellLayout() {
     if (checking) return;
     if (isAuth) return;
     const p = location.pathname;
-    if (p.startsWith('/project') || p.startsWith('/admin') || p.startsWith('/worker')) {
-      navigate('/', { replace: true });
+    if (p === '/worker/login') return;
+    if (p === '/admin/login') return;
+    if (p.startsWith('/worker')) {
+      navigate('/worker/login', { replace: true });
+      return;
+    }
+    if (p.startsWith('/project') || p.startsWith('/admin')) {
+      navigate('/admin/login', { replace: true });
     }
   }, [isAuth, checking, location.pathname, navigate]);
 

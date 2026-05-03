@@ -17,6 +17,7 @@ import {
 } from '@/lib/roomPhases';
 import { taskCountsForFloorBoard } from '@/lib/roomAreas';
 import { useI18n } from '@/lib/i18n';
+import ProjectWorkersPanel from '@/components/ProjectWorkersPanel';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 
 /** Compact labels for default phases; other keys use first letter */
@@ -64,7 +65,7 @@ export default function ProjectDetail() {
   const desktopAutoFocus = useDesktopAutoFocus();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { canCreateFloor, canDeleteFloor, canEdit, isWorker } = usePermissions();
+  const { canCreateFloor, canDeleteFloor, canEdit, isWorker, isAdmin } = usePermissions();
   const [project, setProject] = useState<Project | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [allRooms, setAllRooms] = useState<Room[]>([]);
@@ -324,6 +325,8 @@ export default function ProjectDetail() {
             </>
           )}
         </div>
+
+        {isAdmin && projectId ? <ProjectWorkersPanel projectId={Number(projectId)} /> : null}
 
         {/* Floors */}
         <div className="flex items-center justify-between">

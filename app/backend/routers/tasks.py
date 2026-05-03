@@ -12,6 +12,7 @@ from core.database import get_db
 from models.rooms import Rooms
 from services.tasks import TasksService
 from dependencies.auth import get_current_user
+from dependencies.worker_scope import worker_project_scope
 from dependencies.phase_edit import (
     effective_task_phase,
     ensure_room_phase_editable_for_worker,
@@ -36,6 +37,7 @@ async def _append_task_create_activity(
     task_row: Any,
     user_id: str,
     current_user: UserResponse,
+    worker_project_id: Optional[int] = None,
 ) -> None:
     keys = await workflow_keys_for_room(db, room_obj)
     aid = norm_area_id(getattr(task_row, "area_id", None))
@@ -54,6 +56,7 @@ async def _append_task_create_activity(
         area_id=aid,
         item_name=getattr(task_row, "name", None),
         task_id=getattr(task_row, "id", None),
+        worker_project_id=worker_project_id,
     )
 
 
@@ -65,6 +68,7 @@ async def _append_task_change_activity(
     room_obj: Rooms,
     user_id: str,
     current_user: UserResponse,
+    worker_project_id: Optional[int] = None,
 ) -> None:
     keys = await workflow_keys_for_room(db, room_obj)
     merged_phase = update_dict.get("phase", getattr(task_before, "phase", None))
@@ -96,6 +100,7 @@ async def _append_task_change_activity(
             item_name=old_name,
             task_id=tid,
             meta={"new_name": update_dict.get("name")},
+            worker_project_id=worker_project_id,
         )
 
     if "is_completed" in update_dict and bool(update_dict["is_completed"]) != old_completed:
@@ -111,6 +116,7 @@ async def _append_task_change_activity(
             area_id=aid_str,
             item_name=old_name,
             task_id=tid,
+            worker_project_id=worker_project_id,
         )
 
 
@@ -121,6 +127,7 @@ async def _append_task_delete_activity(
     room_obj: Rooms,
     user_id: str,
     current_user: UserResponse,
+    worker_project_id: Optional[int] = None,
 ) -> None:
     keys = await workflow_keys_for_room(db, room_obj)
     aid = norm_area_id(getattr(task_before, "area_id", None))
@@ -139,6 +146,7 @@ async def _append_task_delete_activity(
         area_id=aid,
         item_name=getattr(task_before, "name", None),
         task_id=getattr(task_before, "id", None),
+        worker_project_id=worker_project_id,
     )
 
 
@@ -255,6 +263,7 @@ async def query_taskss(
             query_dict=query_dict,
             sort=sort,
             user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
         )
         logger.debug(f"Found {result['total']} taskss")
         return result
@@ -314,7 +323,11 @@ async def get_tasks(
     
     service = TasksService(db)
     try:
-        result = await service.get_by_id(id, user_id=str(current_user.id))
+        result = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not result:
             logger.warning(f"Tasks with id {id} not found")
             raise HTTPException(status_code=404, detail="Tasks not found")
@@ -339,7 +352,9 @@ async def create_tasks(
     
     service = TasksService(db)
     try:
-        await ensure_room_mutable(db, data.room_id, str(current_user.id), app_role)
+        await ensure_room_mutable(
+            db, data.room_id, str(current_user.id), app_role, worker_project_scope(current_user)
+        )
         room_row = await db.execute(select(Rooms).where(Rooms.id == data.room_id))
         room_obj = room_row.scalar_one_or_none()
         if not room_obj:
@@ -353,7 +368,7 @@ async def create_tasks(
             payload["phase"] = effective_task_phase(None, area_rp, keys, phase_statuses_raw)
         eff = effective_task_phase(payload.get("phase"), area_rp, keys, phase_statuses_raw)
         await ensure_room_phase_editable_for_worker(
-            db, data.room_id, str(current_user.id), app_role, eff, area_id=aid
+            db, data.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
         )
         result = await service.create(payload, user_id=str(current_user.id))
         if not result:
@@ -365,6 +380,7 @@ async def create_tasks(
             task_row=result,
             user_id=str(current_user.id),
             current_user=current_user,
+            worker_project_id=worker_project_scope(current_user),
         )
 
         logger.info(f"Tasks created successfully with id: {result.id}")
@@ -394,7 +410,7 @@ async def create_taskss_batch(
     
     try:
         for item_data in request.items:
-            await ensure_room_mutable(db, item_data.room_id, str(current_user.id), app_role)
+            await ensure_room_mutable(db, item_data.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
             room_row = await db.execute(select(Rooms).where(Rooms.id == item_data.room_id))
             room_obj = room_row.scalar_one_or_none()
             if not room_obj:
@@ -408,7 +424,7 @@ async def create_taskss_batch(
                 payload["phase"] = effective_task_phase(None, area_rp, keys, phase_statuses_raw)
             eff = effective_task_phase(payload.get("phase"), area_rp, keys, phase_statuses_raw)
             await ensure_room_phase_editable_for_worker(
-                db, item_data.room_id, str(current_user.id), app_role, eff, area_id=aid
+                db, item_data.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
             )
             result = await service.create(payload, user_id=str(current_user.id))
             if result:
@@ -418,6 +434,7 @@ async def create_taskss_batch(
                     task_row=result,
                     user_id=str(current_user.id),
                     current_user=current_user,
+                    worker_project_id=worker_project_scope(current_user),
                 )
                 results.append(result)
         
@@ -449,13 +466,17 @@ async def update_taskss_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            task = await service.get_by_id(item.id, user_id=str(current_user.id))
+            task = await service.get_by_id(
+                item.id,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if not task:
                 continue
-            await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role)
+            await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
             new_rid = update_dict.get("room_id")
             if new_rid is not None and new_rid != task.room_id:
-                await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
+                await ensure_room_mutable(db, new_rid, str(current_user.id), app_role, worker_project_scope(current_user))
             room_row = await db.execute(select(Rooms).where(Rooms.id == task.room_id))
             room_obj = room_row.scalar_one_or_none()
             if room_obj:
@@ -466,7 +487,7 @@ async def update_taskss_batch(
                 phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
                 eff = effective_task_phase(merged_phase, area_rp, keys, phase_statuses_raw)
                 await ensure_room_phase_editable_for_worker(
-                    db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
+                    db, task.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
                 )
             snap = SimpleNamespace(
                 id=getattr(task, "id", None),
@@ -477,7 +498,12 @@ async def update_taskss_batch(
                 phase=getattr(task, "phase", None),
                 area_id=getattr(task, "area_id", None),
             )
-            result = await service.update(item.id, update_dict, user_id=str(current_user.id))
+            result = await service.update(
+                item.id,
+                update_dict,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if result:
                 if room_obj:
                     await _append_task_change_activity(
@@ -487,6 +513,7 @@ async def update_taskss_batch(
                         room_obj=room_obj,
                         user_id=str(current_user.id),
                         current_user=current_user,
+                        worker_project_id=worker_project_scope(current_user),
                     )
                 results.append(result)
         
@@ -516,14 +543,18 @@ async def update_tasks(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        task = await service.get_by_id(id, user_id=str(current_user.id))
+        task = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not task:
             logger.warning(f"Tasks with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Tasks not found")
-        await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role)
+        await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
         new_rid = update_dict.get("room_id")
         if new_rid is not None and new_rid != task.room_id:
-            await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
+            await ensure_room_mutable(db, new_rid, str(current_user.id), app_role, worker_project_scope(current_user))
         room_row = await db.execute(select(Rooms).where(Rooms.id == task.room_id))
         room_obj = room_row.scalar_one_or_none()
         if room_obj:
@@ -534,7 +565,7 @@ async def update_tasks(
             phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
             eff = effective_task_phase(merged_phase, area_rp, keys, phase_statuses_raw)
             await ensure_room_phase_editable_for_worker(
-                db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
+                db, task.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
             )
         snap = SimpleNamespace(
             id=getattr(task, "id", None),
@@ -545,7 +576,12 @@ async def update_tasks(
             phase=getattr(task, "phase", None),
             area_id=getattr(task, "area_id", None),
         )
-        result = await service.update(id, update_dict, user_id=str(current_user.id))
+        result = await service.update(
+            id,
+            update_dict,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not result:
             logger.warning(f"Tasks with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Tasks not found")
@@ -558,6 +594,7 @@ async def update_tasks(
                 room_obj=room_obj,
                 user_id=str(current_user.id),
                 current_user=current_user,
+                worker_project_id=worker_project_scope(current_user),
             )
 
         logger.info(f"Tasks {id} updated successfully")
@@ -587,10 +624,14 @@ async def delete_taskss_batch(
     
     try:
         for item_id in request.ids:
-            task = await service.get_by_id(item_id, user_id=str(current_user.id))
+            task = await service.get_by_id(
+                item_id,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if not task:
                 continue
-            await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role)
+            await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
             room_row = await db.execute(select(Rooms).where(Rooms.id == task.room_id))
             room_obj = room_row.scalar_one_or_none()
             if room_obj:
@@ -602,7 +643,7 @@ async def delete_taskss_batch(
                     getattr(task, "phase", None), area_rp, keys, phase_statuses_raw
                 )
                 await ensure_room_phase_editable_for_worker(
-                    db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
+                    db, task.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
                 )
             if room_obj:
                 await _append_task_delete_activity(
@@ -611,8 +652,13 @@ async def delete_taskss_batch(
                     room_obj=room_obj,
                     user_id=str(current_user.id),
                     current_user=current_user,
+                    worker_project_id=worker_project_scope(current_user),
                 )
-            success = await service.delete(item_id, user_id=str(current_user.id))
+            success = await service.delete(
+                item_id,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if success:
                 deleted_count += 1
         
@@ -639,11 +685,15 @@ async def delete_tasks(
     
     service = TasksService(db)
     try:
-        task = await service.get_by_id(id, user_id=str(current_user.id))
+        task = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not task:
             logger.warning(f"Tasks with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Tasks not found")
-        await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role)
+        await ensure_room_mutable(db, task.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
         room_row = await db.execute(select(Rooms).where(Rooms.id == task.room_id))
         room_obj = room_row.scalar_one_or_none()
         if room_obj:
@@ -655,7 +705,7 @@ async def delete_tasks(
                 getattr(task, "phase", None), area_rp, keys, phase_statuses_raw
             )
             await ensure_room_phase_editable_for_worker(
-                db, task.room_id, str(current_user.id), app_role, eff, area_id=aid
+                db, task.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
             )
         if room_obj:
             await _append_task_delete_activity(
@@ -664,8 +714,13 @@ async def delete_tasks(
                 room_obj=room_obj,
                 user_id=str(current_user.id),
                 current_user=current_user,
+                worker_project_id=worker_project_scope(current_user),
             )
-        success = await service.delete(id, user_id=str(current_user.id))
+        success = await service.delete(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not success:
             logger.warning(f"Tasks with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Tasks not found")

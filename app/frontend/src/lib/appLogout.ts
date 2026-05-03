@@ -1,4 +1,6 @@
 import { getAPIBaseURL } from '@/lib/config';
+import { clearAdminSession } from '@/lib/adminSession';
+import { clearWorkerSession } from '@/lib/workerSession';
 
 const LOGOUT_GATE_KEY = 'shepherd_logout_gate';
 
@@ -41,6 +43,8 @@ export function getAuthMeEpoch(): number {
  * Does not touch the network.
  */
 export function clearLocalAuthMarks(): void {
+  clearWorkerSession();
+  clearAdminSession();
   try {
     localStorage.removeItem('user');
     localStorage.removeItem('token');

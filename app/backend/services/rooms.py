@@ -44,12 +44,19 @@ class RoomsService:
             logger.error(f"Error checking ownership for rooms {obj_id}: {str(e)}")
             return False
 
-    async def get_by_id(self, obj_id: int, user_id: Optional[str] = None) -> Optional[Rooms]:
+    async def get_by_id(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> Optional[Rooms]:
         """Get rooms by ID (user can only see their own records)"""
         try:
             query = select(Rooms).where(Rooms.id == obj_id)
             if user_id:
                 query = query.where(Rooms.user_id == user_id)
+            if worker_project_id is not None:
+                query = query.where(Rooms.project_id == worker_project_id)
             result = await self.db.execute(query)
             return result.scalar_one_or_none()
         except Exception as e:
@@ -63,6 +70,7 @@ class RoomsService:
         user_id: Optional[str] = None,
         query_dict: Optional[Dict[str, Any]] = None,
         sort: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Get paginated list of roomss (user can only see their own records)"""
         try:
@@ -72,6 +80,9 @@ class RoomsService:
             if user_id:
                 query = query.where(Rooms.user_id == user_id)
                 count_query = count_query.where(Rooms.user_id == user_id)
+            if worker_project_id is not None:
+                query = query.where(Rooms.project_id == worker_project_id)
+                count_query = count_query.where(Rooms.project_id == worker_project_id)
             
             if query_dict:
                 for field, value in query_dict.items():
@@ -106,10 +117,16 @@ class RoomsService:
             logger.error(f"Error fetching rooms list: {str(e)}")
             raise
 
-    async def update(self, obj_id: int, update_data: Dict[str, Any], user_id: Optional[str] = None) -> Optional[Rooms]:
+    async def update(
+        self,
+        obj_id: int,
+        update_data: Dict[str, Any],
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> Optional[Rooms]:
         """Update rooms (requires ownership)"""
         try:
-            obj = await self.get_by_id(obj_id, user_id=user_id)
+            obj = await self.get_by_id(obj_id, user_id=user_id, worker_project_id=worker_project_id)
             if not obj:
                 logger.warning(f"Rooms {obj_id} not found for update")
                 return None
@@ -126,9 +143,14 @@ class RoomsService:
             logger.error(f"Error updating rooms {obj_id}: {str(e)}")
             raise
 
-    async def delete_room_and_dependents_no_commit(self, obj_id: int, user_id: Optional[str] = None) -> bool:
+    async def delete_room_and_dependents_no_commit(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> bool:
         """Delete room row plus tasks, photos, visits in the current session (no commit)."""
-        obj = await self.get_by_id(obj_id, user_id=user_id)
+        obj = await self.get_by_id(obj_id, user_id=user_id, worker_project_id=worker_project_id)
         if not obj:
             logger.warning(f"Rooms {obj_id} not found for deletion")
             return False
@@ -156,10 +178,15 @@ class RoomsService:
         await self.db.delete(obj)
         return True
 
-    async def delete(self, obj_id: int, user_id: Optional[str] = None) -> bool:
+    async def delete(
+        self,
+        obj_id: int,
+        user_id: Optional[str] = None,
+        worker_project_id: Optional[int] = None,
+    ) -> bool:
         """Delete rooms (requires ownership)"""
         try:
-            if not await self.delete_room_and_dependents_no_commit(obj_id, user_id):
+            if not await self.delete_room_and_dependents_no_commit(obj_id, user_id, worker_project_id):
                 return False
             await self.db.commit()
             logger.info(f"Deleted rooms {obj_id}")

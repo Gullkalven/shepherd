@@ -1,5 +1,7 @@
 """Enforce room lock for workers."""
 
+from typing import Optional
+
 from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,11 +16,12 @@ async def ensure_room_mutable(
     room_id: int,
     user_id: str,
     app_role: str,
+    worker_project_id: Optional[int] = None,
 ) -> None:
     if app_role == ROLE_ADMIN:
         return
     service = RoomsService(db)
-    room = await service.get_by_id(room_id, user_id=user_id)
+    room = await service.get_by_id(room_id, user_id=user_id, worker_project_id=worker_project_id)
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     if getattr(room, "is_locked", False):

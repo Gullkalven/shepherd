@@ -13,6 +13,7 @@ from core.database import get_db
 from models.rooms import Rooms
 from services.room_photos import Room_photosService
 from dependencies.auth import get_current_user
+from dependencies.worker_scope import worker_project_scope
 from dependencies.phase_edit import (
     effective_media_phase,
     ensure_room_phase_editable_for_worker,
@@ -128,6 +129,7 @@ async def query_room_photoss(
             query_dict=query_dict,
             sort=sort,
             user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
         )
         logger.debug(f"Found {result['total']} room_photoss")
         return result
@@ -187,7 +189,11 @@ async def get_room_photos(
     
     service = Room_photosService(db)
     try:
-        result = await service.get_by_id(id, user_id=str(current_user.id))
+        result = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not result:
             logger.warning(f"Room_photos with id {id} not found")
             raise HTTPException(status_code=404, detail="Room_photos not found")
@@ -212,7 +218,7 @@ async def create_room_photos(
     
     service = Room_photosService(db)
     try:
-        await ensure_room_mutable(db, data.room_id, str(current_user.id), app_role)
+        await ensure_room_mutable(db, data.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
         room_row = await db.execute(select(Rooms).where(Rooms.id == data.room_id))
         room_obj = room_row.scalar_one_or_none()
         if room_obj:
@@ -222,7 +228,7 @@ async def create_room_photos(
             phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
             eff = effective_media_phase(data.phase, area_rp, keys, phase_statuses_raw)
             await ensure_room_phase_editable_for_worker(
-                db, data.room_id, str(current_user.id), app_role, eff, area_id=aid
+                db, data.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
             )
         result = await service.create(data.model_dump(), user_id=str(current_user.id))
         if not result:
@@ -251,6 +257,7 @@ async def create_room_photos(
                 photo_id=getattr(result, "id", None),
                 at_iso=created_iso,
                 meta={"filename": getattr(result, "filename", None)},
+                worker_project_id=worker_project_scope(current_user),
             )
         
         logger.info(f"Room_photos created successfully with id: {result.id}")
@@ -280,7 +287,7 @@ async def create_room_photoss_batch(
     
     try:
         for item_data in request.items:
-            await ensure_room_mutable(db, item_data.room_id, str(current_user.id), app_role)
+            await ensure_room_mutable(db, item_data.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
             room_row = await db.execute(select(Rooms).where(Rooms.id == item_data.room_id))
             room_obj = room_row.scalar_one_or_none()
             if room_obj:
@@ -290,7 +297,7 @@ async def create_room_photoss_batch(
                 phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
                 eff = effective_media_phase(item_data.phase, area_rp, keys, phase_statuses_raw)
                 await ensure_room_phase_editable_for_worker(
-                    db, item_data.room_id, str(current_user.id), app_role, eff, area_id=aid
+                    db, item_data.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
                 )
             result = await service.create(item_data.model_dump(), user_id=str(current_user.id))
             if result:
@@ -315,6 +322,7 @@ async def create_room_photoss_batch(
                         photo_id=getattr(result, "id", None),
                         at_iso=created_iso,
                         meta={"filename": getattr(result, "filename", None)},
+                        worker_project_id=worker_project_scope(current_user),
                     )
                 results.append(result)
         
@@ -346,13 +354,17 @@ async def update_room_photoss_batch(
         for item in request.items:
             # Only include non-None values for partial updates
             update_dict = {k: v for k, v in item.updates.model_dump().items() if v is not None}
-            row = await service.get_by_id(item.id, user_id=str(current_user.id))
+            row = await service.get_by_id(
+                item.id,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if not row:
                 continue
-            await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
+            await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
             new_rid = update_dict.get("room_id")
             if new_rid is not None and new_rid != row.room_id:
-                await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
+                await ensure_room_mutable(db, new_rid, str(current_user.id), app_role, worker_project_scope(current_user))
             room_row = await db.execute(select(Rooms).where(Rooms.id == row.room_id))
             room_obj = room_row.scalar_one_or_none()
             if room_obj:
@@ -363,9 +375,14 @@ async def update_room_photoss_batch(
                 phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
                 eff = effective_media_phase(merged_ph, area_rp, keys, phase_statuses_raw)
                 await ensure_room_phase_editable_for_worker(
-                    db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
+                    db, row.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
                 )
-            result = await service.update(item.id, update_dict, user_id=str(current_user.id))
+            result = await service.update(
+                item.id,
+                update_dict,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if result:
                 results.append(result)
         
@@ -395,14 +412,18 @@ async def update_room_photos(
     try:
         # Only include non-None values for partial updates
         update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-        row = await service.get_by_id(id, user_id=str(current_user.id))
+        row = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not row:
             logger.warning(f"Room_photos with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Room_photos not found")
-        await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
+        await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
         new_rid = update_dict.get("room_id")
         if new_rid is not None and new_rid != row.room_id:
-            await ensure_room_mutable(db, new_rid, str(current_user.id), app_role)
+            await ensure_room_mutable(db, new_rid, str(current_user.id), app_role, worker_project_scope(current_user))
         room_row = await db.execute(select(Rooms).where(Rooms.id == row.room_id))
         room_obj = room_row.scalar_one_or_none()
         if room_obj:
@@ -413,9 +434,14 @@ async def update_room_photos(
             phase_statuses_raw = getattr(room_obj, "phase_statuses", None)
             eff = effective_media_phase(merged_ph, area_rp, keys, phase_statuses_raw)
             await ensure_room_phase_editable_for_worker(
-                db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
+                db, row.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
             )
-        result = await service.update(id, update_dict, user_id=str(current_user.id))
+        result = await service.update(
+            id,
+            update_dict,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not result:
             logger.warning(f"Room_photos with id {id} not found for update")
             raise HTTPException(status_code=404, detail="Room_photos not found")
@@ -447,10 +473,14 @@ async def delete_room_photoss_batch(
     
     try:
         for item_id in request.ids:
-            row = await service.get_by_id(item_id, user_id=str(current_user.id))
+            row = await service.get_by_id(
+                item_id,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if not row:
                 continue
-            await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
+            await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
             room_row = await db.execute(select(Rooms).where(Rooms.id == row.room_id))
             room_obj = room_row.scalar_one_or_none()
             if room_obj:
@@ -462,7 +492,7 @@ async def delete_room_photoss_batch(
                     getattr(row, "phase", None), area_rp, keys, phase_statuses_raw
                 )
                 await ensure_room_phase_editable_for_worker(
-                    db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
+                    db, row.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
                 )
                 plab = await phase_display_label(db, room_obj, eff)
                 await append_room_activity(
@@ -476,8 +506,13 @@ async def delete_room_photoss_batch(
                     area_id=aid,
                     photo_id=getattr(row, "id", None),
                     meta={"filename": getattr(row, "filename", None)},
+                    worker_project_id=worker_project_scope(current_user),
                 )
-            success = await service.delete(item_id, user_id=str(current_user.id))
+            success = await service.delete(
+                item_id,
+                user_id=str(current_user.id),
+                worker_project_id=worker_project_scope(current_user),
+            )
             if success:
                 deleted_count += 1
         
@@ -504,11 +539,15 @@ async def delete_room_photos(
     
     service = Room_photosService(db)
     try:
-        row = await service.get_by_id(id, user_id=str(current_user.id))
+        row = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not row:
             logger.warning(f"Room_photos with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Room_photos not found")
-        await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role)
+        await ensure_room_mutable(db, row.room_id, str(current_user.id), app_role, worker_project_scope(current_user))
         room_row = await db.execute(select(Rooms).where(Rooms.id == row.room_id))
         room_obj = room_row.scalar_one_or_none()
         if room_obj:
@@ -520,7 +559,7 @@ async def delete_room_photos(
                 getattr(row, "phase", None), area_rp, keys, phase_statuses_raw
             )
             await ensure_room_phase_editable_for_worker(
-                db, row.room_id, str(current_user.id), app_role, eff, area_id=aid
+                db, row.room_id, str(current_user.id), app_role, eff, area_id=aid, worker_project_id=worker_project_scope(current_user)
             )
             plab = await phase_display_label(db, room_obj, eff)
             await append_room_activity(
@@ -534,8 +573,13 @@ async def delete_room_photos(
                 area_id=aid,
                 photo_id=getattr(row, "id", None),
                 meta={"filename": getattr(row, "filename", None)},
+                worker_project_id=worker_project_scope(current_user),
             )
-        success = await service.delete(id, user_id=str(current_user.id))
+        success = await service.delete(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not success:
             logger.warning(f"Room_photos with id {id} not found for deletion")
             raise HTTPException(status_code=404, detail="Room_photos not found")

@@ -192,11 +192,12 @@ async def ensure_room_phase_editable_for_worker(
     app_role: str,
     content_phase: str,
     area_id: Optional[str] = None,
+    worker_project_id: Optional[int] = None,
 ) -> None:
     if app_role == ROLE_ADMIN:
         return
     service = RoomsService(db)
-    room = await service.get_by_id(room_id, user_id=user_id)
+    room = await service.get_by_id(room_id, user_id=user_id, worker_project_id=worker_project_id)
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
     keys = await workflow_keys_for_room(db, room)

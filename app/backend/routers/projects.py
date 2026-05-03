@@ -12,6 +12,7 @@ from core.database import get_db
 from services.projects import ProjectsService
 from dependencies.auth import get_current_user
 from dependencies.roles import require_admin_role
+from dependencies.worker_scope import worker_project_scope
 from schemas.auth import UserResponse
 
 # Set up logging
@@ -106,6 +107,7 @@ async def query_projectss(
             query_dict=query_dict,
             sort=sort,
             user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
         )
         logger.debug(f"Found {result['total']} projectss")
         return result
@@ -165,7 +167,11 @@ async def get_projects(
     
     service = ProjectsService(db)
     try:
-        result = await service.get_by_id(id, user_id=str(current_user.id))
+        result = await service.get_by_id(
+            id,
+            user_id=str(current_user.id),
+            worker_project_id=worker_project_scope(current_user),
+        )
         if not result:
             logger.warning(f"Projects with id {id} not found")
             raise HTTPException(status_code=404, detail="Projects not found")

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client, extractProjectItemsFromListBody, fetchProjectsListAll } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
+import { readWorkerSession } from '@/lib/workerSession';
+import { resolveWorkerActorLabel } from '@/lib/workerIdentity';
 import { PROJECTS_NAV_REFRESH_EVENT, APP_LOGOUT_EVENT } from '@/lib/runAppLogout';
 import {
   DEV_ROLE_CHANGED_EVENT,
@@ -58,7 +60,7 @@ function sortRoomsWorkerPriority(a: EnrichedRoom, b: EnrichedRoom): number {
 
 export default function WorkerRoomsPage() {
   const navigate = useNavigate();
-  const { displayName, isWorker, loading: permLoading } = usePermissions();
+  const { displayName, isWorker, loading: permLoading, sessionIsPinWorker } = usePermissions();
   const { sessionActive } = useDevPresentationSession();
 
   const [user, setUser] = useState<unknown>(null);
@@ -100,9 +102,17 @@ export default function WorkerRoomsPage() {
     if (!isWorker) navigate('/', { replace: true });
   }, [permLoading, isWorker, navigate]);
 
+  useEffect(() => {
+    if (permLoading) return;
+    if (!sessionIsPinWorker) return;
+    if (!readWorkerSession()?.token) navigate('/worker/login', { replace: true });
+  }, [permLoading, sessionIsPinWorker, navigate]);
+
   const loadProjects = useCallback(async () => {
     const devHost = isDevRoleSwitcherHost();
     const useProjectsAll = !devHost;
+    const ws = readWorkerSession();
+    const pinProjectId = ws?.token && ws.projectId ? ws.projectId : null;
     const canLoad = devHost ? !!user : readDemoLocalStorageUser() !== null || !!user;
     if (!canLoad) {
       setProjectsLoading(false);
@@ -112,11 +122,17 @@ export default function WorkerRoomsPage() {
     setProjectsLoading(true);
     setProjectsLoadFailed(false);
     try {
-      const res = useProjectsAll
-        ? await fetchProjectsListAll()
-        : await client.entities.projects.query({ sort: '-created_at' });
-      const items = extractProjectItemsFromListBody(res?.data ?? res) as Project[];
-      setProjects(items);
+      if (pinProjectId) {
+        const res = await client.entities.projects.get({ id: String(pinProjectId) });
+        const row = res?.data;
+        setProjects(row ? [{ id: row.id, name: row.name }] : []);
+      } else {
+        const res = useProjectsAll
+          ? await fetchProjectsListAll()
+          : await client.entities.projects.query({ sort: '-created_at' });
+        const items = extractProjectItemsFromListBody(res?.data ?? res) as Project[];
+        setProjects(items);
+      }
     } catch {
       setProjectsLoadFailed(true);
       toast.error('Failed to load projects');
@@ -211,7 +227,7 @@ export default function WorkerRoomsPage() {
     );
   }
 
-  const greeting = displayName?.trim() ? displayName.trim() : 'Worker';
+  const greeting = resolveWorkerActorLabel(displayName) || 'Worker';
 
   return (
     <div className="min-h-dvh bg-slate-50 pb-28 dark:bg-background lg:pb-10">

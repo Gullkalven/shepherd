@@ -37,6 +37,12 @@ async def get_current_app_role(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> str:
+    if getattr(current_user, "is_worker_session", False):
+        return ROLE_WORKER
+
+    if getattr(current_user, "is_provisional_admin", False):
+        return ROLE_ADMIN
+
     result = await db.execute(select(User_roles).where(User_roles.user_id == str(current_user.id)))
     role_record = result.scalar_one_or_none()
 
