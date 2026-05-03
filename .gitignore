@@ -4,4 +4,4 @@ node_modules/
 build/
 __pycache__
 dist
-vite.config.ts.timestamp-*
+vite.config.ts.timestamp-*Prototype/
