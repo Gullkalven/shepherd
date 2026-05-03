@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { client, postWorkerPhaseHandoff } from '@/lib/api';
-import { persistWorkerLastRoom, WORKER_ROOM_CHECKLIST_ANCHOR } from '@/lib/workerLastRoom';
+import { persistWorkerLastRoom, WORKER_ROOM_CHECKLIST_ANCHOR, WORKER_ROOM_DOCUMENTATION_ANCHOR } from '@/lib/workerLastRoom';
 import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -660,6 +660,23 @@ export default function RoomDetail() {
         !window.matchMedia('(max-width: 1023.98px)').matches &&
         !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       document.getElementById(WORKER_ROOM_CHECKLIST_ANCHOR)?.scrollIntoView({
+        behavior: smooth ? 'smooth' : 'auto',
+        block: 'start',
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [permissionsLoading, isWorker, loading, room?.id, location.hash]);
+
+  /** Bottom nav “Camera / Docs” — scroll to checklist/documentation section. */
+  useEffect(() => {
+    if (permissionsLoading || !isWorker || loading || !room) return;
+    if (location.hash !== `#${WORKER_ROOM_DOCUMENTATION_ANCHOR}`) return;
+    const id = requestAnimationFrame(() => {
+      const smooth =
+        typeof window !== 'undefined' &&
+        !window.matchMedia('(max-width: 1023.98px)').matches &&
+        !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      document.getElementById(WORKER_ROOM_DOCUMENTATION_ANCHOR)?.scrollIntoView({
         behavior: smooth ? 'smooth' : 'auto',
         block: 'start',
       });

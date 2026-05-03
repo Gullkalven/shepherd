@@ -105,7 +105,8 @@ export default function FloorDetail() {
   const desktopAutoFocus = useDesktopAutoFocus();
   const { projectId, floorId } = useParams<{ projectId: string; floorId: string }>();
   const navigate = useNavigate();
-  const { canCreateRoom, canDeleteRoom, canChangeStatus, canMovePhase, canEdit, isAdmin } = usePermissions();
+  const { canCreateRoom, canDeleteRoom, canChangeStatus, canMovePhase, canEdit, isAdmin, isWorker } =
+    usePermissions();
   const [project, setProject] = useState<any>(null);
   const [floor, setFloor] = useState<any>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -1034,6 +1035,8 @@ export default function FloorDetail() {
     return `${first}, ${bulkPrefix ? `${bulkPrefix}${String(start + 1).padStart(2, '0')}` : String(start + 1)}, ... ${last}`;
   };
 
+  const effectiveView: 'list' | 'kanban' = isWorker ? 'list' : viewMode;
+
   if (loading) {
     return (
       <div className="h-dvh bg-slate-50 dark:bg-background flex items-center justify-center">
@@ -1096,95 +1099,89 @@ export default function FloorDetail() {
           )}
         </div>
 
-        {/* View Toggle + Add */}
-        <div className="flex items-center justify-between">
-          <div className="flex bg-slate-200 dark:bg-slate-800 rounded-lg p-0.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`rounded-md h-8 px-3 transition-[background-color,box-shadow] duration-200 ease-out ${
-                viewMode === 'list'
-                  ? 'bg-white dark:bg-slate-700 shadow-sm'
-                  : 'hover:bg-white/70 dark:hover:bg-slate-700/60'
-              }`}
-              onClick={() => setViewMode('list')}
-            >
-              <LayoutGrid className="h-4 w-4 mr-1" />
-              List
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`rounded-md h-8 px-3 transition-[background-color,box-shadow] duration-200 ease-out ${
-                viewMode === 'kanban'
-                  ? 'bg-white dark:bg-slate-700 shadow-sm'
-                  : 'hover:bg-white/70 dark:hover:bg-slate-700/60'
-              }`}
-              onClick={() => setViewMode('kanban')}
-            >
-              <Columns3 className="h-4 w-4 mr-1" />
-              Kanban
-            </Button>
-          </div>
-          {canCreateRoom && (
-            <div className="flex gap-2">
+        {/* View Toggle + Add — admin/BAS only; workers use list + bottom nav / Today as primary entry. */}
+        {!isWorker && (
+          <div className="flex items-center justify-between">
+            <div className="flex rounded-lg bg-slate-200 p-0.5 dark:bg-slate-800">
               <Button
-                variant={selectionMode ? 'default' : 'outline'}
-                onClick={() => {
-                  if (selectionMode) {
-                    setSelectionMode(false);
-                    setSelectedRoomIds([]);
-                  } else {
-                    setSelectionMode(true);
-                  }
-                }}
-                className="h-10 rounded-xl"
+                variant="ghost"
+                size="sm"
+                className={`h-8 rounded-md px-3 transition-[background-color,box-shadow] duration-200 ease-out ${
+                  viewMode === 'list'
+                    ? 'bg-white shadow-sm dark:bg-slate-700'
+                    : 'hover:bg-white/70 dark:hover:bg-slate-700/60'
+                }`}
+                onClick={() => setViewMode('list')}
               >
-                Select
-              </Button>
-              {canEdit && (
-                <Button
-                  variant="outline"
-                  onClick={openWorkflowDialog}
-                  className="h-10 rounded-xl"
-                >
-                  <ListOrdered className="h-4 w-4 mr-1" />
-                  Phases
-                </Button>
-              )}
-              {isAdmin && (
-                <Button
-                  variant="outline"
-                  onClick={() => setShowTemplatesDialog(true)}
-                  className="h-10 rounded-xl"
-                >
-                  Templates
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                onClick={() => setShowBulkCreate(true)}
-                className="h-10 rounded-xl border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950"
-              >
-                <Zap className="h-4 w-4 mr-1" />
-                Bulk
+                <LayoutGrid className="mr-1 h-4 w-4" />
+                List
               </Button>
               <Button
-                onClick={() => setShowCreate(true)}
-                className="bg-[#1E3A5F] hover:bg-[#2a4f7a] dark:bg-blue-600 dark:hover:bg-blue-700 h-10 rounded-xl"
+                variant="ghost"
+                size="sm"
+                className={`h-8 rounded-md px-3 transition-[background-color,box-shadow] duration-200 ease-out ${
+                  viewMode === 'kanban'
+                    ? 'bg-white shadow-sm dark:bg-slate-700'
+                    : 'hover:bg-white/70 dark:hover:bg-slate-700/60'
+                }`}
+                onClick={() => setViewMode('kanban')}
               >
-                <Plus className="h-4 w-4 mr-1" />
-                Add
+                <Columns3 className="mr-1 h-4 w-4" />
+                Kanban
               </Button>
             </div>
-          )}
-        </div>
+            {canCreateRoom && (
+              <div className="flex gap-2">
+                <Button
+                  variant={selectionMode ? 'default' : 'outline'}
+                  onClick={() => {
+                    if (selectionMode) {
+                      setSelectionMode(false);
+                      setSelectedRoomIds([]);
+                    } else {
+                      setSelectionMode(true);
+                    }
+                  }}
+                  className="h-10 rounded-xl"
+                >
+                  Select
+                </Button>
+                {canEdit && (
+                  <Button variant="outline" onClick={openWorkflowDialog} className="h-10 rounded-xl">
+                    <ListOrdered className="mr-1 h-4 w-4" />
+                    Phases
+                  </Button>
+                )}
+                {isAdmin && (
+                  <Button variant="outline" onClick={() => setShowTemplatesDialog(true)} className="h-10 rounded-xl">
+                    Templates
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={() => setShowBulkCreate(true)}
+                  className="h-10 rounded-xl border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950"
+                >
+                  <Zap className="mr-1 h-4 w-4" />
+                  Bulk
+                </Button>
+                <Button
+                  onClick={() => setShowCreate(true)}
+                  className="h-10 rounded-xl bg-[#1E3A5F] hover:bg-[#2a4f7a] dark:bg-blue-600 dark:hover:bg-blue-700"
+                >
+                  <Plus className="mr-1 h-4 w-4" />
+                  Add
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Room count + per-phase checklist progress (rooms with that phase’s items 100% done / all rooms) */}
         {rooms.length > 0 && (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">{rooms.length} rooms on this floor</p>
-            {floorPhaseProgress.length > 0 && (
+            {!isWorker && floorPhaseProgress.length > 0 && (
               <div
                 className="flex flex-wrap gap-x-3 gap-y-2 rounded-lg border border-slate-200/90 bg-white/80 px-3 py-2 dark:border-slate-700 dark:bg-slate-900/50"
                 aria-label="Floor progress by work phase"
@@ -1272,7 +1269,7 @@ export default function FloorDetail() {
               )}
             </Card>
           </div>
-        ) : viewMode === 'kanban' ? (
+        ) : effectiveView === 'kanban' ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col px-4 pb-4 lg:px-6 xl:px-8">
             <PhaseBoard
               rooms={rooms}

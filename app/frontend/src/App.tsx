@@ -14,6 +14,8 @@ import ProjectDetail from './pages/ProjectDetail';
 import FloorDetail from './pages/FloorDetail';
 import RoomDetail from './pages/RoomDetail';
 import AdminUsers from './pages/AdminUsers';
+import WorkerMePage from './pages/WorkerMePage';
+import WorkerRoomsPage from './pages/WorkerRoomsPage';
 import NotFound from './pages/NotFound';
 
 const App = () => (
@@ -29,6 +31,8 @@ const App = () => (
               <Route path="/auth/error" element={<AuthError />} />
               <Route path="/" element={<AppShellLayout />}>
                 <Route index element={<Index />} />
+                <Route path="worker/rooms" element={<WorkerRoomsPage />} />
+                <Route path="worker/me" element={<WorkerMePage />} />
                 <Route path="admin/users" element={<AdminUsers />} />
                 <Route path="project/:projectId" element={<Outlet />}>
                   <Route index element={<ProjectDetail />} />

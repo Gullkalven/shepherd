@@ -64,7 +64,7 @@ export default function ProjectDetail() {
   const desktopAutoFocus = useDesktopAutoFocus();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { canCreateFloor, canDeleteFloor, canEdit } = usePermissions();
+  const { canCreateFloor, canDeleteFloor, canEdit, isWorker } = usePermissions();
   const [project, setProject] = useState<Project | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [allRooms, setAllRooms] = useState<Room[]>([]);
@@ -255,23 +255,27 @@ export default function ProjectDetail() {
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
-        {/* Dashboard Toggle */}
-        <Button
-          variant="outline"
-          className="w-full justify-between h-12 rounded-xl"
-          onClick={() => setShowDashboard(!showDashboard)}
-        >
-          <span className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-[#1E3A5F] dark:text-blue-400" />
-            {t('dashboard')}
-          </span>
-          <ChevronRight className={`h-4 w-4 transition-transform ${showDashboard ? 'rotate-90' : ''}`} />
-        </Button>
+        {/* Dashboard — admin/BAS only (hidden for workers on site). */}
+        {!isWorker && (
+          <>
+            <Button
+              variant="outline"
+              className="w-full justify-between h-12 rounded-xl"
+              onClick={() => setShowDashboard(!showDashboard)}
+            >
+              <span className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4 text-[#1E3A5F] dark:text-blue-400" />
+                {t('dashboard')}
+              </span>
+              <ChevronRight className={`h-4 w-4 transition-transform ${showDashboard ? 'rotate-90' : ''}`} />
+            </Button>
 
-        {showDashboard && (
-          <Card className="p-4">
-            <DashboardStats rooms={allRooms} />
-          </Card>
+            {showDashboard && (
+              <Card className="p-4">
+                <DashboardStats rooms={allRooms} />
+              </Card>
+            )}
+          </>
         )}
 
         {/* Project Name (editable) */}

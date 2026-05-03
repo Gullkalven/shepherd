@@ -9,6 +9,7 @@ import { APP_NAME_PARTS } from '@/lib/branding';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
+import WorkerMobileBottomNav from '@/components/WorkerMobileBottomNav';
 
 export type AppShellOutletContext = {
   onLogoutClearServer: () => void;
@@ -26,6 +27,11 @@ function MobileNavHeader({
   const { isWorker } = usePermissions();
   const location = useLocation();
   const compactWorkerHome = isWorker && location.pathname === '/';
+
+  /** Workers use bottom navigation; avoid hamburger / sheet menu on small screens. */
+  if (isWorker) {
+    return null;
+  }
 
   return (
     <header
@@ -55,17 +61,41 @@ function MobileNavHeader({
   );
 }
 
+function AuthenticatedShellLayout({ outletContext }: { outletContext: AppShellOutletContext }) {
+  const { isWorker } = usePermissions();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <div className="min-h-dvh bg-slate-50 dark:bg-background">
+      <AppNavSidebar variant="desktop" />
+
+      <MobileNavHeader mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
+
+      <WorkerMobileBottomNav />
+
+      <div
+        className={cn(
+          'min-h-0 lg:pl-56',
+          isWorker &&
+            'max-lg:pb-[calc(3.75rem+env(safe-area-inset-bottom))] max-lg:pt-[max(0.25rem,env(safe-area-inset-top))]'
+        )}
+      >
+        <Outlet context={outletContext} />
+      </div>
+    </div>
+  );
+}
+
 export default function AppShellLayout() {
   const { isAuth, checking, setApiUser } = useAppShellAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (checking) return;
     if (isAuth) return;
     const p = location.pathname;
-    if (p.startsWith('/project') || p.startsWith('/admin')) {
+    if (p.startsWith('/project') || p.startsWith('/admin') || p.startsWith('/worker')) {
       navigate('/', { replace: true });
     }
   }, [isAuth, checking, location.pathname, navigate]);
@@ -93,15 +123,7 @@ export default function AppShellLayout() {
 
   return (
     <PermissionProvider isAuthenticated>
-      <div className="min-h-dvh bg-slate-50 dark:bg-background">
-        <AppNavSidebar variant="desktop" />
-
-        <MobileNavHeader mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
-
-        <div className={cn('min-h-0 lg:pl-56')}>
-          <Outlet context={outletContext} />
-        </div>
-      </div>
+      <AuthenticatedShellLayout outletContext={outletContext} />
     </PermissionProvider>
   );
 }

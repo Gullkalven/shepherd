@@ -54,6 +54,7 @@ import {
   phaseTimelineFromStepStatus,
   phaseTimelineState,
 } from '@/lib/roomPhases';
+import { WORKER_ROOM_DOCUMENTATION_ANCHOR } from '@/lib/workerLastRoom';
 import { cn } from '@/lib/utils';
 import type { ActivityDisplayRow } from '@/lib/roomActivity';
 
@@ -950,7 +951,11 @@ export function WorkerRoomView(p: Props) {
 
       {/* Checklist — large action rows (before heating so checklist stays above long forms) */}
       {showFullPhaseDetails && p.showChecklistSection ? (
-        <section aria-labelledby="worker-checklist-heading" className="scroll-mt-20">
+        <section
+          id={WORKER_ROOM_DOCUMENTATION_ANCHOR}
+          aria-labelledby="worker-checklist-heading"
+          className="scroll-mt-20"
+        >
           <div className="mb-3 flex items-center justify-between gap-2 px-0.5">
             <h2
               id="worker-checklist-heading"

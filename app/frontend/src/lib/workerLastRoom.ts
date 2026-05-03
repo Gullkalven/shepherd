@@ -11,14 +11,19 @@ export type WorkerLastRoom = {
 /** Matches `id` on the checklist heading in `WorkerRoomView` — scroll target after navigation from Today. */
 export const WORKER_ROOM_CHECKLIST_ANCHOR = 'worker-checklist-heading';
 
+/** Scroll target for documentation / photos (checklist & uploads section). */
+export const WORKER_ROOM_DOCUMENTATION_ANCHOR = 'worker-documentation';
+
 export function workerRoomPath(
   projectId: number,
   floorId: number,
   roomId: number,
-  options?: { focusChecklist?: boolean }
+  options?: { focusChecklist?: boolean; focusDocumentation?: boolean }
 ): string {
   const base = `/project/${projectId}/floor/${floorId}/room/${roomId}`;
-  return options?.focusChecklist ? `${base}#${WORKER_ROOM_CHECKLIST_ANCHOR}` : base;
+  if (options?.focusDocumentation) return `${base}#${WORKER_ROOM_DOCUMENTATION_ANCHOR}`;
+  if (options?.focusChecklist) return `${base}#${WORKER_ROOM_CHECKLIST_ANCHOR}`;
+  return base;
 }
 
 export function readWorkerLastRoom(): WorkerLastRoom | null {
