@@ -111,6 +111,9 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
   const treeSearchTrim = treeSearch.trim().toLowerCase();
   const projectSearchTrim = projectSearch.trim().toLowerCase();
 
+  const { t } = useI18n();
+  const { isWorker, isAdmin } = usePermissions();
+
   const loadProjects = useCallback(async () => {
     setProjectsLoading(true);
     try {
@@ -260,8 +263,6 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
   }, [projects, projectSearchTrim]);
 
   const activeProjectId = projectId ? Number(projectId) : NaN;
-  const { t } = useI18n();
-  const { isWorker, isAdmin } = usePermissions();
 
   const navProjectsTitle = isWorker ? t('sites') : t('projects');
   const searchRootPlaceholder = isWorker ? t('findSite') : t('searchProjects');
