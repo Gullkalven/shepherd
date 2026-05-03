@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
 import { Plus, Pencil, UserX, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
+import { apiFailureMessage, devLogApiFailure } from '@/lib/apiErrors';
 
 type ProjectWorker = {
   id: number;
@@ -38,8 +39,9 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
       });
       const data = res?.data;
       setWorkers(Array.isArray(data) ? (data as ProjectWorker[]) : []);
-    } catch {
-      toast.error('Failed to load site workers');
+    } catch (err) {
+      devLogApiFailure('ProjectWorkersPanel.load', err);
+      toast.error(apiFailureMessage(err) ?? 'Failed to load site workers');
       setWorkers([]);
     } finally {
       setLoading(false);
@@ -67,8 +69,9 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
       setNewName('');
       setNewPin('');
       void load();
-    } catch {
-      toast.error('Could not create worker');
+    } catch (err) {
+      devLogApiFailure('ProjectWorkersPanel.createWorker', err);
+      toast.error(apiFailureMessage(err) ?? 'Could not create worker');
     } finally {
       setCreating(false);
     }
@@ -97,8 +100,9 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
       toast.success(editPin.trim().length >= 4 ? 'Worker updated (PIN changed)' : 'Worker updated');
       setEditing(null);
       void load();
-    } catch {
-      toast.error('Could not update worker');
+    } catch (err) {
+      devLogApiFailure('ProjectWorkersPanel.saveEdit', err);
+      toast.error(apiFailureMessage(err) ?? 'Could not update worker');
     }
   };
 
@@ -111,8 +115,9 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
       });
       toast.success(active ? 'Worker reactivated' : 'Worker deactivated');
       void load();
-    } catch {
-      toast.error('Could not update worker');
+    } catch (err) {
+      devLogApiFailure('ProjectWorkersPanel.setActive', err);
+      toast.error(apiFailureMessage(err) ?? 'Could not update worker');
     }
   };
 

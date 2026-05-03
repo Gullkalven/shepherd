@@ -19,6 +19,7 @@ import { taskCountsForFloorBoard } from '@/lib/roomAreas';
 import { useI18n } from '@/lib/i18n';
 import ProjectWorkersPanel from '@/components/ProjectWorkersPanel';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
+import { apiFailureMessage, devLogApiFailure } from '@/lib/apiErrors';
 
 /** Compact labels for default phases; other keys use first letter */
 function phaseProgressLetter(key: string): string {
@@ -87,40 +88,46 @@ export default function ProjectDetail() {
   const [editingFloorId, setEditingFloorId] = useState<number | null>(null);
   const [editFloorName, setEditFloorName] = useState('');
 
+  const reloadProjectState = useCallback(async () => {
+    if (!projectId) return;
+    const [projRes, floorsRes, roomsRes, tasksRes, wfRes] = await Promise.all([
+      client.entities.projects.get({ id: projectId }),
+      client.entities.floors.query({ query: { project_id: Number(projectId) }, sort: 'floor_number', limit: 100 }),
+      client.entities.rooms.query({ query: { project_id: Number(projectId) }, limit: 500 }),
+      client.entities.tasks.query({ limit: 2000, sort: 'room_id' }),
+      client.apiCall.invoke({
+        url: `/api/v1/projects/${projectId}/workflow`,
+        method: 'GET',
+        data: {},
+      }),
+    ]);
+    setProject(projRes?.data || null);
+    setFloors(floorsRes?.data?.items || []);
+    const roomItems: Room[] = roomsRes?.data?.items || [];
+    setAllRooms(roomItems);
+    setProjectTasks((tasksRes?.data?.items || []) as ProjectTaskRow[]);
+    const rawPhases = wfRes?.data?.phases;
+    let wf: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW;
+    if (Array.isArray(rawPhases) && rawPhases.length > 0) {
+      const parsed = rawPhases
+        .filter((p: { key?: string; label?: string }) => p?.key && p?.label)
+        .map((p: { key: string; label: string }) => ({ key: String(p.key), label: String(p.label) }));
+      if (parsed.length > 0) wf = parsed;
+    }
+    setPhaseWorkflow(wf);
+  }, [projectId]);
+
   const loadData = useCallback(async () => {
     if (!projectId) return;
     try {
-      const [projRes, floorsRes, roomsRes, tasksRes, wfRes] = await Promise.all([
-        client.entities.projects.get({ id: projectId }),
-        client.entities.floors.query({ query: { project_id: Number(projectId) }, sort: 'floor_number', limit: 100 }),
-        client.entities.rooms.query({ query: { project_id: Number(projectId) }, limit: 500 }),
-        client.entities.tasks.query({ limit: 2000, sort: 'room_id' }),
-        client.apiCall.invoke({
-          url: `/api/v1/projects/${projectId}/workflow`,
-          method: 'GET',
-          data: {},
-        }),
-      ]);
-      setProject(projRes?.data || null);
-      setFloors(floorsRes?.data?.items || []);
-      const roomItems: Room[] = roomsRes?.data?.items || [];
-      setAllRooms(roomItems);
-      setProjectTasks((tasksRes?.data?.items || []) as ProjectTaskRow[]);
-      const rawPhases = wfRes?.data?.phases;
-      let wf: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW;
-      if (Array.isArray(rawPhases) && rawPhases.length > 0) {
-        const parsed = rawPhases
-          .filter((p: { key?: string; label?: string }) => p?.key && p?.label)
-          .map((p: { key: string; label: string }) => ({ key: String(p.key), label: String(p.label) }));
-        if (parsed.length > 0) wf = parsed;
-      }
-      setPhaseWorkflow(wf);
-    } catch {
-      toast.error('Failed to load project');
+      await reloadProjectState();
+    } catch (err) {
+      devLogApiFailure('ProjectDetail.loadData', err);
+      toast.error(apiFailureMessage(err) ?? 'Failed to load project');
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, reloadProjectState]);
 
   useEffect(() => {
     loadData();
@@ -137,13 +144,22 @@ export default function ProjectDetail() {
           name: floorName.trim() || `Floor ${floorNumber}`,
         },
       });
-      toast.success('Floor added');
       setShowCreate(false);
       setFloorNumber('');
       setFloorName('');
-      loadData();
-    } catch {
-      toast.error('Failed to create floor');
+      try {
+        await reloadProjectState();
+        toast.success('Floor added');
+      } catch (reloadErr) {
+        devLogApiFailure('ProjectDetail.reloadAfterFloorCreate', reloadErr);
+        toast.error(
+          apiFailureMessage(reloadErr) ??
+            'Floor was saved but the project could not be refreshed. Try reloading the page.'
+        );
+      }
+    } catch (err) {
+      devLogApiFailure('ProjectDetail.createFloor', err);
+      toast.error(apiFailureMessage(err) ?? 'Failed to create floor');
     } finally {
       setCreating(false);
     }

@@ -15,6 +15,9 @@ export default defineConfig(({ mode }) => ({
   ],
   resolve: {
     alias: {
+      // Patched SDK: upstream snapshots Bearer token only at createClient() time; PIN/admin
+      // login writes token later, so project/API calls had no Authorization header.
+      '@metagptx/web-sdk': path.resolve(__dirname, './src/lib/vendor/metagptx-web-sdk/index.js'),
       '@': path.resolve(__dirname, './src'),
     },
   },
