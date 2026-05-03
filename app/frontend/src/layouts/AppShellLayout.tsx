@@ -3,8 +3,11 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { PermissionProvider, usePermissions } from '@/lib/permissions';
 import { readDemoLocalStorageUser } from '@/lib/devRole';
+import { readAdminSession } from '@/lib/adminSession';
+import { readWorkerSession } from '@/lib/workerSession';
 import { useAppShellAuth } from '@/lib/useAppShellAuth';
 import AppNavSidebar from '@/components/AppNavSidebar';
+import { shepherdDebug } from '@/lib/shepherdDebug';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
@@ -15,6 +18,10 @@ export type AppShellOutletContext = {
   onLogoutClearServer: () => void;
   onDemoSignedIn: () => void;
 };
+
+function isLoginRoute(pathname: string): boolean {
+  return pathname === '/admin/login' || pathname === '/worker/login';
+}
 
 /** Slimmer top bar on worker home so the page hero (rooms / site) stays primary on small screens. */
 function MobileNavHeader({
@@ -92,6 +99,30 @@ export default function AppShellLayout() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    shepherdDebug('AppShellLayout', {
+      path: location.pathname,
+      checking,
+      isAuth,
+      adminSession: Boolean(readAdminSession()?.token),
+      workerSession: Boolean(readWorkerSession()?.token),
+    });
+  }, [location.pathname, checking, isAuth]);
+
+  /** Authenticated users should not stay on login routes (avoids showing login form under the nav). */
+  useEffect(() => {
+    if (checking) return;
+    const p = location.pathname;
+    if (p === '/admin/login' && isAuth) {
+      navigate('/', { replace: true });
+      return;
+    }
+    if (p === '/worker/login' && isAuth && readWorkerSession()?.token) {
+      navigate('/worker/rooms', { replace: true });
+    }
+  }, [checking, isAuth, location.pathname, navigate]);
+
+  useEffect(() => {
     if (checking) return;
     if (isAuth) return;
     const p = location.pathname;
@@ -118,6 +149,15 @@ export default function AppShellLayout() {
     onLogoutClearServer: () => setApiUser(null),
     onDemoSignedIn: () => setApiUser(readDemoLocalStorageUser()),
   };
+
+  /** Login routes never use the authenticated sidebar/header chrome — prevents nav stacking on top of login. */
+  if (isLoginRoute(location.pathname)) {
+    return (
+      <PermissionProvider isAuthenticated={isAuth}>
+        <Outlet context={outletContext} />
+      </PermissionProvider>
+    );
+  }
 
   if (!isAuth) {
     return (

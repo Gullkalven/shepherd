@@ -19,7 +19,8 @@ import { taskCountsForFloorBoard } from '@/lib/roomAreas';
 import { useI18n } from '@/lib/i18n';
 import ProjectWorkersPanel from '@/components/ProjectWorkersPanel';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
-import { apiFailureMessage, devLogApiFailure } from '@/lib/apiErrors';
+import { apiFailureMessage, devLogApiFailure, httpStatusFromError } from '@/lib/apiErrors';
+import { shepherdDebug } from '@/lib/shepherdDebug';
 
 /** Compact labels for default phases; other keys use first letter */
 function phaseProgressLetter(key: string): string {
@@ -115,6 +116,9 @@ export default function ProjectDetail() {
       if (parsed.length > 0) wf = parsed;
     }
     setPhaseWorkflow(wf);
+    if (import.meta.env.DEV) {
+      shepherdDebug('ProjectDetail.loaded', { projectId, projectRowId: projRes?.data?.id });
+    }
   }, [projectId]);
 
   const loadData = useCallback(async () => {
@@ -123,11 +127,16 @@ export default function ProjectDetail() {
       await reloadProjectState();
     } catch (err) {
       devLogApiFailure('ProjectDetail.loadData', err);
-      toast.error(apiFailureMessage(err) ?? 'Failed to load project');
+      const msg = apiFailureMessage(err) ?? 'Failed to load project';
+      toast.error(msg);
+      const st = httpStatusFromError(err);
+      if (st === 404) {
+        navigate('/', { replace: true });
+      }
     } finally {
       setLoading(false);
     }
-  }, [projectId, reloadProjectState]);
+  }, [projectId, reloadProjectState, navigate]);
 
   useEffect(() => {
     loadData();

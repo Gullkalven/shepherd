@@ -9,12 +9,14 @@ import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
 import { queryClient } from '@/lib/queryClient';
 import { clearAdminSession } from '@/lib/adminSession';
 import { clearWorkerSession } from '@/lib/workerSession';
+import { clearWorkerLastRoom } from '@/lib/workerLastRoom';
 
 export const APP_LOGOUT_EVENT = 'shepherd-app-logout';
 
 /** Sidebar / shell: clear all client auth state, invalidate in-flight auth checks, then navigate home. */
 export async function runAppLogout(navigate: NavigateFunction, endSession: () => void) {
   endSession();
+  clearWorkerLastRoom();
   clearLocalAuthMarks();
   setClientLogoutGate();
   bumpAuthMeEpoch();
@@ -32,6 +34,7 @@ export const PROJECTS_NAV_REFRESH_EVENT = 'shepherd-projects-nav-refresh';
  * Use for “Switch worker” and PIN “Log out” (does not set demo logout gate).
  */
 export function runWorkerSwitch(navigate: NavigateFunction) {
+  clearWorkerLastRoom();
   clearWorkerSession();
   clearAdminSession();
   try {

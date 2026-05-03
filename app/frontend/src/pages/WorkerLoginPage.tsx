@@ -97,7 +97,7 @@ export default function WorkerLoginPage() {
           <Input
             inputMode="numeric"
             className="mt-1.5 h-12 text-lg"
-            placeholder="e.g. 1"
+            placeholder="From your supervisor"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
             autoComplete="off"

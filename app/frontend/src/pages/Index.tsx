@@ -29,6 +29,7 @@ import {
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
 import { readAdminSession } from '@/lib/adminSession';
+import { shepherdDebug } from '@/lib/shepherdDebug';
 
 interface Project {
   id: number;
@@ -116,9 +117,10 @@ function IndexContent({
     }
 
     // Deployed hosts: real API session only (worker/admin JWT or OIDC cookie). No passwordless demo.
-    setLoading(false);
+    setLoading(true);
     if (isClientLogoutGateActive()) {
       setUser(null);
+      setLoading(false);
       return;
     }
     const startEpoch = getAuthMeEpoch();
@@ -129,6 +131,8 @@ function IndexContent({
       setUser(res?.data ?? null);
     } catch {
       setUser(null);
+    } finally {
+      setLoading(false);
     }
   }, [sessionActive]);
 
@@ -143,6 +147,7 @@ function IndexContent({
   }, [permLoading, isWorker, sessionIsPinWorker, navigate]);
 
   const loadProjects = useCallback(async () => {
+    if (permLoading) return;
     const devHost = isDevRoleSwitcherHost();
     /** Deployed admins use `/projects/all` (Bearer); workers use scoped GET list (backend filters by role). */
     const useProjectsAll = !devHost && isAdmin;
@@ -170,6 +175,14 @@ function IndexContent({
         items = extractProjectItemsFromListBody(res?.data ?? res) as Project[];
       }
       setProjects(items);
+      if (import.meta.env.DEV) {
+        shepherdDebug('Index.loadProjects', {
+          count: items.length,
+          ids: items.map((p) => p.id),
+          useProjectsAll,
+          pinProjectId,
+        });
+      }
     } catch (err: unknown) {
       const ax = err as {
         message?: string;
@@ -193,7 +206,7 @@ function IndexContent({
     } finally {
       setProjectsLoading(false);
     }
-  }, [user, isAdmin]);
+  }, [user, isAdmin, permLoading]);
 
   useEffect(() => {
     void loadProjects();

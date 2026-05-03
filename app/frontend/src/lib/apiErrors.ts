@@ -1,3 +1,10 @@
+/** HTTP status from axios-style errors (undefined if missing). */
+export function httpStatusFromError(err: unknown): number | undefined {
+  const ax = err as { response?: { status?: number } };
+  const n = ax.response?.status;
+  return typeof n === 'number' ? n : undefined;
+}
+
 /**
  * Map axios-like errors to short UI messages. Never includes tokens or secrets.
  */
