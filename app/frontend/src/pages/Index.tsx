@@ -23,12 +23,8 @@ import {
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import WorkerTodayView from '@/components/WorkerTodayView';
-import {
-  clearClientLogoutGate,
-  getAuthMeEpoch,
-  invalidateClientSession,
-} from '@/lib/appLogout';
-import { httpStatusFromError } from '@/lib/apiErrors';
+import { clearClientLogoutGate, getAuthMeEpoch } from '@/lib/appLogout';
+import { hasStoredAuthCredential, syncBearerTokenFromSessions } from '@/lib/authCredentials';
 import { consumeProjectNotFoundFlash } from '@/lib/projectNotFoundFlash';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
@@ -108,10 +104,7 @@ function IndexContent({
           const u = res?.data ?? null;
           if (u) clearClientLogoutGate();
           setUser(u);
-        } catch (err) {
-          if (httpStatusFromError(err) === 401) {
-            invalidateClientSession();
-          }
+        } catch {
           setUser(null);
         } finally {
           setLoading(false);
@@ -123,7 +116,13 @@ function IndexContent({
       return;
     }
 
-    // Deployed hosts: real API session only (worker/admin JWT or OIDC cookie). No passwordless demo.
+    // Deployed hosts: only probe /auth/me when a stored bearer or PIN session exists.
+    syncBearerTokenFromSessions();
+    if (!hasStoredAuthCredential()) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     const startEpoch = getAuthMeEpoch();
     try {
@@ -132,10 +131,8 @@ function IndexContent({
       const u = res?.data ?? null;
       if (u) clearClientLogoutGate();
       setUser(u);
-    } catch (err) {
-      if (httpStatusFromError(err) === 401) {
-        invalidateClientSession();
-      }
+    } catch {
+      // 401: expected when session expired; shell `useAppShellAuth` also clears — no UI noise.
       setUser(null);
     } finally {
       setLoading(false);

@@ -26,6 +26,7 @@ import {
   invalidateClientSession,
 } from '@/lib/appLogout';
 import { httpStatusFromError } from '@/lib/apiErrors';
+import { hasStoredAuthCredential, syncBearerTokenFromSessions } from '@/lib/authCredentials';
 
 function applyAuthMePayload(
   data: unknown,
@@ -49,24 +50,6 @@ function applyAuthMeFailure(err: unknown, startEpoch: number, setApiUser: (u: un
   setApiUser(null);
 }
 
-function applySessionBearerToken(): void {
-  const ws = readWorkerSession();
-  const adm = readAdminSession();
-  if (ws?.token) {
-    try {
-      localStorage.setItem('token', ws.token);
-    } catch {
-      /* ignore */
-    }
-  } else if (adm?.token) {
-    try {
-      localStorage.setItem('token', adm.token);
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
 /**
  * Same sign-in gate as the former Index wrapper: drives the global shell (sidebar vs sign-in).
  * Bearer token: worker PIN session wins over provisional admin if both exist (rare).
@@ -78,7 +61,7 @@ export function useAppShellAuth() {
 
   useEffect(() => {
     void (async () => {
-      applySessionBearerToken();
+      syncBearerTokenFromSessions();
       const ws = readWorkerSession();
       const adm = readAdminSession();
 
@@ -112,6 +95,11 @@ export function useAppShellAuth() {
 
       if (devHost) {
         ensureDemoBearerToken();
+        if (!hasStoredAuthCredential()) {
+          setApiUser(null);
+          setChecking(false);
+          return;
+        }
         const startEpoch = getAuthMeEpoch();
         try {
           const res = await client.auth.me();
@@ -151,7 +139,12 @@ export function useAppShellAuth() {
         return;
       }
 
-      // Production: no passwordless demo — only Bearer (worker/admin PIN) or server session (cookie/OIDC).
+      // Production: only call /auth/me when a bearer or PIN/admin token exists (no blind probe).
+      if (!hasStoredAuthCredential()) {
+        setApiUser(null);
+        setChecking(false);
+        return;
+      }
       const startEpoch = getAuthMeEpoch();
       try {
         const res = await client.auth.me();
@@ -171,10 +164,8 @@ export function useAppShellAuth() {
   }, []);
 
   const refreshFromSessionTokens = useCallback(() => {
-    applySessionBearerToken();
-    const ws = readWorkerSession();
-    const adm = readAdminSession();
-    if (!ws?.token && !adm?.token) {
+    syncBearerTokenFromSessions();
+    if (!hasStoredAuthCredential()) {
       setApiUser(null);
       setChecking(false);
       return;
@@ -237,7 +228,7 @@ export function useAppShellAuth() {
       })();
 
       if ((hadW && !stillW) || (hadA && !stillA)) {
-        applySessionBearerToken();
+        syncBearerTokenFromSessions();
         if (!readWorkerSession()?.token && !readAdminSession()?.token) {
           setApiUser(null);
         }

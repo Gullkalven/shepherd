@@ -13,6 +13,7 @@ import {
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import { getAuthMeEpoch, isClientLogoutGateActive } from '@/lib/appLogout';
+import { hasStoredAuthCredential, syncBearerTokenFromSessions } from '@/lib/authCredentials';
 import { useWorkerRoomEnrichment, type EnrichedRoom } from '@/hooks/useWorkerRoomEnrichment';
 import { workerRoomPath } from '@/lib/workerLastRoom';
 import { readWorkerSession } from '@/lib/workerSession';
@@ -80,6 +81,11 @@ export default function WorkerRoomsPage() {
       return;
     }
     if (isClientLogoutGateActive()) {
+      setUser(null);
+      return;
+    }
+    syncBearerTokenFromSessions();
+    if (!hasStoredAuthCredential()) {
       setUser(null);
       return;
     }
