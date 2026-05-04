@@ -76,6 +76,7 @@ function IndexContent({
     failed: projectsLoadFailed,
     refetch: refetchProjects,
     ready: projectsReady,
+    allowedProjectIds,
   } = useProjectList();
   const singleProjectAutoNavDone = useRef(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -145,17 +146,37 @@ function IndexContent({
     }
   }, []);
 
-  /** Exactly one project → open it by real id (never assume id 1). Multiple projects → stay on overview. */
+  /**
+   * Exactly one project from the list fetch → open that id only (never a placeholder/default).
+   * Waits for list readiness + success; validates against allowedProjectIds before any `/project/:id` navigation.
+   */
   useEffect(() => {
     if (!user || !projectsReady || permLoading || isWorker) return;
     if (location.pathname !== '/') return;
+    if (projectsLoadFailed) return;
     if (projects.length !== 1) return;
+    const only = projects[0];
+    const oid = Number(only.id);
+    if (!Number.isFinite(oid) || !Number.isSafeInteger(oid) || oid < 1 || !allowedProjectIds.has(oid)) return;
     if (singleProjectAutoNavDone.current) return;
     singleProjectAutoNavDone.current = true;
-    const only = projects[0];
-    persistStoredSelectedProjectId(only.id);
-    navigate(`/project/${only.id}`, { replace: true });
-  }, [user, projectsReady, permLoading, isWorker, location.pathname, projects, navigate]);
+    persistStoredSelectedProjectId(oid);
+    navigate(`/project/${oid}`, { replace: true });
+  }, [
+    user,
+    projectsReady,
+    projectsLoadFailed,
+    permLoading,
+    isWorker,
+    location.pathname,
+    projects,
+    allowedProjectIds,
+    navigate,
+  ]);
+
+  useEffect(() => {
+    if (!user) singleProjectAutoNavDone.current = false;
+  }, [user]);
 
   useEffect(() => {
     checkAuth();

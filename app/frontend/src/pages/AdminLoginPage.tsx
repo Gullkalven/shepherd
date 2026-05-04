@@ -1,6 +1,7 @@
 import { useLayoutEffect, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getAPIBaseURL } from '@/lib/config';
+import { clearWorkerLastRoom } from '@/lib/workerLastRoom';
 import { persistAdminSession, readAdminSession, ADMIN_SESSION_TTL_MS } from '@/lib/adminSession';
 import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
@@ -75,6 +76,8 @@ export default function AdminLoginPage() {
         loginAt,
         expiresAt: loginAt + ttlMs,
       });
+      // Drop any worker “last room” from a prior session so post-login nav never follows a stale `/project/1/...` path.
+      clearWorkerLastRoom();
       toast.success('Admin session started');
       window.dispatchEvent(new CustomEvent(PROJECTS_NAV_REFRESH_EVENT));
       navigate('/', { replace: true });

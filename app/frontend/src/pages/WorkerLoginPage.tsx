@@ -1,6 +1,7 @@
 import { useLayoutEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getAPIBaseURL } from '@/lib/config';
+import { clearWorkerLastRoom } from '@/lib/workerLastRoom';
 import { persistWorkerSession, readWorkerSession, WORKER_SESSION_TTL_MS } from '@/lib/workerSession';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -62,6 +63,8 @@ export default function WorkerLoginPage() {
         workerId: data.worker.id,
         name: data.worker.name,
       });
+      // Do not resume a last-opened room from a previous site/session (avoids wrong `/project/...` targets).
+      clearWorkerLastRoom();
       toast.success(`Signed in as ${data.worker.name}`);
       navigate('/worker/rooms', { replace: true });
     } catch {
