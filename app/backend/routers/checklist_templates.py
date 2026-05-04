@@ -8,14 +8,14 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from dependencies.entity_scope import entity_owner_user_id
 from dependencies.auth import get_current_user
 from models.checklist_template_items import Checklist_template_items
 from models.projects import Projects
 from models.rooms import Rooms
 from models.tasks import Tasks
-from models.user_roles import User_roles
 from schemas.auth import UserResponse
-from dependencies.roles import ROLE_ADMIN, normalize_role
+from dependencies.roles import ROLE_ADMIN, get_current_app_role
 from routers.project_workflow import DEFAULT_PHASES, _parse_stored_workflow
 from services.checklist_templates import ChecklistTemplatesService
 
@@ -72,19 +72,14 @@ class ChecklistTemplatesListResponse(BaseModel):
 
 async def require_manager_or_admin(
     current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    app_role: str = Depends(get_current_app_role),
 ) -> UserResponse:
-    result = await db.execute(select(User_roles).where(User_roles.user_id == str(current_user.id)))
-    role_record = result.scalar_one_or_none()
-    if role_record and normalize_role(role_record.app_role) == ROLE_ADMIN:
+    if app_role == ROLE_ADMIN:
         return current_user
-
-    count_result = await db.execute(select(func.count(User_roles.id)))
-    total_roles = count_result.scalar()
-    if total_roles == 0:
-        return current_user
-
-    raise HTTPException(status_code=403, detail="Admin access required")
+    raise HTTPException(
+        status_code=403,
+        detail="Missing permission: admin role required to manage checklist templates (create/update/delete)",
+    )
 
 
 @router.get("", response_model=ChecklistTemplatesListResponse)
@@ -94,6 +89,7 @@ async def query_checklist_templates(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=2000),
     current_user: UserResponse = Depends(get_current_user),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplatesService(db)
@@ -103,7 +99,7 @@ async def query_checklist_templates(
         limit=limit,
         query_dict=query_dict,
         sort=sort,
-        user_id=str(current_user.id),
+        user_id=owner_uid,
     )
 
 
@@ -111,10 +107,11 @@ async def query_checklist_templates(
 async def get_checklist_template(
     id: int,
     current_user: UserResponse = Depends(get_current_user),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplatesService(db)
-    result = await service.get_by_id(id, user_id=str(current_user.id))
+    result = await service.get_by_id(id, user_id=owner_uid)
     if not result:
         raise HTTPException(status_code=404, detail="Checklist template not found")
     return result
@@ -138,11 +135,12 @@ async def update_checklist_template(
     id: int,
     data: ChecklistTemplatesUpdateData,
     manager: UserResponse = Depends(require_manager_or_admin),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplatesService(db)
     update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-    result = await service.update(id, update_dict, user_id=str(manager.id))
+    result = await service.update(id, update_dict, user_id=owner_uid)
     if not result:
         raise HTTPException(status_code=404, detail="Checklist template not found")
     return result
@@ -152,16 +150,23 @@ async def update_checklist_template(
 async def delete_checklist_template(
     id: int,
     manager: UserResponse = Depends(require_manager_or_admin),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
+    service = ChecklistTemplatesService(db)
+    template = await service.get_by_id(id, user_id=owner_uid)
+    if not template:
+        raise HTTPException(status_code=404, detail="Checklist template not found")
+    template_owner_id = str(template.user_id)
+
     linked_active_result = await db.execute(
         select(func.count(Tasks.id))
         .select_from(Tasks)
         .join(Rooms, Rooms.id == Tasks.room_id)
         .where(
             Tasks.template_id == id,
-            Tasks.user_id == str(manager.id),
-            Rooms.user_id == str(manager.id),
+            Tasks.user_id == template_owner_id,
+            Rooms.user_id == template_owner_id,
             or_(Rooms.status.is_(None), Rooms.status != "completed"),
         )
     )
@@ -175,8 +180,7 @@ async def delete_checklist_template(
             ),
         )
 
-    service = ChecklistTemplatesService(db)
-    success = await service.delete(id, user_id=str(manager.id))
+    success = await service.delete(id, user_id=template_owner_id)
     if not success:
         raise HTTPException(status_code=404, detail="Checklist template not found")
     return {"message": "Checklist template deleted", "id": id}
@@ -186,10 +190,11 @@ async def delete_checklist_template(
 async def sync_rooms_from_template(
     id: int,
     manager: UserResponse = Depends(require_manager_or_admin),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplatesService(db)
-    template = await service.get_by_id(id, user_id=str(manager.id))
+    template = await service.get_by_id(id, user_id=owner_uid)
     if not template:
         raise HTTPException(status_code=404, detail="Checklist template not found")
 
@@ -197,20 +202,35 @@ async def sync_rooms_from_template(
         select(Checklist_template_items)
         .where(
             Checklist_template_items.template_id == id,
-            Checklist_template_items.user_id == str(manager.id),
         )
         .order_by(Checklist_template_items.sort_order, Checklist_template_items.id)
     )
+    if owner_uid is not None:
+        items_result = await db.execute(
+            select(Checklist_template_items)
+            .where(
+                Checklist_template_items.template_id == id,
+                Checklist_template_items.user_id == owner_uid,
+            )
+            .order_by(Checklist_template_items.sort_order, Checklist_template_items.id)
+        )
     template_items = items_result.scalars().all()
     template_item_ids = {item.id for item in template_items}
 
     tasks_result = await db.execute(
         select(Tasks).where(
             Tasks.template_id == id,
-            Tasks.user_id == str(manager.id),
             Tasks.is_template_managed == True,  # noqa: E712
         )
     )
+    if owner_uid is not None:
+        tasks_result = await db.execute(
+            select(Tasks).where(
+                Tasks.template_id == id,
+                Tasks.user_id == owner_uid,
+                Tasks.is_template_managed == True,  # noqa: E712
+            )
+        )
     managed_tasks = tasks_result.scalars().all()
 
     rooms_with_template = sorted({task.room_id for task in managed_tasks})
@@ -218,13 +238,11 @@ async def sync_rooms_from_template(
     updated = 0
     removed = 0
 
-    uid = str(manager.id)
+    uid = str(template.user_id)
     rooms_by_id: Dict[int, Rooms] = {}
     projects_by_id: Dict[int, Projects] = {}
     if rooms_with_template:
-        rooms_result = await db.execute(
-            select(Rooms).where(Rooms.id.in_(rooms_with_template), Rooms.user_id == uid)
-        )
+        rooms_result = await db.execute(select(Rooms).where(Rooms.id.in_(rooms_with_template), Rooms.user_id == uid))
         rooms_by_id = {r.id: r for r in rooms_result.scalars().all()}
         proj_ids = {r.project_id for r in rooms_by_id.values()}
         if proj_ids:

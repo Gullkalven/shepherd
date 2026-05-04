@@ -55,6 +55,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { httpStatusFromError } from '@/lib/apiErrors';
+import { syncBearerTokenFromSessions } from '@/lib/authCredentials';
 import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
 import { parseProjectRouteParam } from '@/lib/projectEntity';
 import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
@@ -258,6 +259,7 @@ export default function FloorDetail() {
 
   const loadTemplates = useCallback(async () => {
     try {
+      syncBearerTokenFromSessions();
       const templatesRes = await client.apiCall.invoke({
         url: '/api/v1/entities/checklist_templates',
         method: 'GET',
@@ -293,6 +295,7 @@ export default function FloorDetail() {
 
   const getTemplateItems = async (templateId?: number): Promise<ChecklistTemplateItem[]> => {
     if (!templateId) return [];
+    syncBearerTokenFromSessions();
     // @metagptx/web-sdk apiCall.invoke only forwards `data` to axios query string for GET — not `params`.
     // Use a per-template URL so each request is scoped and cache-safe.
     const itemsRes = await client.apiCall.invoke({
@@ -756,6 +759,7 @@ export default function FloorDetail() {
     }
     setTemplateItemsText('');
     try {
+      syncBearerTokenFromSessions();
       const itemsRes = await client.apiCall.invoke({
         url: `/api/v1/entities/checklist_template_items/by-template/${templateId}`,
         method: 'GET',
@@ -790,6 +794,7 @@ export default function FloorDetail() {
 
     setSavingTemplate(true);
     try {
+      syncBearerTokenFromSessions();
       const rawSelected = selectedTemplateIdRef.current;
       let templateId = rawSelected ? Number(rawSelected) : 0;
       logTemplateDebug('save:start', {
@@ -866,6 +871,7 @@ export default function FloorDetail() {
     }
     setSyncingRoomsFromTemplate(true);
     try {
+      syncBearerTokenFromSessions();
       const res = await client.apiCall.invoke({
         url: `/api/v1/entities/checklist_templates/${syncId}/sync-rooms`,
         method: 'POST',
@@ -918,6 +924,7 @@ export default function FloorDetail() {
 
     setDeletingTemplate(true);
     try {
+      syncBearerTokenFromSessions();
       await client.apiCall.invoke({
         url: `/api/v1/entities/checklist_templates/${templateId}`,
         method: 'DELETE',

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user
+from dependencies.entity_scope import entity_owner_user_id
 from routers.checklist_templates import require_manager_or_admin
 from schemas.auth import UserResponse
 from services.checklist_template_items import ChecklistTemplateItemsService
@@ -57,6 +58,7 @@ async def list_checklist_template_items_by_template(
     skip: int = Query(0, ge=0),
     limit: int = Query(2000, ge=1, le=2000),
     current_user: UserResponse = Depends(get_current_user),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Return items for one template only (scoped by user). Avoids relying on JSON query filters from clients."""
@@ -66,7 +68,7 @@ async def list_checklist_template_items_by_template(
         limit=limit,
         query_dict={"template_id": template_id},
         sort=sort,
-        user_id=str(current_user.id),
+        user_id=owner_uid,
     )
     if _TEMPLATE_DEBUG:
         items = out.get("items") or []
@@ -88,6 +90,7 @@ async def query_checklist_template_items(
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=2000),
     current_user: UserResponse = Depends(get_current_user),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplateItemsService(db)
@@ -97,7 +100,7 @@ async def query_checklist_template_items(
         limit=limit,
         query_dict=query_dict,
         sort=sort,
-        user_id=str(current_user.id),
+        user_id=owner_uid,
     )
 
 
@@ -126,11 +129,12 @@ async def update_checklist_template_item(
     id: int,
     data: ChecklistTemplateItemsUpdateData,
     manager: UserResponse = Depends(require_manager_or_admin),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplateItemsService(db)
     update_dict = {k: v for k, v in data.model_dump().items() if v is not None}
-    result = await service.update(id, update_dict, user_id=str(manager.id))
+    result = await service.update(id, update_dict, user_id=owner_uid)
     if not result:
         raise HTTPException(status_code=404, detail="Checklist template item not found")
     return result
@@ -141,6 +145,7 @@ async def update_checklist_template_item(
 async def delete_checklist_template_items_by_template(
     template_id: int,
     manager: UserResponse = Depends(require_manager_or_admin),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplateItemsService(db)
@@ -150,7 +155,7 @@ async def delete_checklist_template_items_by_template(
             template_id,
             manager.id,
         )
-    deleted_count = await service.delete_by_template(template_id, user_id=str(manager.id))
+    deleted_count = await service.delete_by_template(template_id, user_id=owner_uid)
     if _TEMPLATE_DEBUG:
         logger.info(
             "[checklist_template_items] DELETE by-template id=%s done deleted_count=%s",
@@ -164,10 +169,11 @@ async def delete_checklist_template_items_by_template(
 async def delete_checklist_template_item(
     id: int,
     manager: UserResponse = Depends(require_manager_or_admin),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     service = ChecklistTemplateItemsService(db)
-    success = await service.delete(id, user_id=str(manager.id))
+    success = await service.delete(id, user_id=owner_uid)
     if not success:
         raise HTTPException(status_code=404, detail="Checklist template item not found")
     return {"message": "Checklist template item deleted", "id": id}
