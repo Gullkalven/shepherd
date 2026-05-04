@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { client } from '@/lib/api';
+import { useProjectList } from '@/contexts/ProjectListContext';
 import { usePermissions } from '@/lib/permissions';
 import DashboardStats from '@/components/DashboardStats';
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,7 @@ import {
 } from '@/lib/projectEntity';
 import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
 import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
+import { clearStoredSelectedProjectIfMatches } from '@/lib/selectedProjectStorage';
 
 /** Compact labels for default phases; other keys use first letter */
 function phaseProgressLetter(key: string): string {
@@ -71,6 +73,7 @@ export default function ProjectDetail() {
   const desktopAutoFocus = useDesktopAutoFocus();
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const { allowedProjectIds, ready: projectListReady } = useProjectList();
   const { canCreateFloor, canDeleteFloor, canEdit, isWorker, isAdmin } = usePermissions();
   const [project, setProject] = useState<Project | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
@@ -155,6 +158,10 @@ export default function ProjectDetail() {
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
+    const parsedRoute = parseProjectRouteParam(projectId);
+    if (parsedRoute === null) return;
+    if (projectListReady && !allowedProjectIds.has(parsedRoute)) return;
+
     setLoading(true);
     setLoadError(false);
     try {
@@ -165,7 +172,10 @@ export default function ProjectDetail() {
       const msg = apiFailureMessage(err) ?? 'Failed to load project';
       if (st === 404) {
         const pid = parseProjectRouteParam(projectId);
-        if (pid !== null) clearWorkerLastRoomIfMatchesProject(pid);
+        if (pid !== null) {
+          clearWorkerLastRoomIfMatchesProject(pid);
+          clearStoredSelectedProjectIfMatches(pid);
+        }
         flashProjectNotFoundOnce();
         navigate('/', { replace: true });
         return;
@@ -175,7 +185,7 @@ export default function ProjectDetail() {
     } finally {
       setLoading(false);
     }
-  }, [projectId, reloadProjectState, navigate]);
+  }, [projectId, reloadProjectState, navigate, projectListReady, allowedProjectIds]);
 
   useEffect(() => {
     setFloors([]);
@@ -187,8 +197,10 @@ export default function ProjectDetail() {
   }, [projectId]);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    void loadData();
+    // Only the route project id should trigger a refetch (avoids retry loops from unstable callback identity).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   const handleCreateFloor = async () => {
     if (!floorNumber.trim() || !project?.id) return;

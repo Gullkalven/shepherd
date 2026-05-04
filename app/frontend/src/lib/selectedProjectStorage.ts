@@ -31,6 +31,14 @@ export function clearStoredSelectedProjectId(): void {
   }
 }
 
+/** Clear persisted selection only when it matches a bad route id (e.g. deleted project). */
+export function clearStoredSelectedProjectIfMatches(projectId: number): void {
+  const stored = readStoredSelectedProjectId();
+  if (stored === projectId) {
+    clearStoredSelectedProjectId();
+  }
+}
+
 /** Drop stored id if it is not in the current server-backed list. */
 export function validateStoredProjectAgainstList(allowedIds: ReadonlySet<number>): void {
   const stored = readStoredSelectedProjectId();

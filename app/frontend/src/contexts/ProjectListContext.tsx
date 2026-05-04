@@ -72,7 +72,12 @@ export function ProjectListProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(PROJECTS_NAV_REFRESH_EVENT, onRefresh);
   }, [load]);
 
-  const allowedProjectIds = useMemo(() => new Set(projects.map((p) => p.id)), [projects]);
+  const allowedProjectIds = useMemo(() => {
+    const ids = projects
+      .map((p) => Number(p.id))
+      .filter((id) => Number.isFinite(id) && Number.isSafeInteger(id) && id >= 1);
+    return new Set(ids);
+  }, [projects]);
 
   const ready = !permLoading && !loading;
 

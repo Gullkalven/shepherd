@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import DevRoleSwitcher from '@/components/DevRoleSwitcher';
 import { cn } from '@/lib/utils';
 import { parseProjectRouteParam, unwrapProjectBody } from '@/lib/projectEntity';
-import { persistStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
+import { persistStoredSelectedProjectId, readStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
 
 interface FloorRow {
   id: number;
@@ -40,6 +40,48 @@ function floorLabel(f: FloorRow): string {
 
 type Variant = 'desktop' | 'sheet';
 
+const LOGO_BUTTON_CLASS =
+  'mb-3 flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left transition-[background-color,box-shadow] duration-200 ease-out hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90';
+
+function ShepherdLogoButton({ afterNav }: { afterNav: () => void }) {
+  const navigate = useNavigate();
+  const { projectId: routeProjectId } = useParams<{ projectId?: string }>();
+  const { ready, allowedProjectIds } = useProjectList();
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const stored = readStoredSelectedProjectId();
+        const routeParsed = routeProjectId ? parseProjectRouteParam(routeProjectId) : null;
+
+        if (ready) {
+          if (stored != null && allowedProjectIds.has(stored)) {
+            navigate(`/project/${stored}`);
+            afterNav();
+            return;
+          }
+          if (routeParsed !== null && allowedProjectIds.has(routeParsed)) {
+            navigate(`/project/${routeParsed}`);
+            afterNav();
+            return;
+          }
+        }
+        navigate('/');
+        afterNav();
+      }}
+      className={LOGO_BUTTON_CLASS}
+    >
+      <HardHat className="h-5 w-5 shrink-0 text-amber-500" />
+      <span className="text-sm font-black tracking-[0.12em] uppercase">
+        {APP_NAME_PARTS.prefix}
+        <span className="text-amber-600/90 dark:text-amber-400/90">{APP_NAME_PARTS.dot}</span>
+        {APP_NAME_PARTS.suffix}
+      </span>
+    </button>
+  );
+}
+
 export default function AppNavSidebar({
   variant,
   onNavigate,
@@ -47,26 +89,11 @@ export default function AppNavSidebar({
   variant: Variant;
   onNavigate?: () => void;
 }) {
-  const navigate = useNavigate();
   const afterNav = () => onNavigate?.();
 
   const inner = (
     <div className="flex h-full min-h-0 flex-col p-3 pt-4">
-      <button
-        type="button"
-        onClick={() => {
-          navigate('/');
-          afterNav();
-        }}
-        className="mb-3 flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left transition-[background-color,box-shadow] duration-200 ease-out hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90"
-      >
-        <HardHat className="h-5 w-5 shrink-0 text-amber-500" />
-        <span className="text-sm font-black tracking-[0.12em] uppercase">
-          {APP_NAME_PARTS.prefix}
-          <span className="text-amber-600/90 dark:text-amber-400/90">{APP_NAME_PARTS.dot}</span>
-          {APP_NAME_PARTS.suffix}
-        </span>
-      </button>
+      <ShepherdLogoButton afterNav={afterNav} />
 
       <NavSections afterNav={afterNav} />
 

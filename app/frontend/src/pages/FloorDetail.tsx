@@ -58,6 +58,7 @@ import { httpStatusFromError } from '@/lib/apiErrors';
 import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
 import { parseProjectRouteParam } from '@/lib/projectEntity';
 import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
+import { clearStoredSelectedProjectIfMatches } from '@/lib/selectedProjectStorage';
 interface Room {
   id: number;
   room_number: string;
@@ -240,7 +241,10 @@ export default function FloorDetail() {
     } catch (err) {
       if (httpStatusFromError(err) === 404 && projectId) {
         const pid = parseProjectRouteParam(projectId);
-        if (pid !== null) clearWorkerLastRoomIfMatchesProject(pid);
+        if (pid !== null) {
+          clearWorkerLastRoomIfMatchesProject(pid);
+          clearStoredSelectedProjectIfMatches(pid);
+        }
         flashProjectNotFoundOnce();
         navigate('/', { replace: true });
         return;

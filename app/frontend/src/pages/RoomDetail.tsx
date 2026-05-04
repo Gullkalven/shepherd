@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { httpStatusFromError } from '@/lib/apiErrors';
 import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
 import { parseProjectRouteParam } from '@/lib/projectEntity';
+import { clearStoredSelectedProjectIfMatches } from '@/lib/selectedProjectStorage';
 import {
   DEFAULT_PHASE_WORKFLOW,
   deriveLinearPhaseStatusesFromPointer,
@@ -530,7 +531,10 @@ export default function RoomDetail() {
     } catch (err) {
       if (httpStatusFromError(err) === 404 && projectId) {
         const pid = parseProjectRouteParam(projectId);
-        if (pid !== null) clearWorkerLastRoomIfMatchesProject(pid);
+        if (pid !== null) {
+          clearWorkerLastRoomIfMatchesProject(pid);
+          clearStoredSelectedProjectIfMatches(pid);
+        }
         flashProjectNotFoundOnce();
         navigate('/', { replace: true });
         return;

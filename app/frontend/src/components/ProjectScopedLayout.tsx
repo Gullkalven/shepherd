@@ -3,7 +3,7 @@ import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { useProjectList } from '@/contexts/ProjectListContext';
 import { parseProjectRouteParam } from '@/lib/projectEntity';
 import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
-import { clearStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
+import { clearStoredSelectedProjectIfMatches } from '@/lib/selectedProjectStorage';
 import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
 
 /**
@@ -39,7 +39,7 @@ export default function ProjectScopedLayout() {
     lastRedirectKey.current = k;
 
     clearWorkerLastRoomIfMatchesProject(parsed);
-    clearStoredSelectedProjectId();
+    clearStoredSelectedProjectIfMatches(parsed);
     flashProjectNotFoundOnce();
     navigate('/', { replace: true });
   }, [parsed, ready, allowedProjectIds, navigate]);

@@ -141,7 +141,7 @@ function IndexContent({
 
   useEffect(() => {
     if (consumeProjectNotFoundFlash()) {
-      toast.info('Project not found.');
+      toast.info('Project not found.', { id: 'shepherd-project-not-found' });
     }
   }, []);
 
