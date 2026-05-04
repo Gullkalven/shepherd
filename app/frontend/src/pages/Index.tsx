@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useOutletContext, useLocation } from 'react-router-dom';
 import { client } from '@/lib/api';
 import { useProjectList } from '@/contexts/ProjectListContext';
@@ -76,9 +76,7 @@ function IndexContent({
     failed: projectsLoadFailed,
     refetch: refetchProjects,
     ready: projectsReady,
-    allowedProjectIds,
   } = useProjectList();
-  const singleProjectAutoNavDone = useRef(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -145,38 +143,6 @@ function IndexContent({
       toast.info('Project not found.', { id: 'shepherd-project-not-found' });
     }
   }, []);
-
-  /**
-   * Exactly one project from the list fetch → open that id only (never a placeholder/default).
-   * Waits for list readiness + success; validates against allowedProjectIds before any `/project/:id` navigation.
-   */
-  useEffect(() => {
-    if (!user || !projectsReady || permLoading || isWorker) return;
-    if (location.pathname !== '/') return;
-    if (projectsLoadFailed) return;
-    if (projects.length !== 1) return;
-    const only = projects[0];
-    const oid = Number(only.id);
-    if (!Number.isFinite(oid) || !Number.isSafeInteger(oid) || oid < 1 || !allowedProjectIds.has(oid)) return;
-    if (singleProjectAutoNavDone.current) return;
-    singleProjectAutoNavDone.current = true;
-    persistStoredSelectedProjectId(oid);
-    navigate(`/project/${oid}`, { replace: true });
-  }, [
-    user,
-    projectsReady,
-    projectsLoadFailed,
-    permLoading,
-    isWorker,
-    location.pathname,
-    projects,
-    allowedProjectIds,
-    navigate,
-  ]);
-
-  useEffect(() => {
-    if (!user) singleProjectAutoNavDone.current = false;
-  }, [user]);
 
   useEffect(() => {
     checkAuth();

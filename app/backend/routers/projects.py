@@ -12,7 +12,7 @@ from core.database import get_db
 from services.projects import ProjectsService
 from dependencies.auth import get_current_user
 from dependencies.entity_scope import entity_owner_user_id
-from dependencies.roles import ROLE_ADMIN, get_current_app_role, require_admin_role
+from dependencies.roles import require_admin_role
 from dependencies.worker_scope import worker_project_scope
 from schemas.auth import UserResponse
 
@@ -164,7 +164,7 @@ async def get_projects(
     id: int,
     fields: str = Query(None, description="Comma-separated list of fields to return"),
     current_user: UserResponse = Depends(get_current_user),
-    app_role: str = Depends(get_current_app_role),
+    owner_uid: Optional[str] = Depends(entity_owner_user_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single projects by ID (user can only see their own records)"""
@@ -172,7 +172,6 @@ async def get_projects(
     
     service = ProjectsService(db)
     try:
-        owner_uid = None if app_role == ROLE_ADMIN else str(current_user.id)
         worker_scope = worker_project_scope(current_user)
         result = await service.get_by_id(
             id,
@@ -183,7 +182,7 @@ async def get_projects(
             logger.warning(
                 "GET /entities/projects/%s -> 404. app_role=%s owner_uid=%s worker_project_scope=%s user_type=%s",
                 id,
-                app_role,
+                "admin" if owner_uid is None else "worker",
                 owner_uid,
                 worker_scope,
                 "worker_session"
