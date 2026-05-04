@@ -12,6 +12,7 @@ import {
 import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
 import { useWorkerRoomEnrichment, type EnrichedRoom, type TaskRow } from '@/hooks/useWorkerRoomEnrichment';
 import { phaseLabel } from '@/lib/roomPhases';
+import { persistStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -387,7 +388,10 @@ export default function WorkerTodayView({
                         className={`flex w-full min-h-11 items-center justify-between rounded-md px-2 py-2.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-800 ${
                           p.id === primaryProject.id ? 'bg-slate-100/80 font-medium dark:bg-slate-800/80' : ''
                         }`}
-                        onClick={() => navigate(`/project/${p.id}`)}
+                        onClick={() => {
+                          persistStoredSelectedProjectId(p.id);
+                          navigate(`/project/${p.id}`);
+                        }}
                       >
                         <span className="truncate">{p.name}</span>
                         {p.id === primaryProject.id ? (
@@ -476,7 +480,10 @@ export default function WorkerTodayView({
                     type="button"
                     variant="outline"
                     className="mt-3 w-full min-h-11 border-[#1E3A5F]/30 text-[#1E3A5F] hover:bg-slate-50 dark:border-blue-700/50 dark:text-blue-400 dark:hover:bg-slate-900"
-                    onClick={() => navigate(`/project/${primaryProject.id}`)}
+                    onClick={() => {
+                      persistStoredSelectedProjectId(primaryProject.id);
+                      navigate(`/project/${primaryProject.id}`);
+                    }}
                   >
                     Open site
                   </Button>

@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useOutletContext } from 'react-router-dom';
-import { client, extractProjectItemsFromListBody, fetchProjectsListAll } from '@/lib/api';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useOutletContext, useLocation } from 'react-router-dom';
+import { client } from '@/lib/api';
+import { useProjectList } from '@/contexts/ProjectListContext';
 import { usePermissions } from '@/lib/permissions';
 import type { AppShellOutletContext } from '@/layouts/AppShellLayout';
 import { APP_LOGOUT_EVENT, PROJECTS_NAV_REFRESH_EVENT } from '@/lib/runAppLogout';
@@ -32,8 +33,7 @@ import { consumeProjectNotFoundFlash } from '@/lib/projectNotFoundFlash';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
 import { readAdminSession } from '@/lib/adminSession';
-import { shepherdDebug } from '@/lib/shepherdDebug';
-import { sanitizeProjectListItems, unwrapProjectBody } from '@/lib/projectEntity';
+import { persistStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
 
 interface Project {
   id: number;
@@ -60,6 +60,7 @@ function IndexContent({
   onDemoSignedIn: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { activateSession, endSession, sessionActive } = useDevPresentationSession();
   const {
     role,
@@ -67,17 +68,20 @@ function IndexContent({
     canDeleteProject,
     canEdit,
     isWorker,
-    isAdmin,
     loading: permLoading,
     sessionIsPinWorker,
     sessionIsProvisionalAdmin,
   } = usePermissions();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [projects, setProjects] = useState<Project[]>([]);
-  /** Until first list fetch settles, avoid flashing empty Worker/admin lists. */
-  const [projectsLoading, setProjectsLoading] = useState(true);
-  const [projectsLoadFailed, setProjectsLoadFailed] = useState(false);
+  const {
+    projects,
+    loading: projectsLoading,
+    failed: projectsLoadFailed,
+    refetch: refetchProjects,
+    ready: projectsReady,
+  } = useProjectList();
+  const singleProjectAutoNavDone = useRef(false);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
   const [newDesc, setNewDesc] = useState('');
@@ -144,6 +148,18 @@ function IndexContent({
     }
   }, []);
 
+  /** Exactly one project → open it by real id (never assume id 1). Multiple projects → stay on overview. */
+  useEffect(() => {
+    if (!user || !projectsReady || permLoading || isWorker) return;
+    if (location.pathname !== '/') return;
+    if (projects.length !== 1) return;
+    if (singleProjectAutoNavDone.current) return;
+    singleProjectAutoNavDone.current = true;
+    const only = projects[0];
+    persistStoredSelectedProjectId(only.id);
+    navigate(`/project/${only.id}`, { replace: true });
+  }, [user, projectsReady, permLoading, isWorker, location.pathname, projects, navigate]);
+
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
@@ -154,84 +170,9 @@ function IndexContent({
     if (!readWorkerSession()?.token) navigate('/worker/login', { replace: true });
   }, [permLoading, isWorker, sessionIsPinWorker, navigate]);
 
-  const loadProjects = useCallback(async () => {
-    if (permLoading) return;
-    const devHost = isDevRoleSwitcherHost();
-    /** Deployed admins use `/projects/all` (Bearer); workers use scoped GET list (backend filters by role). */
-    const useProjectsAll = !devHost && isAdmin;
-    const ws = readWorkerSession();
-    const pinProjectId = ws?.token && ws.projectId ? ws.projectId : null;
-    // Localhost: list only when signed in. Deployed: load from /all whenever demo session or API user exists (no auth.me gate).
-    const canLoad = !!user;
-    if (!canLoad) {
-      setProjectsLoading(false);
-      setProjectsLoadFailed(false);
-      return;
-    }
-    setProjectsLoading(true);
-    setProjectsLoadFailed(false);
-    try {
-      let items: Project[];
-      if (pinProjectId) {
-        const res = await client.entities.projects.get({ id: String(pinProjectId) });
-        const row = unwrapProjectBody(res?.data);
-        items = row ? [{ id: row.id, name: row.name }] : [];
-      } else {
-        const res = useProjectsAll
-          ? await fetchProjectsListAll()
-          : await client.entities.projects.query({ sort: '-created_at' });
-        items = sanitizeProjectListItems(extractProjectItemsFromListBody(res?.data ?? res) as unknown[]);
-      }
-      setProjects(items);
-      if (import.meta.env.DEV) {
-        shepherdDebug('Index.loadProjects', {
-          count: items.length,
-          ids: items.map((p) => p.id),
-          useProjectsAll,
-          pinProjectId,
-        });
-      }
-    } catch (err: unknown) {
-      const ax = err as {
-        message?: string;
-        response?: { status?: number; data?: unknown };
-        config?: { baseURL?: string; url?: string; params?: unknown; method?: string };
-      };
-      const fullUrl = [ax.config?.baseURL, ax.config?.url].filter(Boolean).join('') || ax.config?.url;
-      console.error('[Shepherd] loadProjects failed', {
-        listEndpoint: useProjectsAll
-          ? 'GET {API_BASE_URL}/api/v1/entities/projects/all?sort=-created_at&skip=0&limit=100'
-          : 'GET /api/v1/entities/projects',
-        message: ax.message,
-        httpStatus: ax.response?.status,
-        responseBody: ax.response?.data,
-        requestMethod: ax.config?.method,
-        requestUrl: fullUrl,
-        requestParams: ax.config?.params,
-      });
-      setProjectsLoadFailed(true);
-      toast.error('Failed to load projects');
-    } finally {
-      setProjectsLoading(false);
-    }
-  }, [user, isAdmin, permLoading]);
-
-  useEffect(() => {
-    void loadProjects();
-  }, [user, loadProjects]);
-
-  useEffect(() => {
-    const onNavRefresh = () => void loadProjects();
-    window.addEventListener(PROJECTS_NAV_REFRESH_EVENT, onNavRefresh);
-    return () => window.removeEventListener(PROJECTS_NAV_REFRESH_EVENT, onNavRefresh);
-  }, [loadProjects]);
-
   useEffect(() => {
     const onAppLogout = () => {
       setUser(null);
-      setProjects([]);
-      setProjectsLoadFailed(false);
-      setProjectsLoading(false);
       onLogoutClearServer();
     };
     window.addEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
@@ -270,7 +211,7 @@ function IndexContent({
       setShowCreate(false);
       setNewName('');
       setNewDesc('');
-      loadProjects();
+      void refetchProjects();
       window.dispatchEvent(new CustomEvent(PROJECTS_NAV_REFRESH_EVENT));
     } catch {
       toast.error('Failed to create project');
@@ -285,7 +226,7 @@ function IndexContent({
     try {
       await client.entities.projects.delete({ id: String(id) });
       toast.success('Project deleted');
-      loadProjects();
+      void refetchProjects();
       window.dispatchEvent(new CustomEvent(PROJECTS_NAV_REFRESH_EVENT));
     } catch {
       toast.error('Failed to delete project');
@@ -308,10 +249,8 @@ function IndexContent({
         id: String(projectId),
         data: { name: editProjectName.trim() },
       });
-      setProjects((prev) =>
-        prev.map((p) => (p.id === projectId ? { ...p, name: editProjectName.trim() } : p))
-      );
       toast.success('Project name updated');
+      void refetchProjects();
       window.dispatchEvent(new CustomEvent(PROJECTS_NAV_REFRESH_EVENT));
     } catch {
       toast.error('Failed to update project name');
@@ -408,7 +347,7 @@ function IndexContent({
         sites={projects}
         sitesLoading={projectsLoading}
         sitesLoadFailed={projectsLoadFailed}
-        onRefreshSites={() => void loadProjects()}
+        onRefreshSites={() => void refetchProjects()}
       />
     );
   }
@@ -483,7 +422,11 @@ function IndexContent({
               <Card
                 key={project.id}
                 className="p-4 shepherd-interactive-card"
-                onClick={() => editingProjectId !== project.id && navigate(`/project/${project.id}`)}
+                onClick={() => {
+                  if (editingProjectId === project.id) return;
+                  persistStoredSelectedProjectId(project.id);
+                  navigate(`/project/${project.id}`);
+                }}
               >
                 <div className="flex items-center justify-between">
                   <div className="min-w-0 flex-1">

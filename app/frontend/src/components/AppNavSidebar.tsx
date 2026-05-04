@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ChevronRight, HardHat, LogOut, Moon, Sun } from 'lucide-react';
-import { client, fetchProjectsListAll } from '@/lib/api';
+import { client } from '@/lib/api';
 import { APP_NAME_PARTS } from '@/lib/branding';
+import { useProjectList } from '@/contexts/ProjectListContext';
 import { usePermissions } from '@/lib/permissions';
-import { runAppLogout, PROJECTS_NAV_REFRESH_EVENT, APP_LOGOUT_EVENT } from '@/lib/runAppLogout';
-import { DEV_ROLE_CHANGED_EVENT, isDevRoleSwitcherHost } from '@/lib/devRole';
+import { runAppLogout, PROJECTS_NAV_REFRESH_EVENT } from '@/lib/runAppLogout';
+import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
 import { useTheme } from '@/lib/theme';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import { useI18n } from '@/lib/i18n';
@@ -14,9 +15,7 @@ import { Input } from '@/components/ui/input';
 import DevRoleSwitcher from '@/components/DevRoleSwitcher';
 import { cn } from '@/lib/utils';
 import { parseProjectRouteParam, unwrapProjectBody } from '@/lib/projectEntity';
-import { httpStatusFromError } from '@/lib/apiErrors';
-import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
-import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
+import { persistStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
 
 interface FloorRow {
   id: number;
@@ -99,8 +98,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
     roomId?: string;
   }>();
   const navigate = useNavigate();
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(true);
+  const { projects, loading: projectsLoading, ready, allowedProjectIds } = useProjectList();
   const [projectSearch, setProjectSearch] = useState('');
 
   const [project, setProject] = useState<ProjectRow | null>(null);
@@ -116,37 +114,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
   const projectSearchTrim = projectSearch.trim().toLowerCase();
 
   const { t } = useI18n();
-  const { isWorker, isAdmin } = usePermissions();
-
-  const loadProjects = useCallback(async () => {
-    setProjectsLoading(true);
-    try {
-      const useProjectsAll = !isDevRoleSwitcherHost() && isAdmin;
-      const res = useProjectsAll
-        ? await fetchProjectsListAll()
-        : await client.entities.projects.query({ sort: '-created_at' });
-      setProjects((res?.data?.items || []) as ProjectRow[]);
-    } catch {
-      setProjects([]);
-    } finally {
-      setProjectsLoading(false);
-    }
-  }, [isAdmin]);
-
-  useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
-
-  useEffect(() => {
-    const onRefresh = () => void loadProjects();
-    const onLogout = () => setProjects([]);
-    window.addEventListener(PROJECTS_NAV_REFRESH_EVENT, onRefresh);
-    window.addEventListener(APP_LOGOUT_EVENT, onLogout);
-    return () => {
-      window.removeEventListener(PROJECTS_NAV_REFRESH_EVENT, onRefresh);
-      window.removeEventListener(APP_LOGOUT_EVENT, onLogout);
-    };
-  }, [loadProjects]);
+  const { isWorker } = usePermissions();
 
   const loadProjectTree = useCallback(async () => {
     if (!projectId) {
@@ -158,6 +126,13 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
     }
     const parsed = parseProjectRouteParam(projectId);
     if (parsed === null) {
+      setProject(null);
+      setFloors([]);
+      setRooms([]);
+      setTreeLoading(false);
+      return;
+    }
+    if (!ready || !allowedProjectIds.has(parsed)) {
       setProject(null);
       setFloors([]);
       setRooms([]);
@@ -189,32 +164,30 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
       setProject({ id: row.id, name: row.name });
       setFloors((floorsRes?.data?.items || []) as FloorRow[]);
       setRooms((roomsRes?.data?.items || []) as RoomRow[]);
-    } catch (err) {
-      if (httpStatusFromError(err) === 404 && parsed !== null) {
-        clearWorkerLastRoomIfMatchesProject(parsed);
-        flashProjectNotFoundOnce();
-        navigate('/', { replace: true });
-      }
+    } catch {
       setProject(null);
       setFloors([]);
       setRooms([]);
     } finally {
       setTreeLoading(false);
     }
-  }, [projectId, navigate]);
+  }, [projectId, navigate, ready, allowedProjectIds]);
 
   useEffect(() => {
     void loadProjectTree();
   }, [loadProjectTree]);
 
   useEffect(() => {
-    const onRoleChange = () => {
-      void loadProjects();
-      void loadProjectTree();
-    };
+    const onRefresh = () => void loadProjectTree();
+    window.addEventListener(PROJECTS_NAV_REFRESH_EVENT, onRefresh);
+    return () => window.removeEventListener(PROJECTS_NAV_REFRESH_EVENT, onRefresh);
+  }, [loadProjectTree]);
+
+  useEffect(() => {
+    const onRoleChange = () => void loadProjectTree();
     window.addEventListener(DEV_ROLE_CHANGED_EVENT, onRoleChange);
     return () => window.removeEventListener(DEV_ROLE_CHANGED_EVENT, onRoleChange);
-  }, [loadProjects, loadProjectTree]);
+  }, [loadProjectTree]);
 
   useEffect(() => {
     setOpenFloors(new Set());
@@ -319,6 +292,7 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
                   <button
                     type="button"
                     onClick={() => {
+                      persistStoredSelectedProjectId(p.id);
                       navigate(`/project/${p.id}`);
                       afterNav();
                     }}

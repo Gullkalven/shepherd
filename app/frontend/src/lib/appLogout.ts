@@ -4,6 +4,7 @@ import { clearWorkerSession } from '@/lib/workerSession';
 import { clearWorkerLastRoom } from '@/lib/workerLastRoom';
 import { queryClient } from '@/lib/queryClient';
 import { FLASH_PROJECT_NOT_FOUND_KEY } from '@/lib/projectNotFoundFlash';
+import { clearStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
 
 const LOGOUT_GATE_KEY = 'shepherd_logout_gate';
 
@@ -57,6 +58,7 @@ export function clearLocalAuthMarks(): void {
     localStorage.removeItem('token');
     localStorage.removeItem('isLougOutManual');
     sessionStorage.removeItem(FLASH_PROJECT_NOT_FOUND_KEY);
+    clearStoredSelectedProjectId();
   } catch {
     /* ignore */
   }

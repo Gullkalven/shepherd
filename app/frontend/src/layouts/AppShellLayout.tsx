@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import WorkerMobileBottomNav from '@/components/WorkerMobileBottomNav';
+import { ProjectListProvider } from '@/contexts/ProjectListContext';
 
 export type AppShellOutletContext = {
   onLogoutClearServer: () => void;
@@ -169,7 +170,9 @@ export default function AppShellLayout() {
 
   return (
     <PermissionProvider isAuthenticated>
-      <AuthenticatedShellLayout outletContext={outletContext} />
+      <ProjectListProvider>
+        <AuthenticatedShellLayout outletContext={outletContext} />
+      </ProjectListProvider>
     </PermissionProvider>
   );
 }

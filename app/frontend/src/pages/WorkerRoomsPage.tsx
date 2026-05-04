@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { client, extractProjectItemsFromListBody, fetchProjectsListAll } from '@/lib/api';
+import { client } from '@/lib/api';
+import { useProjectList } from '@/contexts/ProjectListContext';
 import { usePermissions } from '@/lib/permissions';
-import { readWorkerSession } from '@/lib/workerSession';
 import { resolveWorkerActorLabel } from '@/lib/workerIdentity';
-import { PROJECTS_NAV_REFRESH_EVENT, APP_LOGOUT_EVENT } from '@/lib/runAppLogout';
+import { APP_LOGOUT_EVENT } from '@/lib/runAppLogout';
 import {
   DEV_ROLE_CHANGED_EVENT,
   ensureDemoBearerToken,
@@ -15,13 +15,12 @@ import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import { getAuthMeEpoch, isClientLogoutGateActive } from '@/lib/appLogout';
 import { useWorkerRoomEnrichment, type EnrichedRoom } from '@/hooks/useWorkerRoomEnrichment';
 import { workerRoomPath } from '@/lib/workerLastRoom';
-import { sanitizeProjectListItems, unwrapProjectBody } from '@/lib/projectEntity';
+import { readWorkerSession } from '@/lib/workerSession';
 import { phaseLabel } from '@/lib/roomPhases';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ChevronRight, Layers } from 'lucide-react';
-import { toast } from 'sonner';
 
 interface Project {
   id: number;
@@ -64,9 +63,12 @@ export default function WorkerRoomsPage() {
   const { sessionActive } = useDevPresentationSession();
 
   const [user, setUser] = useState<unknown>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(true);
-  const [projectsLoadFailed, setProjectsLoadFailed] = useState(false);
+  const {
+    projects,
+    loading: projectsLoading,
+    failed: projectsLoadFailed,
+    refetch: refetchProjects,
+  } = useProjectList();
   const [roomSearch, setRoomSearch] = useState('');
 
   const checkAuth = useCallback(async () => {
@@ -107,54 +109,9 @@ export default function WorkerRoomsPage() {
     if (!readWorkerSession()?.token) navigate('/worker/login', { replace: true });
   }, [permLoading, sessionIsPinWorker, navigate]);
 
-  const loadProjects = useCallback(async () => {
-    const devHost = isDevRoleSwitcherHost();
-    const useProjectsAll = !devHost;
-    const ws = readWorkerSession();
-    const pinProjectId = ws?.token && ws.projectId ? ws.projectId : null;
-    const canLoad = !!user;
-    if (!canLoad) {
-      setProjectsLoading(false);
-      setProjectsLoadFailed(false);
-      return;
-    }
-    setProjectsLoading(true);
-    setProjectsLoadFailed(false);
-    try {
-      if (pinProjectId) {
-        const res = await client.entities.projects.get({ id: String(pinProjectId) });
-        const row = unwrapProjectBody(res?.data);
-        setProjects(row ? [{ id: row.id, name: row.name }] : []);
-      } else {
-        const res = useProjectsAll
-          ? await fetchProjectsListAll()
-          : await client.entities.projects.query({ sort: '-created_at' });
-        const items = sanitizeProjectListItems(extractProjectItemsFromListBody(res?.data ?? res) as unknown[]);
-        setProjects(items);
-      }
-    } catch {
-      setProjectsLoadFailed(true);
-      toast.error('Failed to load projects');
-    } finally {
-      setProjectsLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
-
-  useEffect(() => {
-    const onNavRefresh = () => void loadProjects();
-    window.addEventListener(PROJECTS_NAV_REFRESH_EVENT, onNavRefresh);
-    return () => window.removeEventListener(PROJECTS_NAV_REFRESH_EVENT, onNavRefresh);
-  }, [loadProjects]);
-
   useEffect(() => {
     const onAppLogout = () => {
       setUser(null);
-      setProjects([]);
-      setProjectsLoading(false);
     };
     window.addEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
     return () => window.removeEventListener(APP_LOGOUT_EVENT, onAppLogout as EventListener);
@@ -239,7 +196,7 @@ export default function WorkerRoomsPage() {
         {projectsLoadFailed && projects.length === 0 ? (
           <Card className="border-amber-200/80 bg-amber-50/40 p-6 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
             <p className="text-sm font-medium text-slate-900 dark:text-foreground">Couldn&apos;t load sites</p>
-            <Button type="button" className="mt-4" onClick={() => void loadProjects()}>
+            <Button type="button" className="mt-4" onClick={() => void refetchProjects()}>
               Retry
             </Button>
           </Card>

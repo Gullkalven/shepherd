@@ -2,7 +2,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
-import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from '@/lib/theme';
 import { DevPresentationSessionProvider } from '@/lib/devPresentationSession';
 import { I18nProvider } from '@/lib/i18n';
@@ -21,6 +21,7 @@ import WorkerLoginPage from './pages/WorkerLoginPage';
 import NotFound from './pages/NotFound';
 import RequireAdminAccess from './components/RequireAdminAccess';
 import AppErrorBoundary from './components/AppErrorBoundary';
+import ProjectScopedLayout from './components/ProjectScopedLayout';
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -49,7 +50,7 @@ const App = () => (
                         </RequireAdminAccess>
                       }
                     />
-                    <Route path="project/:projectId" element={<Outlet />}>
+                    <Route path="project/:projectId" element={<ProjectScopedLayout />}>
                       <Route index element={<ProjectDetail />} />
                       <Route path="floor/:floorId" element={<FloorDetail />} />
                       <Route path="floor/:floorId/room/:roomId" element={<RoomDetail />} />
