@@ -4,7 +4,6 @@ import {
   ensureDemoBearerToken,
   getLocalDevUser,
   isDevRoleSwitcherHost,
-  readDemoLocalStorageUser,
 } from '@/lib/devRole';
 import {
   readWorkerSession,
@@ -20,11 +19,35 @@ import {
 } from '@/lib/adminSession';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import {
+  APP_LOGOUT_EVENT,
   bumpAuthMeEpoch,
+  clearClientLogoutGate,
   getAuthMeEpoch,
-  isClientLogoutGateActive,
+  invalidateClientSession,
 } from '@/lib/appLogout';
-import { APP_LOGOUT_EVENT } from '@/lib/runAppLogout';
+import { httpStatusFromError } from '@/lib/apiErrors';
+
+function applyAuthMePayload(
+  data: unknown,
+  startEpoch: number,
+  setApiUser: (u: unknown) => void
+): void {
+  if (startEpoch !== getAuthMeEpoch()) return;
+  if (data) {
+    clearClientLogoutGate();
+    setApiUser(data);
+  } else {
+    setApiUser(null);
+  }
+}
+
+function applyAuthMeFailure(err: unknown, startEpoch: number, setApiUser: (u: unknown) => void): void {
+  if (startEpoch !== getAuthMeEpoch()) return;
+  if (httpStatusFromError(err) === 401) {
+    invalidateClientSession();
+  }
+  setApiUser(null);
+}
 
 function applySessionBearerToken(): void {
   const ws = readWorkerSession();
@@ -65,11 +88,9 @@ export function useAppShellAuth() {
         const startEpoch = getAuthMeEpoch();
         try {
           const res = await client.auth.me();
-          if (startEpoch !== getAuthMeEpoch()) return;
-          setApiUser(res?.data ?? null);
-        } catch {
-          if (startEpoch !== getAuthMeEpoch()) return;
-          setApiUser(null);
+          applyAuthMePayload(res?.data ?? null, startEpoch, setApiUser);
+        } catch (err) {
+          applyAuthMeFailure(err, startEpoch, setApiUser);
         } finally {
           setChecking(false);
         }
@@ -80,11 +101,9 @@ export function useAppShellAuth() {
         const startEpoch = getAuthMeEpoch();
         try {
           const res = await client.auth.me();
-          if (startEpoch !== getAuthMeEpoch()) return;
-          setApiUser(res?.data ?? null);
-        } catch {
-          if (startEpoch !== getAuthMeEpoch()) return;
-          setApiUser(null);
+          applyAuthMePayload(res?.data ?? null, startEpoch, setApiUser);
+        } catch (err) {
+          applyAuthMeFailure(err, startEpoch, setApiUser);
         } finally {
           setChecking(false);
         }
@@ -97,11 +116,9 @@ export function useAppShellAuth() {
         try {
           const res = await client.auth.me();
           if (startEpoch !== getAuthMeEpoch()) return;
-          if (isClientLogoutGateActive() && !readDemoLocalStorageUser()) return;
-          setApiUser(res?.data ?? null);
-        } catch {
-          if (startEpoch !== getAuthMeEpoch()) return;
-          setApiUser(null);
+          applyAuthMePayload(res?.data ?? null, startEpoch, setApiUser);
+        } catch (err) {
+          applyAuthMeFailure(err, startEpoch, setApiUser);
         } finally {
           setChecking(false);
         }
@@ -112,11 +129,9 @@ export function useAppShellAuth() {
         const startEpoch = getAuthMeEpoch();
         try {
           const res = await client.auth.me();
-          if (startEpoch !== getAuthMeEpoch()) return;
-          setApiUser(res?.data ?? null);
-        } catch {
-          if (startEpoch !== getAuthMeEpoch()) return;
-          setApiUser(null);
+          applyAuthMePayload(res?.data ?? null, startEpoch, setApiUser);
+        } catch (err) {
+          applyAuthMeFailure(err, startEpoch, setApiUser);
         } finally {
           setChecking(false);
         }
@@ -127,11 +142,9 @@ export function useAppShellAuth() {
         const startEpoch = getAuthMeEpoch();
         try {
           const res = await client.auth.me();
-          if (startEpoch !== getAuthMeEpoch()) return;
-          setApiUser(res?.data ?? null);
-        } catch {
-          if (startEpoch !== getAuthMeEpoch()) return;
-          setApiUser(null);
+          applyAuthMePayload(res?.data ?? null, startEpoch, setApiUser);
+        } catch (err) {
+          applyAuthMeFailure(err, startEpoch, setApiUser);
         } finally {
           setChecking(false);
         }
@@ -142,14 +155,9 @@ export function useAppShellAuth() {
       const startEpoch = getAuthMeEpoch();
       try {
         const res = await client.auth.me();
-        if (startEpoch !== getAuthMeEpoch()) return;
-        if (isClientLogoutGateActive()) {
-          setApiUser(null);
-        } else {
-          setApiUser(res?.data ?? null);
-        }
-      } catch {
-        setApiUser(null);
+        applyAuthMePayload(res?.data ?? null, startEpoch, setApiUser);
+      } catch (err) {
+        applyAuthMeFailure(err, startEpoch, setApiUser);
       } finally {
         setChecking(false);
       }
@@ -176,12 +184,10 @@ export function useAppShellAuth() {
     void client.auth
       .me()
       .then((res) => {
-        if (startEpoch !== getAuthMeEpoch()) return;
-        setApiUser(res?.data ?? null);
+        applyAuthMePayload(res?.data ?? null, startEpoch, setApiUser);
       })
-      .catch(() => {
-        if (startEpoch !== getAuthMeEpoch()) return;
-        setApiUser(null);
+      .catch((err: unknown) => {
+        applyAuthMeFailure(err, startEpoch, setApiUser);
       })
       .finally(() => setChecking(false));
   }, []);

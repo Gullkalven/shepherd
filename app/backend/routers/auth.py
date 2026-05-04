@@ -319,8 +319,16 @@ async def get_current_user_info(current_user: UserResponse = Depends(get_current
     return current_user
 
 
-@router.get("/logout")
+@router.api_route("/logout", methods=["GET", "POST"])
 async def logout():
-    """Logout user."""
-    logout_url = build_logout_url()
-    return {"redirect_url": logout_url}
+    """Notify clients to end the session; idempotent (no auth required).
+
+    Always returns 200 with ``ok: true``. ``redirect_url`` is the OIDC end-session URL when
+    configured; otherwise null — clients must still clear local state.
+    """
+    try:
+        logout_url = build_logout_url()
+    except Exception as exc:
+        logger.warning("logout: build_logout_url failed: %s", type(exc).__name__, exc_info=True)
+        logout_url = None
+    return {"ok": True, "redirect_url": logout_url}

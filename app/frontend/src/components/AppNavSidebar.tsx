@@ -14,6 +14,9 @@ import { Input } from '@/components/ui/input';
 import DevRoleSwitcher from '@/components/DevRoleSwitcher';
 import { cn } from '@/lib/utils';
 import { parseProjectRouteParam, unwrapProjectBody } from '@/lib/projectEntity';
+import { httpStatusFromError } from '@/lib/apiErrors';
+import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
+import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
 
 interface FloorRow {
   id: number;
@@ -186,14 +189,19 @@ function NavSections({ afterNav }: { afterNav: () => void }) {
       setProject({ id: row.id, name: row.name });
       setFloors((floorsRes?.data?.items || []) as FloorRow[]);
       setRooms((roomsRes?.data?.items || []) as RoomRow[]);
-    } catch {
+    } catch (err) {
+      if (httpStatusFromError(err) === 404 && parsed !== null) {
+        clearWorkerLastRoomIfMatchesProject(parsed);
+        flashProjectNotFoundOnce();
+        navigate('/', { replace: true });
+      }
       setProject(null);
       setFloors([]);
       setRooms([]);
     } finally {
       setTreeLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, navigate]);
 
   useEffect(() => {
     void loadProjectTree();

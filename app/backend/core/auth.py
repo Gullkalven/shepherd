@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import logging
+import os
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
@@ -256,14 +257,45 @@ def build_authorization_url(
     return auth_url
 
 
-def build_logout_url(id_token: Optional[str] = None) -> str:
-    """Build OIDC logout URL."""
+def safe_post_logout_redirect_uri() -> str:
+    """Browser redirect after OIDC logout — never raises (misconfigured env caused logout 500s)."""
+    for key in ("FRONTEND_URL", "FRONTEND_ORIGIN"):
+        raw = os.environ.get(key)
+        if raw and str(raw).strip():
+            return f"{str(raw).strip().rstrip('/')}/logout-callback"
+    try:
+        fo = settings.frontend_origin
+        if fo and str(fo).strip():
+            return f"{str(fo).strip().rstrip('/')}/logout-callback"
+    except Exception:
+        pass
+    return "http://127.0.0.1:5173/logout-callback"
+
+
+def _resolve_oidc_issuer_url() -> Optional[str]:
+    raw = os.environ.get("OIDC_ISSUER_URL")
+    if raw and str(raw).strip():
+        return str(raw).strip().rstrip("/")
+    try:
+        issuer = settings.oidc_issuer_url
+        if issuer and str(issuer).strip():
+            return str(issuer).strip().rstrip("/")
+    except Exception:
+        pass
+    return None
+
+
+def build_logout_url(id_token: Optional[str] = None) -> Optional[str]:
+    """Build OIDC end-session URL, or None when OIDC issuer is not configured."""
     import urllib.parse
 
-    params = {"post_logout_redirect_uri": f"{settings.frontend_url}/logout-callback"}
+    issuer = _resolve_oidc_issuer_url()
+    if not issuer:
+        return None
+
+    params = {"post_logout_redirect_uri": safe_post_logout_redirect_uri()}
 
     if id_token:
         params["id_token_hint"] = id_token
 
-    logout_url = f"{settings.oidc_issuer_url}/logout?" + urllib.parse.urlencode(params)
-    return logout_url
+    return f"{issuer}/logout?" + urllib.parse.urlencode(params)

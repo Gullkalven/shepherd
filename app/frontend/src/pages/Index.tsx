@@ -23,9 +23,12 @@ import {
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import WorkerTodayView from '@/components/WorkerTodayView';
 import {
+  clearClientLogoutGate,
   getAuthMeEpoch,
-  isClientLogoutGateActive,
+  invalidateClientSession,
 } from '@/lib/appLogout';
+import { httpStatusFromError } from '@/lib/apiErrors';
+import { consumeProjectNotFoundFlash } from '@/lib/projectNotFoundFlash';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
 import { readAdminSession } from '@/lib/adminSession';
@@ -94,18 +97,17 @@ function IndexContent({
         !!(readWorkerSession()?.token || readAdminSession()?.token);
       if (pinOrAdmin) {
         setLoading(true);
-        if (isClientLogoutGateActive()) {
-          setUser(null);
-          setLoading(false);
-          return;
-        }
         const startEpoch = getAuthMeEpoch();
         try {
           const res = await client.auth.me();
           if (startEpoch !== getAuthMeEpoch()) return;
-          if (isClientLogoutGateActive()) return;
-          setUser(res?.data ?? null);
-        } catch {
+          const u = res?.data ?? null;
+          if (u) clearClientLogoutGate();
+          setUser(u);
+        } catch (err) {
+          if (httpStatusFromError(err) === 401) {
+            invalidateClientSession();
+          }
           setUser(null);
         } finally {
           setLoading(false);
@@ -119,23 +121,28 @@ function IndexContent({
 
     // Deployed hosts: real API session only (worker/admin JWT or OIDC cookie). No passwordless demo.
     setLoading(true);
-    if (isClientLogoutGateActive()) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
     const startEpoch = getAuthMeEpoch();
     try {
       const res = await client.auth.me();
       if (startEpoch !== getAuthMeEpoch()) return;
-      if (isClientLogoutGateActive()) return;
-      setUser(res?.data ?? null);
-    } catch {
+      const u = res?.data ?? null;
+      if (u) clearClientLogoutGate();
+      setUser(u);
+    } catch (err) {
+      if (httpStatusFromError(err) === 401) {
+        invalidateClientSession();
+      }
       setUser(null);
     } finally {
       setLoading(false);
     }
   }, [sessionActive]);
+
+  useEffect(() => {
+    if (consumeProjectNotFoundFlash()) {
+      toast.info('Project not found.');
+    }
+  }, []);
 
   useEffect(() => {
     checkAuth();

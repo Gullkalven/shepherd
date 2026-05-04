@@ -1,5 +1,6 @@
 import type { NavigateFunction } from 'react-router-dom';
 import {
+  APP_LOGOUT_EVENT,
   bumpAuthMeEpoch,
   clearLocalAuthMarks,
   logoutRemoteSession,
@@ -9,7 +10,9 @@ import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
 import { queryClient } from '@/lib/queryClient';
 import { clearAdminSession } from '@/lib/adminSession';
 import { clearWorkerSession } from '@/lib/workerSession';
-export const APP_LOGOUT_EVENT = 'shepherd-app-logout';
+import { clearWorkerLastRoom } from '@/lib/workerLastRoom';
+
+export { APP_LOGOUT_EVENT } from '@/lib/appLogout';
 
 /** Sidebar / shell: clear all client auth state, invalidate in-flight auth checks, then navigate home. */
 export async function runAppLogout(navigate: NavigateFunction, endSession: () => void) {

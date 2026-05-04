@@ -1,7 +1,12 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { client, postWorkerPhaseHandoff } from '@/lib/api';
-import { persistWorkerLastRoom, WORKER_ROOM_CHECKLIST_ANCHOR, WORKER_ROOM_DOCUMENTATION_ANCHOR } from '@/lib/workerLastRoom';
+import {
+  persistWorkerLastRoom,
+  WORKER_ROOM_CHECKLIST_ANCHOR,
+  WORKER_ROOM_DOCUMENTATION_ANCHOR,
+  clearWorkerLastRoomIfMatchesProject,
+} from '@/lib/workerLastRoom';
 import { usePermissions } from '@/lib/permissions';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -17,6 +22,9 @@ import {
   Lock, Unlock, ChevronDown, AlertTriangle, History, Calendar, Circle,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { httpStatusFromError } from '@/lib/apiErrors';
+import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
+import { parseProjectRouteParam } from '@/lib/projectEntity';
 import {
   DEFAULT_PHASE_WORKFLOW,
   deriveLinearPhaseStatusesFromPointer,
@@ -519,13 +527,20 @@ export default function RoomDetail() {
         return byNum !== 0 ? byNum : a.id - b.id;
       });
       setFloorRoomsOrdered(floorItems);
-    } catch {
+    } catch (err) {
+      if (httpStatusFromError(err) === 404 && projectId) {
+        const pid = parseProjectRouteParam(projectId);
+        if (pid !== null) clearWorkerLastRoomIfMatchesProject(pid);
+        flashProjectNotFoundOnce();
+        navigate('/', { replace: true });
+        return;
+      }
       toast.error('Failed to load');
       setFloorRoomsOrdered([]);
     } finally {
       setLoading(false);
     }
-  }, [projectId, floorId, roomId]);
+  }, [projectId, floorId, roomId, navigate]);
 
   const refreshRoom = useCallback(async () => {
     if (!roomId) return;

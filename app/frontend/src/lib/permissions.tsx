@@ -3,6 +3,8 @@ import { client } from '@/lib/api';
 import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
 import { readAdminSession, ADMIN_AUTH_EVENT } from '@/lib/adminSession';
 import { readWorkerSession, WORKER_AUTH_EVENT } from '@/lib/workerSession';
+import { invalidateClientSession } from '@/lib/appLogout';
+import { httpStatusFromError } from '@/lib/apiErrors';
 
 export type AppRole = 'admin' | 'worker';
 
@@ -132,7 +134,10 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
         } else {
           setRole('worker');
         }
-      } catch {
+      } catch (err) {
+        if (isAuthenticated && httpStatusFromError(err) === 401) {
+          invalidateClientSession();
+        }
         setRole('worker');
         setSessionIsPinWorker(false);
         setSessionIsProvisionalAdmin(false);
@@ -198,7 +203,10 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
       } else {
         setRole('worker');
       }
-    } catch {
+    } catch (err) {
+      if (isAuthenticated && httpStatusFromError(err) === 401) {
+        invalidateClientSession();
+      }
       setRole('worker');
       setSessionIsPinWorker(false);
       setSessionIsProvisionalAdmin(false);

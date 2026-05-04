@@ -27,6 +27,7 @@ import {
   type ProjectRecord,
 } from '@/lib/projectEntity';
 import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
+import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
 
 /** Compact labels for default phases; other keys use first letter */
 function phaseProgressLetter(key: string): string {
@@ -165,7 +166,7 @@ export default function ProjectDetail() {
       if (st === 404) {
         const pid = parseProjectRouteParam(projectId);
         if (pid !== null) clearWorkerLastRoomIfMatchesProject(pid);
-        toast.error(msg.includes('not found') ? 'Project not found. Returning to your projects.' : msg);
+        flashProjectNotFoundOnce();
         navigate('/', { replace: true });
         return;
       }

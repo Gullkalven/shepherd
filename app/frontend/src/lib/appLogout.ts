@@ -2,8 +2,13 @@ import { getAPIBaseURL } from '@/lib/config';
 import { clearAdminSession } from '@/lib/adminSession';
 import { clearWorkerSession } from '@/lib/workerSession';
 import { clearWorkerLastRoom } from '@/lib/workerLastRoom';
+import { queryClient } from '@/lib/queryClient';
+import { FLASH_PROJECT_NOT_FOUND_KEY } from '@/lib/projectNotFoundFlash';
 
 const LOGOUT_GATE_KEY = 'shepherd_logout_gate';
+
+/** @see runAppLogout — same event for session invalidation and explicit logout. */
+export const APP_LOGOUT_EVENT = 'shepherd-app-logout';
 
 /** After explicit logout, block `auth.me()` from re-applying a server session until demo sign-in clears this. */
 export function setClientLogoutGate(): void {
@@ -51,6 +56,26 @@ export function clearLocalAuthMarks(): void {
     localStorage.removeItem('user');
     localStorage.removeItem('token');
     localStorage.removeItem('isLougOutManual');
+    sessionStorage.removeItem(FLASH_PROJECT_NOT_FOUND_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Call when /auth/me or /admin/roles/me returns 401: drop tokens and sync shell (no logout gate;
+ * user can sign in again immediately).
+ */
+export function invalidateClientSession(): void {
+  clearLocalAuthMarks();
+  bumpAuthMeEpoch();
+  try {
+    queryClient.clear();
+  } catch {
+    /* ignore */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(APP_LOGOUT_EVENT));
   } catch {
     /* ignore */
   }
@@ -62,12 +87,21 @@ export function clearLocalAuthMarks(): void {
  */
 export async function logoutRemoteSession(): Promise<void> {
   const base = getAPIBaseURL().replace(/\/$/, '');
+  const url = `${base}/api/v1/auth/logout`;
   try {
-    await fetch(`${base}/api/v1/auth/logout`, {
-      method: 'GET',
+    const res = await fetch(url, {
+      method: 'POST',
       credentials: 'include',
+      headers: { Accept: 'application/json' },
     });
+    if (!res.ok) {
+      await fetch(url, { method: 'GET', credentials: 'include', headers: { Accept: 'application/json' } });
+    }
   } catch {
-    /* offline / CORS — local state is still cleared */
+    try {
+      await fetch(url, { method: 'GET', credentials: 'include' });
+    } catch {
+      /* offline — local state is still cleared */
+    }
   }
 }

@@ -1,5 +1,6 @@
 /**
  * Project id from route params — must be a positive integer string (no slugs).
+ * Never substitute a default id (e.g. 1); callers must load only ids from the route or API list.
  */
 export function parseProjectRouteParam(raw: string | undefined): number | null {
   if (!raw || typeof raw !== 'string') return null;

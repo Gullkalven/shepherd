@@ -54,6 +54,10 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { httpStatusFromError } from '@/lib/apiErrors';
+import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
+import { parseProjectRouteParam } from '@/lib/projectEntity';
+import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
 interface Room {
   id: number;
   room_number: string;
@@ -233,7 +237,14 @@ export default function FloorDetail() {
       }
       setChecklistByRoomId(summary);
       setFloorPhaseProgress(computeFloorPhaseProgress(roomItems, taskItems, summaryWorkflow));
-    } catch {
+    } catch (err) {
+      if (httpStatusFromError(err) === 404 && projectId) {
+        const pid = parseProjectRouteParam(projectId);
+        if (pid !== null) clearWorkerLastRoomIfMatchesProject(pid);
+        flashProjectNotFoundOnce();
+        navigate('/', { replace: true });
+        return;
+      }
       toast.error('Failed to load floor data');
       setFloorPhaseProgress([]);
     } finally {
