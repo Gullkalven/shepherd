@@ -670,9 +670,22 @@ export default function RoomDetail() {
     });
   }, [permissionsLoading, isWorker, room, projectId, floorId, roomId]);
 
+  /** Mobile: always land at top for a room route (hash checklist scroll is desktop-only below). */
+  useLayoutEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!window.matchMedia('(max-width: 1023.98px)').matches) return;
+    const scroller = document.querySelector('[data-worker-main-scroll]');
+    if (scroller instanceof HTMLElement) {
+      scroller.scrollTop = 0;
+      return;
+    }
+    window.scrollTo(0, 0);
+  }, [projectId, floorId, roomId]);
+
   /** After opening a room from Today (`#worker-checklist-heading`), land on checklist instead of only the location chrome. */
   useEffect(() => {
     if (permissionsLoading || !isWorker || loading || !room) return;
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023.98px)').matches) return;
     if (location.hash !== `#${WORKER_ROOM_CHECKLIST_ANCHOR}`) return;
     const id = requestAnimationFrame(() => {
       const smooth =
@@ -690,6 +703,7 @@ export default function RoomDetail() {
   /** Bottom nav “Camera / Docs” — scroll to checklist/documentation section. */
   useEffect(() => {
     if (permissionsLoading || !isWorker || loading || !room) return;
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023.98px)').matches) return;
     if (location.hash !== `#${WORKER_ROOM_DOCUMENTATION_ANCHOR}`) return;
     const id = requestAnimationFrame(() => {
       const smooth =

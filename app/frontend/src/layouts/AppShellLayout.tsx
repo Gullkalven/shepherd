@@ -74,7 +74,12 @@ function AuthenticatedShellLayout({ outletContext }: { outletContext: AppShellOu
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="min-h-dvh min-w-0 max-w-full overflow-x-hidden bg-slate-50 dark:bg-background">
+    <div
+      className={cn(
+        'min-h-dvh min-w-0 max-w-full overflow-x-hidden bg-slate-50 dark:bg-background',
+        isWorker && 'max-lg:flex max-lg:flex-col'
+      )}
+    >
       <AppNavSidebar variant="desktop" />
 
       <MobileNavHeader mobileOpen={mobileOpen} setMobileOpen={setMobileOpen} />
@@ -82,10 +87,11 @@ function AuthenticatedShellLayout({ outletContext }: { outletContext: AppShellOu
       <WorkerMobileBottomNav />
 
       <div
+        data-worker-main-scroll={isWorker ? true : undefined}
         className={cn(
           'min-h-0 min-w-0 max-w-full lg:pl-56',
           isWorker &&
-            'max-lg:pb-[calc(4.25rem+env(safe-area-inset-bottom))] max-lg:pt-[max(0.25rem,env(safe-area-inset-top))]'
+            'max-lg:flex max-lg:flex-1 max-lg:flex-col max-lg:min-h-0 max-lg:overflow-y-auto max-lg:overscroll-y-contain max-lg:pb-[calc(4.25rem+env(safe-area-inset-bottom))] max-lg:pt-[max(0.25rem,env(safe-area-inset-top))]'
         )}
       >
         <Outlet context={outletContext} />

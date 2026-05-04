@@ -268,14 +268,9 @@ function IndexContent({
             <span className="text-amber-300/90">{APP_NAME_PARTS.dot}</span>
             {APP_NAME_PARTS.suffix}
           </h1>
-          <p className="text-white/70 text-lg">
-            Project and task management for teams
-          </p>
           {isDevRoleSwitcherHost() ? (
             <p className="text-white/55 text-sm">Demo sign-in — choose a role (no password)</p>
-          ) : (
-            <p className="text-white/55 text-sm">Sign in with your credentials</p>
-          )}
+          ) : null}
           <div className="w-full space-y-2 pt-1">
             {isDevRoleSwitcherHost()
               ? DEMO_ROLE_SIGN_IN.map(({ role, label }) => (
