@@ -6,12 +6,8 @@ import { loadRuntimeConfig } from './lib/config.ts';
 async function initializeApp() {
   try {
     await loadRuntimeConfig();
-    console.log('Runtime configuration loaded successfully');
   } catch (error) {
-    console.warn(
-      'Failed to load runtime configuration, using defaults:',
-      error
-    );
+    console.warn('[Shepherd] Runtime config bootstrap failed; continuing with Vite env / defaults:', error);
   }
 
   // Import App after config is ready so @/lib/api createClient() sees the final API base

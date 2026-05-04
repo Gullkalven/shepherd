@@ -26,9 +26,10 @@ export type ProjectListContextValue = {
 
 const defaultValue: ProjectListContextValue = {
   projects: [],
-  loading: false,
+  loading: true,
   failed: false,
-  ready: true,
+  /** False until a real provider run finishes — avoids treating “empty list, ready” as valid outside `ProjectListProvider`. */
+  ready: false,
   allowedProjectIds: new Set(),
   refetch: async () => {},
 };
@@ -48,7 +49,13 @@ export function ProjectListProvider({ children }: { children: ReactNode }) {
     try {
       const { projects: rows, clearedStalePinSession } = await fetchProjectsForShell({ isAdmin });
       setProjects(rows);
-      validateStoredProjectAgainstList(new Set(rows.map((p) => p.id)));
+      validateStoredProjectAgainstList(
+        new Set(
+          rows
+            .map((p) => Number(p.id))
+            .filter((id) => Number.isFinite(id) && Number.isSafeInteger(id) && id >= 1)
+        )
+      );
       if (clearedStalePinSession) {
         bumpAuthMeEpoch();
         toast.message('Site worker session ended — project is no longer available. Sign in again.');

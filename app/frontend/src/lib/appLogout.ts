@@ -90,15 +90,18 @@ export function invalidateClientSession(): void {
 export async function logoutRemoteSession(): Promise<void> {
   const base = getAPIBaseURL().replace(/\/$/, '');
   const url = `${base}/api/v1/auth/logout`;
+  const init = {
+    credentials: 'include' as RequestCredentials,
+    headers: { Accept: 'application/json' },
+  };
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) {
-      await fetch(url, { method: 'GET', credentials: 'include', headers: { Accept: 'application/json' } });
+    let res = await fetch(url, { method: 'POST', ...init });
+    if (res.ok) return;
+    if (res.status === 405 || res.status === 404) {
+      res = await fetch(url, { method: 'GET', ...init });
+      if (res.ok) return;
     }
+    res = await fetch(url, { method: 'GET', ...init });
   } catch {
     try {
       await fetch(url, { method: 'GET', credentials: 'include' });

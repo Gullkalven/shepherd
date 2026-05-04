@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { PermissionProvider, usePermissions } from '@/lib/permissions';
 import { readDemoLocalStorageUser } from '@/lib/devRole';
@@ -97,7 +97,6 @@ function AuthenticatedShellLayout({ outletContext }: { outletContext: AppShellOu
 export default function AppShellLayout() {
   const { isAuth, checking, setApiUser } = useAppShellAuth();
   const location = useLocation();
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (!import.meta.env.DEV) return;
@@ -109,34 +108,6 @@ export default function AppShellLayout() {
       workerSession: Boolean(readWorkerSession()?.token),
     });
   }, [location.pathname, checking, isAuth]);
-
-  /** Authenticated users should not stay on login routes (avoids showing login form under the nav). */
-  useEffect(() => {
-    if (checking) return;
-    const p = location.pathname;
-    if (p === '/admin/login' && isAuth) {
-      navigate('/', { replace: true });
-      return;
-    }
-    if (p === '/worker/login' && isAuth && readWorkerSession()?.token) {
-      navigate('/worker/rooms', { replace: true });
-    }
-  }, [checking, isAuth, location.pathname, navigate]);
-
-  useEffect(() => {
-    if (checking) return;
-    if (isAuth) return;
-    const p = location.pathname;
-    if (p === '/worker/login') return;
-    if (p === '/admin/login') return;
-    if (p.startsWith('/worker')) {
-      navigate('/worker/login', { replace: true });
-      return;
-    }
-    if (p.startsWith('/project') || p.startsWith('/admin')) {
-      navigate('/admin/login', { replace: true });
-    }
-  }, [isAuth, checking, location.pathname, navigate]);
 
   if (checking) {
     return (
@@ -150,6 +121,30 @@ export default function AppShellLayout() {
     onLogoutClearServer: () => setApiUser(null),
     onDemoSignedIn: () => setApiUser(readDemoLocalStorageUser()),
   };
+
+  /** Signed-in users should not stay on login screens (sync redirect — avoids mounting login under shell). */
+  if (isAuth && location.pathname === '/admin/login') {
+    return <Navigate to="/" replace />;
+  }
+  if (isAuth && location.pathname === '/worker/login' && readWorkerSession()?.token) {
+    return <Navigate to="/worker/rooms" replace />;
+  }
+
+  /**
+   * Logged-out users must never mount project routes or API-heavy shells (prevents `/entities/projects/:id` spam).
+   */
+  if (!isAuth) {
+    const p = location.pathname;
+    if (p.startsWith('/project')) {
+      return <Navigate to="/admin/login" replace />;
+    }
+    if (p.startsWith('/admin') && p !== '/admin/login') {
+      return <Navigate to="/admin/login" replace />;
+    }
+    if (p.startsWith('/worker') && p !== '/worker/login') {
+      return <Navigate to="/worker/login" replace />;
+    }
+  }
 
   /** Login routes never use the authenticated sidebar/header chrome — prevents nav stacking on top of login. */
   if (isLoginRoute(location.pathname)) {

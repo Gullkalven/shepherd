@@ -23,33 +23,54 @@ function isLoopbackApiOrigin(url: string): boolean {
 // Function to load runtime configuration
 export async function loadRuntimeConfig(): Promise<void> {
   try {
-    console.log('🔧 DEBUG: Starting to load runtime config...');
-    // Try to load configuration from a config endpoint
+    if (import.meta.env.DEV) {
+      console.log('[Shepherd] Loading /api/config (optional)…');
+    }
     const response = await fetch('/api/config');
-    if (response.ok) {
-      const contentType = response.headers.get('content-type');
-      // Only parse as JSON if the response is actually JSON
-      if (contentType && contentType.includes('application/json')) {
-        runtimeConfig = await response.json();
-        console.log('Runtime config loaded successfully');
-      } else {
-        console.log(
-          'Config endpoint returned non-JSON response, skipping runtime config'
-        );
+    if (!response.ok) {
+      if (import.meta.env.DEV) {
+        console.warn(`[Shepherd] /api/config HTTP ${response.status}; using Vite env / defaults.`);
       }
-    } else {
-      console.log(
-        '🔧 DEBUG: Config fetch failed with status:',
-        response.status
-      );
+      return;
+    }
+
+    const raw = await response.text();
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+
+    // SPA hosts often return index.html for unknown routes — never treat as JSON success.
+    if (trimmed.startsWith('<') || trimmed.startsWith('<!')) {
+      if (import.meta.env.DEV) {
+        console.warn('[Shepherd] /api/config returned HTML, not JSON; using Vite env / defaults.');
+      }
+      return;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed) as unknown;
+    } catch {
+      console.warn('[Shepherd] /api/config body is not valid JSON; using Vite env / defaults.');
+      return;
+    }
+
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      'API_BASE_URL' in (parsed as Record<string, unknown>)
+    ) {
+      const url = String((parsed as { API_BASE_URL?: unknown }).API_BASE_URL ?? '').trim();
+      if (url) {
+        runtimeConfig = { API_BASE_URL: url.replace(/\/$/, '') };
+        if (import.meta.env.DEV) {
+          console.log('[Shepherd] Runtime API_BASE_URL applied from /api/config.');
+        }
+      }
     }
   } catch (error) {
-    console.log('Failed to load runtime config, using defaults:', error);
+    console.warn('[Shepherd] Failed to fetch /api/config; using Vite env / defaults:', error);
   } finally {
     configLoading = false;
-    console.log(
-      '🔧 DEBUG: Config loading finished, configLoading set to false'
-    );
   }
 }
 
@@ -76,7 +97,6 @@ export function getConfig() {
 
   if (configLoading) {
     if (import.meta.env.DEV) {
-      console.log('Config still loading, using local dev API origin');
       return { API_BASE_URL: LOCAL_DEV_API_ORIGIN };
     }
     console.warn(
@@ -86,7 +106,9 @@ export function getConfig() {
   }
 
   if (runtimeConfig?.API_BASE_URL) {
-    console.log('Using runtime config');
+    if (import.meta.env.DEV) {
+      console.log('[Shepherd] Using runtime API_BASE_URL from /api/config.');
+    }
     let u = String(runtimeConfig.API_BASE_URL).trim().replace(/\/$/, '');
     if (import.meta.env.PROD && isLoopbackApiOrigin(u)) {
       console.warn(

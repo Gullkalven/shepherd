@@ -232,6 +232,20 @@ setup_logging()
 include_routers_from_package(app, "routers")
 
 
+@app.get("/api/config")
+def frontend_runtime_config() -> JSONResponse:
+    """Public runtime JSON for the SPA (matches Lambda `handle_config_request` shape)."""
+    base = settings.upload_base_url.rstrip("/")
+    return JSONResponse(
+        content={"API_BASE_URL": base},
+        headers={
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "public, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
 @app.exception_handler(RequestValidationError)
 async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
     """Include CORS on validation failures (browser shows them as network/CORS when headers missing)."""

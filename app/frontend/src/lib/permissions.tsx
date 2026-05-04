@@ -109,6 +109,15 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
   const [sectionVisibility, setSectionVisibility] = useState<SectionVisibility>(DEFAULT_VISIBILITY);
 
   const fetchRole = useCallback(async () => {
+    if (!isAuthenticated) {
+      setRole('worker');
+      setDisplayName(null);
+      setSessionIsPinWorker(false);
+      setSessionIsProvisionalAdmin(false);
+      setLoading(false);
+      return;
+    }
+
     const host = window.location.hostname;
     const isDevMode = host === 'localhost' || host === '127.0.0.1';
 
@@ -174,14 +183,6 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
       return;
     }
 
-    if (!isAuthenticated) {
-      setRole('worker');
-      setDisplayName(null);
-      setSessionIsPinWorker(false);
-      setSessionIsProvisionalAdmin(false);
-      setLoading(false);
-      return;
-    }
     try {
       const res = await client.apiCall.invoke({
         url: '/api/v1/admin/roles/me',

@@ -160,7 +160,10 @@ export default function ProjectDetail() {
     if (!projectId) return;
     const parsedRoute = parseProjectRouteParam(projectId);
     if (parsedRoute === null) return;
-    if (projectListReady && !allowedProjectIds.has(parsedRoute)) return;
+    if (projectListReady && !allowedProjectIds.has(parsedRoute)) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     setLoadError(false);
