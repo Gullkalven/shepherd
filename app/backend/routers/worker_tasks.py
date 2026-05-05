@@ -1,4 +1,5 @@
 import logging
+import json
 from typing import List, Optional
 
 from core.database import get_db
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.rooms import Rooms
 from models.worker_tasks import WorkerTasks
+from models.projects import Projects
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,16 @@ class WorkerTaskResponse(BaseModel):
     project_id: Optional[int] = None
     type: str
     status: str
+
+
+class WorkerPhaseAssignmentResponse(BaseModel):
+    room_id: int
+    room_number: Optional[str] = None
+    floor_id: Optional[int] = None
+    project_id: Optional[int] = None
+    phase_key: str
+    phase_label: str
+    assigned_worker_id: int
 
 
 def _task_response(task: WorkerTasks, room: Optional[Rooms], worker_name: Optional[str]) -> WorkerTaskResponse:
@@ -157,4 +169,66 @@ async def list_my_worker_tasks(
     out: List[WorkerTaskResponse] = []
     for task, room in rows.all():
         out.append(_task_response(task, room, current_user.name))
+    return out
+
+
+@router.get("/api/v1/worker-phases/my", response_model=List[WorkerPhaseAssignmentResponse])
+async def list_my_phase_assignments(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not getattr(current_user, "is_worker_session", False) or not getattr(current_user, "worker_id", None):
+        raise HTTPException(status_code=403, detail="Worker session required")
+
+    worker_id = int(current_user.worker_id)
+    worker_project_id = int(current_user.worker_project_id or 0)
+
+    rooms_res = await db.execute(select(Rooms).where(Rooms.project_id == worker_project_id))
+    rooms = rooms_res.scalars().all()
+
+    workflow_res = await db.execute(select(Projects).where(Projects.id == worker_project_id))
+    project = workflow_res.scalar_one_or_none()
+    labels_by_phase: dict[str, str] = {}
+    if project and getattr(project, "phase_workflow_json", None):
+        try:
+            parsed = json.loads(project.phase_workflow_json)
+            if isinstance(parsed, list):
+                for item in parsed:
+                    if not isinstance(item, dict):
+                        continue
+                    key = str(item.get("key") or "").strip()
+                    label = str(item.get("label") or "").strip()
+                    if key:
+                        labels_by_phase[key] = label or key
+        except Exception:
+            logger.debug("Failed parsing phase workflow JSON for project %s", worker_project_id, exc_info=True)
+
+    out: List[WorkerPhaseAssignmentResponse] = []
+    for room in rooms:
+        raw = getattr(room, "phase_assigned_worker_ids", None)
+        if not isinstance(raw, dict):
+            continue
+        for phase_key_raw, assigned_worker_raw in raw.items():
+            phase_key = str(phase_key_raw or "").strip()
+            if not phase_key:
+                continue
+            try:
+                assigned_worker_id = int(assigned_worker_raw)
+            except (TypeError, ValueError):
+                continue
+            if assigned_worker_id != worker_id:
+                continue
+            out.append(
+                WorkerPhaseAssignmentResponse(
+                    room_id=int(room.id),
+                    room_number=str(room.room_number) if room.room_number is not None else None,
+                    floor_id=int(room.floor_id) if room.floor_id is not None else None,
+                    project_id=int(room.project_id) if room.project_id is not None else None,
+                    phase_key=phase_key,
+                    phase_label=labels_by_phase.get(phase_key, phase_key),
+                    assigned_worker_id=assigned_worker_id,
+                )
+            )
+
+    out.sort(key=lambda x: (x.room_number or "", x.phase_label, x.room_id))
     return out

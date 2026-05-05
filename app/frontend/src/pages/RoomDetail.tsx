@@ -5,6 +5,7 @@ import {
   persistWorkerLastRoom,
   WORKER_ROOM_CHECKLIST_ANCHOR,
   WORKER_ROOM_DOCUMENTATION_ANCHOR,
+  WORKER_ROOM_PHASE_HASH_PREFIX,
   clearWorkerLastRoomIfMatchesProject,
 } from '@/lib/workerLastRoom';
 import { usePermissions } from '@/lib/permissions';
@@ -14,12 +15,20 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   Camera, Trash2, User, Ban, CheckCircle2,
   Image as ImageIcon, X, Plus, Clock, ListPlus, Pencil, Check,
-  Lock, Unlock, ChevronDown, AlertTriangle, History, Calendar, Circle,
+  Lock, Unlock, ChevronDown, AlertTriangle, History, Calendar, Circle, EllipsisVertical,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { httpStatusFromError } from '@/lib/apiErrors';
@@ -234,6 +243,8 @@ interface Room {
   phase_statuses?: Record<string, string> | null;
   /** Optional overrides merged with project workflow for checklist/heating visibility */
   phase_tool_overrides?: Record<string, PhaseToolOverride> | unknown | null;
+  /** Per-phase worker assignment map where key=phase and value=project worker id */
+  phase_assigned_worker_ids?: Record<string, number> | unknown | null;
   /** Append-only audit log from API */
   activity_log?: unknown;
   floor_id: number;
@@ -261,6 +272,12 @@ interface Visit {
   area_id?: string | null;
 }
 
+interface ProjectWorker {
+  id: number;
+  name: string;
+  active: boolean;
+}
+
 function coerceChecklistLabels(raw: unknown): Record<string, string> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const out: Record<string, string> = {};
@@ -277,6 +294,18 @@ function coercePhaseLockOverrides(raw: unknown): Record<string, boolean> {
   const out: Record<string, boolean> = {};
   for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
     if (typeof v === 'boolean') out[k] = v;
+  }
+  return out;
+}
+
+function coercePhaseAssignedWorkerIds(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const key = String(k || '').trim();
+    if (!key) continue;
+    const id = Number(v);
+    if (Number.isFinite(id) && id > 0) out[key] = id;
   }
   return out;
 }
@@ -394,7 +423,8 @@ export default function RoomDetail() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [assignedWorker, setAssignedWorker] = useState('');
+  const [projectWorkers, setProjectWorkers] = useState<ProjectWorker[]>([]);
+  const [assigningPhaseKey, setAssigningPhaseKey] = useState<string | null>(null);
   const [showBlockDialog, setShowBlockDialog] = useState(false);
   const [blockedReason, setBlockedReason] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -511,11 +541,11 @@ export default function RoomDetail() {
         setRoom({
           ...roomData,
           phase_lock_overrides: coercePhaseLockOverrides(roomData.phase_lock_overrides),
+          phase_assigned_worker_ids: coercePhaseAssignedWorkerIds(roomData.phase_assigned_worker_ids),
         });
       } else {
         setRoom(null);
       }
-      setAssignedWorker(roomData?.assigned_worker || '');
       setBlockedReason(roomData?.blocked_reason || '');
       setTasks(tasksRes?.data?.items || []);
       setVisits(visitsRes?.data?.items || []);
@@ -674,6 +704,32 @@ export default function RoomDetail() {
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    if (!projectId || !isAdmin) {
+      setProjectWorkers([]);
+      return;
+    }
+    let cancelled = false;
+    const loadWorkers = async () => {
+      try {
+        const res = await client.apiCall.invoke({
+          url: `/api/v1/projects/${projectId}/workers`,
+          method: 'GET',
+          data: {},
+        });
+        if (cancelled) return;
+        const rows = Array.isArray(res?.data) ? (res.data as ProjectWorker[]) : [];
+        setProjectWorkers(rows.filter((w) => w.active));
+      } catch {
+        if (!cancelled) setProjectWorkers([]);
+      }
+    };
+    void loadWorkers();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, isAdmin]);
+
   /** Persist before paint so worker bottom nav can read updated last-room label on room switches. */
   useLayoutEffect(() => {
     if (permissionsLoading || !isWorker) return;
@@ -750,6 +806,16 @@ export default function RoomDetail() {
     if (!room || !activeArea) return;
     setPhaseTab(normalizeRoomPhase(activeArea.phase ?? room.phase, phaseWorkflow));
   }, [room?.id, activeAreaId, activeArea?.phase, room?.phase, phaseWorkflow]);
+
+  useEffect(() => {
+    if (!room) return;
+    const hash = (location.hash || '').replace(/^#/, '');
+    if (!hash.startsWith(WORKER_ROOM_PHASE_HASH_PREFIX)) return;
+    const phaseKeyRaw = hash.slice(WORKER_ROOM_PHASE_HASH_PREFIX.length);
+    if (!phaseKeyRaw) return;
+    const phaseKey = normalizeRoomPhase(decodeURIComponent(phaseKeyRaw), phaseWorkflow);
+    setPhaseTab(phaseKey);
+  }, [room?.id, location.hash, phaseWorkflow]);
 
   useEffect(() => {
     if (room) setDeviations(coerceWorkflowDeviations(room.workflow_deviations));
@@ -1154,17 +1220,25 @@ export default function RoomDetail() {
     await persistWorkflowDeviations(next, 'Deviation updated');
   };
 
-  const handleSaveWorker = async () => {
-    if (!room) return;
+  const handleAssignPhaseWorker = async (phaseKey: string, workerId: number | null) => {
+    if (!room || !canEdit) return;
+    const key = normalizeRoomPhase(phaseKey, phaseWorkflow);
+    const current = coercePhaseAssignedWorkerIds(room.phase_assigned_worker_ids);
+    const next = { ...current };
+    if (workerId == null) delete next[key];
+    else next[key] = workerId;
+    setAssigningPhaseKey(key);
     try {
       await client.entities.rooms.update({
         id: String(room.id),
-        data: { assigned_worker: assignedWorker },
+        data: { phase_assigned_worker_ids: next },
       });
-      setRoom({ ...room, assigned_worker: assignedWorker });
-      toast.success('Worker updated');
+      setRoom({ ...room, phase_assigned_worker_ids: next });
+      toast.success(workerId == null ? 'Phase assignment cleared' : 'Worker assigned to phase');
     } catch {
-      toast.error('Failed to update worker');
+      toast.error('Failed to assign worker to phase');
+    } finally {
+      setAssigningPhaseKey(null);
     }
   };
 
@@ -2189,35 +2263,7 @@ export default function RoomDetail() {
           </div>
 
           <div className="mt-3 flex flex-wrap items-end justify-between gap-x-3 gap-y-2 border-t border-border/25 pt-2.5">
-            <div className="min-w-0 flex flex-wrap items-center gap-1.5">
-              {sectionVisibility.assigned_worker &&
-                (canEditRoom ? (
-                  <>
-                    <span className="text-[10px] text-muted-foreground/70 shrink-0">Assigned</span>
-                    <Input
-                      placeholder="Worker"
-                      value={assignedWorker}
-                      onChange={(e) => setAssignedWorker(e.target.value)}
-                      className="h-6 max-w-[8.5rem] text-[11px] border-border/40 bg-muted/20 text-foreground/90"
-                      disabled={editsBlocked}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-1.5 text-[10px] text-muted-foreground/80 hover:text-foreground"
-                      onClick={handleSaveWorker}
-                      disabled={editsBlocked}
-                    >
-                      {t('save')}
-                    </Button>
-                  </>
-                ) : room.assigned_worker ? (
-                  <p className="text-[10px] text-muted-foreground/75">
-                    Assigned <span className="text-foreground/85">{room.assigned_worker}</span>
-                  </p>
-                ) : null)}
-            </div>
+            <div className="min-w-0" />
             <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
               {canEdit ? (
                 <Button
@@ -2547,6 +2593,9 @@ export default function RoomDetail() {
                   lockOv,
                   resolvedPhaseStatuses
                 );
+                const phaseAssignments = coercePhaseAssignedWorkerIds(room.phase_assigned_worker_ids);
+                const assignedWorkerId = phaseAssignments[key];
+                const assignedWorker = projectWorkers.find((w) => w.id === assignedWorkerId);
                 return (
                   <div
                     key={key}
@@ -2592,38 +2641,56 @@ export default function RoomDetail() {
                         {ui.workerLocked ? <Lock className="h-3 w-3 shrink-0 text-slate-500" aria-hidden /> : null}
                         {ui.progress ? <span className="text-slate-600 dark:text-slate-400">· {ui.progress}</span> : null}
                       </span>
+                      {assignedWorker ? (
+                        <span className="mt-1 text-[10px] text-slate-600 dark:text-slate-300 truncate">
+                          {assignedWorker.name}
+                        </span>
+                      ) : null}
                     </button>
                     {canEdit && !editsBlocked ? (
-                      <button
-                        type="button"
-                        className={cn(
-                          'absolute top-1 right-1 z-10 rounded-md border p-1 shadow-sm transition-colors',
-                          tabLockedForWorkers
-                            ? 'border-amber-200/80 bg-amber-50/95 hover:bg-amber-100/90 dark:border-amber-800 dark:bg-amber-950/60'
-                            : 'border-border/50 bg-background/95 hover:bg-muted/70 dark:bg-background/90'
-                        )}
-                        title={
-                          tabLockedForWorkers
-                            ? `${phaseLabel(key, phaseWorkflow)}: workers read-only — click to open`
-                            : `${phaseLabel(key, phaseWorkflow)}: click to lock for workers`
-                        }
-                        aria-label={
-                          tabLockedForWorkers
-                            ? `Open ${phaseLabel(key, phaseWorkflow)} for workers`
-                            : `Lock ${phaseLabel(key, phaseWorkflow)} for workers`
-                        }
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          void handleTogglePhaseWorkerLock(key);
-                        }}
-                      >
-                        {tabLockedForWorkers ? (
-                          <Unlock className="h-3 w-3 text-amber-900 dark:text-amber-200" />
-                        ) : (
-                          <Lock className="h-3 w-3 text-muted-foreground" />
-                        )}
-                      </button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className={cn(
+                              'absolute top-1 right-1 z-10 rounded-md border p-1 shadow-sm transition-colors',
+                              tabLockedForWorkers
+                                ? 'border-amber-200/80 bg-amber-50/95 hover:bg-amber-100/90 dark:border-amber-800 dark:bg-amber-950/60'
+                                : 'border-border/50 bg-background/95 hover:bg-muted/70 dark:bg-background/90'
+                            )}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            aria-label={`Phase actions for ${phaseLabel(key, phaseWorkflow)}`}
+                          >
+                            <EllipsisVertical className="h-3 w-3 text-muted-foreground" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenuLabel>Assign worker</DropdownMenuLabel>
+                          <DropdownMenuItem
+                            onClick={() => void handleAssignPhaseWorker(key, null)}
+                            disabled={assigningPhaseKey === key}
+                          >
+                            Unassigned
+                          </DropdownMenuItem>
+                          {projectWorkers.map((worker) => (
+                            <DropdownMenuItem
+                              key={worker.id}
+                              onClick={() => void handleAssignPhaseWorker(key, worker.id)}
+                              disabled={assigningPhaseKey === key}
+                            >
+                              {worker.name}
+                              {assignedWorkerId === worker.id ? ' (current)' : ''}
+                            </DropdownMenuItem>
+                          ))}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => void handleTogglePhaseWorkerLock(key)}>
+                            {tabLockedForWorkers ? 'Open for workers' : 'Lock for workers'}
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     ) : null}
                   </div>
                 );

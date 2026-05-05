@@ -18,25 +18,8 @@ type ProjectWorker = {
   updated_at?: string | null;
 };
 
-type ProjectRoom = {
-  id: number;
-  room_number: string;
-};
-
-type AssignedTask = {
-  id: number;
-  worker_id: number;
-  worker_name?: string | null;
-  room_id: number;
-  room_number?: string | null;
-  type: string;
-  status: string;
-};
-
 export default function ProjectWorkersPanel({ projectId }: { projectId: number }) {
   const [workers, setWorkers] = useState<ProjectWorker[]>([]);
-  const [rooms, setRooms] = useState<ProjectRoom[]>([]);
-  const [assignedTasks, setAssignedTasks] = useState<AssignedTask[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -47,11 +30,6 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
   const [editPin, setEditPin] = useState('');
   const [deleting, setDeleting] = useState<ProjectWorker | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
-  const [taskWorkerId, setTaskWorkerId] = useState('');
-  const [taskRoomId, setTaskRoomId] = useState('');
-  const [taskType, setTaskType] = useState<'varmekabel' | 'remontering'>('varmekabel');
-  const [assigningTask, setAssigningTask] = useState(false);
-
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -62,29 +40,10 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
       });
       const data = res?.data;
       setWorkers(Array.isArray(data) ? (data as ProjectWorker[]) : []);
-
-      const [roomsRes, tasksRes] = await Promise.all([
-        client.entities.rooms.query({
-          query: { project_id: projectId },
-          sort: 'room_number',
-          limit: 1000,
-        }),
-        client.apiCall.invoke({
-          url: `/api/v1/projects/${projectId}/worker-tasks`,
-          method: 'GET',
-          data: {},
-        }),
-      ]);
-      const roomItems = Array.isArray(roomsRes?.data?.items) ? (roomsRes.data.items as ProjectRoom[]) : [];
-      setRooms(roomItems);
-      const taskItems = Array.isArray(tasksRes?.data) ? (tasksRes.data as AssignedTask[]) : [];
-      setAssignedTasks(taskItems);
     } catch (err) {
       devLogApiFailure('ProjectWorkersPanel.load', err);
       toast.error(apiFailureMessage(err) ?? 'Failed to load site workers');
       setWorkers([]);
-      setRooms([]);
-      setAssignedTasks([]);
     } finally {
       setLoading(false);
     }
@@ -180,37 +139,6 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
       toast.error(apiFailureMessage(err) ?? 'Could not delete worker');
     } finally {
       setDeletingBusy(false);
-    }
-  };
-
-  const assignTask = async () => {
-    const workerId = Number(taskWorkerId);
-    const roomId = Number(taskRoomId);
-    if (!Number.isFinite(workerId) || !Number.isFinite(roomId)) {
-      toast.error('Select worker and room');
-      return;
-    }
-    setAssigningTask(true);
-    try {
-      await client.apiCall.invoke({
-        url: `/api/v1/projects/${projectId}/worker-tasks`,
-        method: 'POST',
-        data: {
-          worker_id: workerId,
-          room_id: roomId,
-          type: taskType,
-          status: 'pending',
-        },
-      });
-      toast.success('Task assigned');
-      setTaskWorkerId('');
-      setTaskRoomId('');
-      void load();
-    } catch (err) {
-      devLogApiFailure('ProjectWorkersPanel.assignTask', err);
-      toast.error(apiFailureMessage(err) ?? 'Could not assign task');
-    } finally {
-      setAssigningTask(false);
     }
   };
 
@@ -310,65 +238,6 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
           ))}
         </ul>
       )}
-
-      <div className="mt-4 space-y-3 rounded-md border border-border p-3">
-        <div>
-          <h3 className="text-sm font-semibold text-slate-900 dark:text-foreground">Assign task</h3>
-          <p className="text-xs text-muted-foreground">Simple MVP assignment (worker + room + task type)</p>
-        </div>
-        <div className="grid gap-2 md:grid-cols-3">
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            value={taskWorkerId}
-            onChange={(e) => setTaskWorkerId(e.target.value)}
-          >
-            <option value="">Select worker</option>
-            {workers
-              .filter((w) => w.active)
-              .map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-          </select>
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            value={taskRoomId}
-            onChange={(e) => setTaskRoomId(e.target.value)}
-          >
-            <option value="">Select room</option>
-            {rooms.map((r) => (
-              <option key={r.id} value={r.id}>
-                Room {r.room_number}
-              </option>
-            ))}
-          </select>
-          <select
-            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-            value={taskType}
-            onChange={(e) => setTaskType(e.target.value as 'varmekabel' | 'remontering')}
-          >
-            <option value="varmekabel">varmekabel</option>
-            <option value="remontering">remontering</option>
-          </select>
-        </div>
-        <Button type="button" className="h-10" onClick={() => void assignTask()} disabled={assigningTask}>
-          {assigningTask ? 'Assigning…' : 'Assign task'}
-        </Button>
-
-        {assignedTasks.length > 0 ? (
-          <ul className="divide-y divide-border rounded-md border border-border">
-            {assignedTasks.slice(0, 8).map((t) => (
-              <li key={t.id} className="px-3 py-2 text-xs text-muted-foreground">
-                <span className="font-medium text-slate-900 dark:text-foreground">{t.worker_name ?? `#${t.worker_id}`}</span>
-                {` -> Room ${t.room_number ?? t.room_id} (${t.type})`}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-xs text-muted-foreground">No assigned tasks yet.</p>
-        )}
-      </div>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="mx-4 max-w-sm">

@@ -208,6 +208,7 @@ class RoomsData(BaseModel):
     checklist_labels: Optional[Dict[str, str]] = None
     heating_cable_doc: Optional[Dict[str, Any]] = None
     phase_tool_overrides: Optional[Dict[str, Any]] = None
+    phase_assigned_worker_ids: Optional[Dict[str, int]] = None
     phase_statuses: Optional[Dict[str, str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -231,6 +232,7 @@ class RoomsUpdateData(BaseModel):
     checklist_labels: Optional[Dict[str, str]] = None
     heating_cable_doc: Optional[Dict[str, Any]] = None
     phase_tool_overrides: Optional[Dict[str, Any]] = None
+    phase_assigned_worker_ids: Optional[Dict[str, int]] = None
     phase_statuses: Optional[Dict[str, str]] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -256,6 +258,7 @@ class RoomsResponse(BaseModel):
     checklist_labels: Optional[Dict[str, Any]] = None
     heating_cable_doc: Optional[Dict[str, Any]] = None
     phase_tool_overrides: Optional[Dict[str, Any]] = None
+    phase_assigned_worker_ids: Optional[Dict[str, int]] = None
     phase_statuses: Optional[Dict[str, Any]] = None
     activity_log: Optional[List[Dict[str, Any]]] = None
     created_at: Optional[datetime] = None
@@ -802,6 +805,7 @@ async def update_rooms(
             update_dict.pop("deadline_at", None)
             update_dict.pop("checklist_labels", None)
             update_dict.pop("phase_tool_overrides", None)
+            update_dict.pop("phase_assigned_worker_ids", None)
             if getattr(existing, "is_locked", False):
                 raise HTTPException(status_code=403, detail=ROOM_LOCKED_DETAIL)
             await ensure_worker_may_update_room_gated_content(

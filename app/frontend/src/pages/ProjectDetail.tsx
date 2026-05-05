@@ -18,7 +18,6 @@ import {
 } from '@/lib/roomPhases';
 import { taskCountsForFloorBoard } from '@/lib/roomAreas';
 import { useI18n } from '@/lib/i18n';
-import ProjectWorkersPanel from '@/components/ProjectWorkersPanel';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { apiFailureMessage, devLogApiFailure, httpStatusFromError } from '@/lib/apiErrors';
 import { shepherdDebug } from '@/lib/shepherdDebug';
@@ -441,8 +440,6 @@ export default function ProjectDetail() {
             </>
           )}
         </div>
-
-        {isAdmin ? <ProjectWorkersPanel projectId={project.id} /> : null}
 
         {/* Floors */}
         <div className="flex items-center justify-between">

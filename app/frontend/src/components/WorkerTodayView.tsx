@@ -34,13 +34,13 @@ export type WorkerTodayViewProps = {
 };
 
 type MyWorkerTask = {
-  id: number;
   room_id: number;
   room_number?: string | null;
   floor_id?: number | null;
   project_id?: number | null;
-  type: string;
-  status: string;
+  phase_key: string;
+  phase_label: string;
+  assigned_worker_id: number;
 };
 
 function isLocalDateToday(iso: string | null | undefined): boolean {
@@ -211,13 +211,13 @@ export default function WorkerTodayView({
     const loadMyTasks = async () => {
       try {
         const res = await client.apiCall.invoke({
-          url: '/api/v1/worker-tasks/my',
+          url: '/api/v1/worker-phases/my',
           method: 'GET',
           data: {},
         });
         if (cancelled) return;
         const items = Array.isArray(res?.data) ? (res.data as MyWorkerTask[]) : [];
-        setMyTasks(items.filter((t) => t.status !== 'done'));
+        setMyTasks(items);
       } catch {
         if (!cancelled) setMyTasks([]);
       }
@@ -587,21 +587,25 @@ export default function WorkerTodayView({
               </div>
             </section>
 
-            <section className="space-y-2" aria-labelledby="my-tasks-heading">
-              <h2 id="my-tasks-heading" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                My Tasks
+            <section className="space-y-2" aria-labelledby="my-assigned-phases-heading">
+              <h2 id="my-assigned-phases-heading" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                My assigned phases
               </h2>
               {myTasks.length === 0 ? (
-                <Card className="p-3 text-sm text-muted-foreground">No assigned tasks</Card>
+                <Card className="p-3 text-sm text-muted-foreground">No assigned phases</Card>
               ) : (
                 <ul className="space-y-2">
                   {myTasks.map((task) => (
-                    <li key={task.id}>
+                    <li key={`${task.room_id}-${task.phase_key}`}>
                       <Card
                         className="shepherd-interactive-card cursor-pointer p-3.5 transition hover:bg-slate-50/90 dark:hover:bg-slate-900/40"
                         onClick={() => {
                           if (!task.project_id || !task.floor_id) return;
-                          navigate(workerRoomPath(task.project_id, task.floor_id, task.room_id, { focusChecklist: true }));
+                          navigate(
+                            workerRoomPath(task.project_id, task.floor_id, task.room_id, {
+                              phaseKey: task.phase_key,
+                            })
+                          );
                         }}
                       >
                         <div className="flex items-start justify-between gap-3">
@@ -609,7 +613,7 @@ export default function WorkerTodayView({
                             <p className="text-base font-semibold text-slate-900 dark:text-foreground">
                               Room {task.room_number ?? task.room_id}
                             </p>
-                            <p className="text-sm text-muted-foreground">Task: {task.type}</p>
+                            <p className="text-sm text-muted-foreground">Phase: {task.phase_label || phaseLabel(task.phase_key)}</p>
                           </div>
                           <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                         </div>

@@ -34,14 +34,16 @@ export const WORKER_ROOM_CHECKLIST_ANCHOR = 'worker-checklist-heading';
 
 /** Scroll target for documentation / photos (checklist & uploads section). */
 export const WORKER_ROOM_DOCUMENTATION_ANCHOR = 'worker-documentation';
+export const WORKER_ROOM_PHASE_HASH_PREFIX = 'phase-';
 
 export function workerRoomPath(
   projectId: number,
   floorId: number,
   roomId: number,
-  options?: { focusChecklist?: boolean; focusDocumentation?: boolean }
+  options?: { focusChecklist?: boolean; focusDocumentation?: boolean; phaseKey?: string }
 ): string {
   const base = `/project/${projectId}/floor/${floorId}/room/${roomId}`;
+  if (options?.phaseKey) return `${base}#${WORKER_ROOM_PHASE_HASH_PREFIX}${encodeURIComponent(options.phaseKey)}`;
   if (options?.focusDocumentation) return `${base}#${WORKER_ROOM_DOCUMENTATION_ANCHOR}`;
   if (options?.focusChecklist) return `${base}#${WORKER_ROOM_CHECKLIST_ANCHOR}`;
   return base;
