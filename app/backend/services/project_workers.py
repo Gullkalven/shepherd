@@ -133,6 +133,33 @@ async def worker_row_by_id(db: AsyncSession, worker_id: int) -> Optional[Project
     return r.scalar_one_or_none()
 
 
+async def delete_worker(
+    db: AsyncSession,
+    *,
+    project_id: int,
+    worker_id: int,
+) -> bool:
+    """Delete a worker record without touching historical room logs.
+
+    Historical logs keep plain `worker_name` strings, so deleting the worker
+    account does not break old activity rows.
+    """
+    if not await _project_exists(db, project_id):
+        return False
+    r = await db.execute(
+        select(Project_workers).where(
+            Project_workers.id == worker_id,
+            Project_workers.project_id == project_id,
+        )
+    )
+    row = r.scalar_one_or_none()
+    if not row:
+        return False
+    await db.delete(row)
+    await db.commit()
+    return True
+
+
 async def _project_exists(db: AsyncSession, project_id: int) -> bool:
     pr = await db.execute(select(Projects).where(Projects.id == project_id))
     return pr.scalar_one_or_none() is not None

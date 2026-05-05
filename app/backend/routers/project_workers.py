@@ -5,7 +5,7 @@ from typing import List, Optional
 
 from core.database import get_db
 from dependencies.auth import get_current_user
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from routers.admin_roles import require_admin
 from schemas.auth import UserResponse
@@ -95,3 +95,16 @@ async def patch_worker_route(
     if not row:
         raise HTTPException(status_code=404, detail="Worker not found")
     return ProjectWorkerResponse(**pw_svc.public_worker_dict(row))
+
+
+@router.delete("/{worker_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_worker_route(
+    project_id: int,
+    worker_id: int,
+    admin: UserResponse = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    deleted = await pw_svc.delete_worker(db, project_id=project_id, worker_id=worker_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

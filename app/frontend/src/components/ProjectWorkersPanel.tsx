@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
-import { Plus, Pencil, UserX, UserCheck } from 'lucide-react';
+import { Plus, Pencil, UserX, UserCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFailureMessage, devLogApiFailure } from '@/lib/apiErrors';
 
@@ -28,6 +28,8 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
   const [editing, setEditing] = useState<ProjectWorker | null>(null);
   const [editName, setEditName] = useState('');
   const [editPin, setEditPin] = useState('');
+  const [deleting, setDeleting] = useState<ProjectWorker | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -121,6 +123,26 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
     }
   };
 
+  const deleteWorker = async () => {
+    if (!deleting) return;
+    setDeletingBusy(true);
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/projects/${projectId}/workers/${deleting.id}`,
+        method: 'DELETE',
+        data: {},
+      });
+      setWorkers((prev) => prev.filter((w) => w.id !== deleting.id));
+      toast.success('Worker deleted');
+      setDeleting(null);
+    } catch (err) {
+      devLogApiFailure('ProjectWorkersPanel.deleteWorker', err);
+      toast.error(apiFailureMessage(err) ?? 'Could not delete worker');
+    } finally {
+      setDeletingBusy(false);
+    }
+  };
+
   return (
     <Card className="p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -202,6 +224,16 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
                     <UserCheck className="h-4 w-4" />
                   </Button>
                 )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                  onClick={() => setDeleting(w)}
+                  aria-label="Delete worker"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
             </li>
           ))}
@@ -278,6 +310,35 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
             <DialogFooter>
               <Button type="submit" className="w-full">
                 Save
+              </Button>
+            </DialogFooter>
+          </DialogForm>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleting} onOpenChange={(o) => !o && !deletingBusy && setDeleting(null)}>
+        <DialogContent className="mx-4 max-w-sm">
+          <DialogForm
+            onSubmit={(e) => {
+              e.preventDefault();
+              void deleteWorker();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Are you sure you want to delete this worker?</DialogTitle>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={deletingBusy}
+                onClick={() => setDeleting(null)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="w-full" variant="destructive" disabled={deletingBusy}>
+                {deletingBusy ? 'Deleting…' : 'Delete worker'}
               </Button>
             </DialogFooter>
           </DialogForm>
