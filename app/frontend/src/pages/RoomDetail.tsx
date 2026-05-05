@@ -88,6 +88,7 @@ const STATUS_OPTIONS = [
 
 const HEATING_AUTOSAVE_DEBOUNCE_MS = 900;
 const HEATING_SAVE_UI_IDLE_MS = 2600;
+const HEATING_STEP_CONFIRM_TEXT = 'I confirm this step is completed';
 
 function heatingTraceEnabled(): boolean {
   try {
@@ -1623,6 +1624,13 @@ export default function RoomDetail() {
     field: 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
     value: string
   ) => {
+    const idx = HEATING_CABLE_STAGES.findIndex((s) => s.key === stageKey);
+    const prevLocked =
+      idx <= 0
+        ? true
+        : heatingCableDocRef.current[HEATING_CABLE_STAGES[idx - 1].key]?.step_status === 'locked';
+    const curLocked = heatingCableDocRef.current[stageKey]?.step_status === 'locked';
+    if (!prevLocked || curLocked) return;
     const defaultPerformer = resolveWorkerActorLabel(displayName);
     setHeatingCableDoc((prev) => {
       const row: HeatingCableStage = {
@@ -1676,6 +1684,10 @@ export default function RoomDetail() {
     field: 'label' | 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
     value: string
   ) => {
+    if (stepIndex >= 0) {
+      const prevLocked = heatingCableDocRef.current.after_screed_final?.step_status === 'locked';
+      if (!prevLocked) return;
+    }
     const defaultPerformer = resolveWorkerActorLabel(displayName);
     setHeatingCableDoc((prev) => {
       const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
@@ -1763,6 +1775,21 @@ export default function RoomDetail() {
 
   const handleHeatingStagePhotoInput = async (stageId: string, file?: File) => {
     if (!file || !room) return;
+    if (
+      stageId !== 'before_installation' &&
+      stageId !== 'after_cable_laid' &&
+      stageId !== 'after_screed_final'
+    ) {
+      if (heatingCableDocRef.current.after_screed_final?.step_status !== 'locked') return;
+    } else {
+      const idx = HEATING_CABLE_STAGES.findIndex((s) => s.key === stageId);
+      const prevLocked =
+        idx <= 0
+          ? true
+          : heatingCableDocRef.current[HEATING_CABLE_STAGES[idx - 1].key]?.step_status === 'locked';
+      const curLocked = heatingCableDocRef.current[stageId]?.step_status === 'locked';
+      if (!prevLocked || curLocked) return;
+    }
     setHeatingCableBlocking(true);
     try {
       await uploadHeatingModulePhoto(stageId, file);
@@ -1781,6 +1808,55 @@ export default function RoomDetail() {
       if (legacy) legacy.value = '';
     }
   };
+
+  const completeHeatingStage = useCallback(
+    async (stageKey: HeatingCableStageKey, confirmationText: string) => {
+      if (!room || confirmationText.trim() !== HEATING_STEP_CONFIRM_TEXT) {
+        toast.error('Type the exact confirmation text before completing this step.');
+        return;
+      }
+      const idx = HEATING_CABLE_STAGES.findIndex((s) => s.key === stageKey);
+      const prevLocked =
+        idx <= 0
+          ? true
+          : heatingCableDocRef.current[HEATING_CABLE_STAGES[idx - 1].key]?.step_status === 'locked';
+      if (!prevLocked) {
+        toast.error('Complete the previous step first.');
+        return;
+      }
+      const current = heatingCableDocRef.current[stageKey] || {};
+      if (current.step_status === 'locked') {
+        toast.error('This step is already locked.');
+        return;
+      }
+      if (!current.resistance_ohm?.trim() || !current.insulation_mohm?.trim() || !current.date?.trim() || !current.performed_by?.trim()) {
+        toast.error('Fill all required fields before completing this step.');
+        return;
+      }
+      const ws = readWorkerSession();
+      const workerId = ws?.workerId ? String(ws.workerId) : '';
+      if (!workerId) {
+        toast.error('Missing worker session id. Sign in again.');
+        return;
+      }
+      const completedByName = resolveWorkerActorLabel(displayName);
+      const nextDoc: HeatingCableDoc = {
+        ...heatingCableDocRef.current,
+        [stageKey]: {
+          ...current,
+          step_status: 'locked',
+          completed_by: workerId,
+          completed_by_name: completedByName || current.performed_by || '',
+          completed_at: new Date().toISOString(),
+          confirmation_text: HEATING_STEP_CONFIRM_TEXT,
+        },
+      };
+      setHeatingCableDoc(nextDoc);
+      const ok = await persistHeatingCableDoc({ overrideDoc: nextDoc, manual: true });
+      if (ok) toast.success('Step completed and locked');
+    },
+    [room, displayName, persistHeatingCableDoc]
+  );
 
   const toggleHeatingCableLock = async () => {
     if (!room || !canEdit) return;
@@ -2036,6 +2112,9 @@ export default function RoomDetail() {
               onExtraHeatingFieldChange={updateExtraHeatingStepField}
               onHeatingStagePhotoChange={(stageId, file) => void handleHeatingStagePhotoInput(stageId, file)}
               onSaveHeatingCable={() => void saveHeatingCableDoc()}
+              onCompleteHeatingStage={(stageKey, confirmationText) =>
+                void completeHeatingStage(stageKey, confirmationText)
+              }
               onPhotoPreview={(url) => setShowPhotoPreview(url)}
               showPhotosSection={sectionVisibility.photos}
               canUploadPhoto={canUploadPhoto}

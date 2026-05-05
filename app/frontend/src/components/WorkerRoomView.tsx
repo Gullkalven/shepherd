@@ -38,6 +38,7 @@ import {
   heatingDocumentationProgress,
   heatingExtraStepRowVisible,
   heatingStageHasAnyData,
+  heatingStageIsLocked,
   isHeatingCablePhase,
   isHeatingCableStageComplete,
   type HeatingCableDoc,
@@ -142,6 +143,7 @@ type Props = {
   ) => void;
   onHeatingStagePhotoChange: (stageId: string, file?: File) => void;
   onSaveHeatingCable: () => void;
+  onCompleteHeatingStage: (stageKey: HeatingCableStageKey, confirmationText: string) => void;
   onPhotoPreview: (url: string) => void;
 
   /** Session display name — seeds empty "Performed by" / date on the active stage only. */
@@ -397,6 +399,7 @@ function heatingStageCollapseSummary(stage: HeatingCableStage): string {
 }
 
 export function WorkerRoomView(p: Props) {
+  const HEATING_STEP_CONFIRM_TEXT = 'I confirm this step is completed';
   const selectedLabel = phaseLabel(p.selectedPhaseKey, p.phaseWorkflow);
   const inProgressKeys =
     p.inProgressPhaseKeys && p.inProgressPhaseKeys.length > 0
@@ -449,6 +452,7 @@ export function WorkerRoomView(p: Props) {
   }, [focusTarget]);
 
   const [heatingOpenOverrides, setHeatingOpenOverrides] = useState<Record<string, boolean>>({});
+  const [heatingConfirmTextByStage, setHeatingConfirmTextByStage] = useState<Record<string, string>>({});
   useEffect(() => {
     if (focusStageId !== 'all-complete') {
       setHeatingOpenOverrides((prev) => ({ ...prev, [focusStageId]: true }));
@@ -1182,12 +1186,30 @@ export function WorkerRoomView(p: Props) {
           <div className="p-4 space-y-3">
             {HEATING_CABLE_STAGES.map((stage) => {
               const row = p.heatingCableDoc[stage.key] || {};
+              const stageIndex = HEATING_CABLE_STAGES.findIndex((x) => x.key === stage.key);
+              const previousLocked =
+                stageIndex <= 0
+                  ? true
+                  : heatingStageIsLocked(p.heatingCableDoc[HEATING_CABLE_STAGES[stageIndex - 1].key]);
+              const canAccessStage = stageIndex === 0 || previousLocked;
+              const isLocked = heatingStageIsLocked(row);
+              const stageReadOnly = !p.canEditHeatingCable || p.heatingCableBlocking || isLocked || !canAccessStage;
               const sid = stage.key;
               const complete = isHeatingCableStageComplete(row);
               const isFocus = focusStageId === sid;
               const open = heatingStageOpen(sid);
               const started = heatingStageHasAnyData(row);
-              const badgeLabel = complete ? 'Complete' : isFocus ? 'Open' : started ? 'In progress' : 'Not started';
+              const badgeLabel = isLocked
+                ? 'Locked'
+                : !canAccessStage
+                  ? 'Locked'
+                  : complete
+                    ? 'Complete'
+                    : isFocus
+                      ? 'Open'
+                      : started
+                        ? 'In progress'
+                        : 'Not started';
 
               return (
                 <Collapsible
@@ -1229,7 +1251,7 @@ export function WorkerRoomView(p: Props) {
                             variant="secondary"
                             className={cn(
                               'text-[10px] shrink-0 font-medium sm:text-[11px]',
-                              complete &&
+                              (complete || isLocked) &&
                                 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200',
                               !complete &&
                                 isFocus &&
@@ -1262,7 +1284,7 @@ export function WorkerRoomView(p: Props) {
                             placeholder="Resistance (Ω)"
                             value={row.resistance_ohm || ''}
                             className="h-11 text-base sm:text-sm"
-                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
+                            disabled={stageReadOnly}
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
                           />
                           <Input
@@ -1272,7 +1294,7 @@ export function WorkerRoomView(p: Props) {
                             placeholder="Insulation (MΩ)"
                             value={row.insulation_mohm || ''}
                             className="h-11 text-base sm:text-sm"
-                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
+                            disabled={stageReadOnly}
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'insulation_mohm', e.target.value)}
                           />
                         </div>
@@ -1284,7 +1306,7 @@ export function WorkerRoomView(p: Props) {
                         <HeatingPerformedCompactRow
                           fieldId={`heat-${sid}`}
                           storedDate={row.date}
-                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
+                          disabled={stageReadOnly}
                           onCommit={(v) => p.onHeatingFieldChange(stage.key, 'date', v)}
                         />
                         <div className="space-y-1.5 pt-0.5">
@@ -1296,7 +1318,7 @@ export function WorkerRoomView(p: Props) {
                             placeholder="Name"
                             value={row.performed_by || ''}
                             className="h-11 text-base sm:text-sm"
-                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
+                            disabled={stageReadOnly}
                             onChange={(e) => p.onHeatingFieldChange(stage.key, 'performed_by', e.target.value)}
                           />
                         </div>
@@ -1307,7 +1329,7 @@ export function WorkerRoomView(p: Props) {
                           placeholder="Note (optional)"
                           value={row.note || ''}
                           className="text-base sm:text-sm min-h-[56px]"
-                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
+                          disabled={stageReadOnly}
                           onChange={(e) => p.onHeatingFieldChange(stage.key, 'note', e.target.value)}
                         />
                       </div>
@@ -1325,10 +1347,50 @@ export function WorkerRoomView(p: Props) {
                             const map = heatingPhotoRefKeys(sid);
                             p.heatingPhotoInputRefs.current[map[suffix]] = el;
                           }}
-                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
+                          disabled={stageReadOnly}
                           onFile={(file) => p.onHeatingStagePhotoChange(stage.key, file)}
                         />
                       </div>
+                      {isLocked ? (
+                        <div className="rounded-md border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-100">
+                          Completed by {row.completed_by_name?.trim() || row.completed_by?.trim() || 'Unknown'} on{' '}
+                          {row.completed_at?.trim() ? formatVisitDateShort(row.completed_at) : 'unknown time'}.
+                        </div>
+                      ) : !canAccessStage ? (
+                        <div className="rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-100">
+                          Complete and lock the previous step before editing this step.
+                        </div>
+                      ) : null}
+                      {!isLocked && canAccessStage ? (
+                        <div className="space-y-2 rounded-md border border-border/60 bg-background/70 px-3 py-2.5">
+                          <p className="text-xs text-muted-foreground">
+                            Type <span className="font-medium text-foreground">{HEATING_STEP_CONFIRM_TEXT}</span> to
+                            complete and lock this step permanently.
+                          </p>
+                          <Input
+                            value={heatingConfirmTextByStage[sid] || ''}
+                            onChange={(e) =>
+                              setHeatingConfirmTextByStage((prev) => ({ ...prev, [sid]: e.target.value }))
+                            }
+                            placeholder={HEATING_STEP_CONFIRM_TEXT}
+                            className="h-10 text-sm"
+                            disabled={stageReadOnly || !complete}
+                          />
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="h-10 w-full"
+                            disabled={
+                              stageReadOnly ||
+                              !complete ||
+                              (heatingConfirmTextByStage[sid] || '').trim() !== HEATING_STEP_CONFIRM_TEXT
+                            }
+                            onClick={() => p.onCompleteHeatingStage(stage.key, (heatingConfirmTextByStage[sid] || '').trim())}
+                          >
+                            Complete and lock step
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
                   </CollapsibleContent>
                 </Collapsible>

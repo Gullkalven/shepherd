@@ -12,6 +12,11 @@ export type HeatingCableRoomStatus =
 export interface HeatingCableStage {
   id?: string;
   label?: string;
+  step_status?: 'locked' | 'unlocked';
+  completed_by?: string;
+  completed_by_name?: string;
+  completed_at?: string;
+  confirmation_text?: string;
   resistance_ohm?: string;
   insulation_mohm?: string;
   date?: string;
@@ -73,6 +78,11 @@ function normalizeStage(raw: unknown): HeatingCableStage {
   return {
     id: typeof row.id === 'string' ? row.id : '',
     label: typeof row.label === 'string' ? row.label : '',
+    step_status: row.step_status === 'locked' ? 'locked' : 'unlocked',
+    completed_by: typeof row.completed_by === 'string' ? row.completed_by : '',
+    completed_by_name: typeof row.completed_by_name === 'string' ? row.completed_by_name : '',
+    completed_at: typeof row.completed_at === 'string' ? row.completed_at : '',
+    confirmation_text: typeof row.confirmation_text === 'string' ? row.confirmation_text : '',
     resistance_ohm: typeof row.resistance_ohm === 'string' ? row.resistance_ohm : '',
     insulation_mohm: typeof row.insulation_mohm === 'string' ? row.insulation_mohm : '',
     date: typeof dateRaw === 'string' ? dateRaw : '',
@@ -107,6 +117,10 @@ export function heatingStageHasAnyData(stage: HeatingCableStage | undefined): bo
     isFilled(stage.note) ||
     hasPhotos
   );
+}
+
+export function heatingStageIsLocked(stage: HeatingCableStage | undefined): boolean {
+  return stage?.step_status === 'locked';
 }
 
 function stageStarted(stage: HeatingCableStage | undefined): boolean {

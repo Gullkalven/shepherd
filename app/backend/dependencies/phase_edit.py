@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException
@@ -19,6 +20,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_PHASE_KEYS: List[str] = ["demontering", "varmekabel", "remontering", "sluttkontroll"]
 
 VALID_PHASE_STEP_STATUSES = frozenset({"not_started", "in_progress", "complete", "blocked"})
+HEATING_STEP_CONFIRM_TEXT = "I confirm this step is completed"
+HEATING_STEP_KEYS: List[str] = ["before_installation", "after_cable_laid", "after_screed_final"]
 
 PHASE_WORKER_LOCKED_DETAIL = (
     "This phase is locked for workers. Only an admin can change data for this stage."
@@ -288,6 +291,11 @@ async def ensure_worker_may_update_room_gated_content(
         await ensure_room_phase_editable_for_worker(
             db, existing_room.id, user_id, app_role, hk, area_id=None
         )
+        ensure_worker_heating_doc_update_allowed(
+            getattr(existing_room, "heating_cable_doc", None),
+            update_dict.get("heating_cable_doc"),
+            user_id,
+        )
     if "workflow_deviations" in update_dict:
         await ensure_worker_deviations_update_allowed(
             db,
@@ -297,3 +305,95 @@ async def ensure_worker_may_update_room_gated_content(
             keys,
             update_dict["workflow_deviations"],
         )
+
+
+def _heating_stage_has_required_values(stage_raw: Any) -> bool:
+    if not isinstance(stage_raw, dict):
+        return False
+    required = ("resistance_ohm", "insulation_mohm", "date", "performed_by")
+    for k in required:
+        v = stage_raw.get(k)
+        if not isinstance(v, str) or not v.strip():
+            return False
+    return True
+
+
+def _heating_stage_content_fingerprint(stage_raw: Any) -> Dict[str, Any]:
+    if not isinstance(stage_raw, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for k, v in stage_raw.items():
+        if k in {"step_status", "completed_by", "completed_by_name", "completed_at", "confirmation_text"}:
+            continue
+        out[k] = v
+    return out
+
+
+def ensure_worker_heating_doc_update_allowed(old_raw: Any, new_raw: Any, user_id: str) -> None:
+    if new_raw is None:
+        return
+    if not isinstance(new_raw, dict):
+        raise HTTPException(status_code=400, detail="Invalid heating_cable_doc payload")
+    old_doc = old_raw if isinstance(old_raw, dict) else {}
+    new_doc = new_raw
+
+    for i, step_key in enumerate(HEATING_STEP_KEYS):
+        old_stage = old_doc.get(step_key) if isinstance(old_doc.get(step_key), dict) else {}
+        new_stage = new_doc.get(step_key) if isinstance(new_doc.get(step_key), dict) else {}
+        old_locked = old_stage.get("step_status") == "locked"
+        new_locked = new_stage.get("step_status") == "locked"
+
+        if old_locked and not new_locked:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Heating step '{step_key}' is permanently locked and cannot be reopened.",
+            )
+
+        if old_locked:
+            if _heating_stage_content_fingerprint(old_stage) != _heating_stage_content_fingerprint(new_stage):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Heating step '{step_key}' is locked and cannot be edited.",
+                )
+            if (new_stage.get("completed_by") or "") != (old_stage.get("completed_by") or ""):
+                raise HTTPException(status_code=400, detail=f"Heating step '{step_key}' completion metadata is immutable.")
+            if (new_stage.get("completed_at") or "") != (old_stage.get("completed_at") or ""):
+                raise HTTPException(status_code=400, detail=f"Heating step '{step_key}' completion metadata is immutable.")
+
+        if i > 0:
+            prev_key = HEATING_STEP_KEYS[i - 1]
+            prev_stage = new_doc.get(prev_key) if isinstance(new_doc.get(prev_key), dict) else {}
+            prev_locked = prev_stage.get("step_status") == "locked"
+            current_has_data = bool(_heating_stage_content_fingerprint(new_stage))
+            if not prev_locked and (new_locked or current_has_data):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Heating step '{step_key}' is locked until '{prev_key}' is completed.",
+                )
+
+        if new_locked and not old_locked:
+            confirm = str(new_stage.get("confirmation_text") or "").strip()
+            if confirm != HEATING_STEP_CONFIRM_TEXT:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Heating step '{step_key}' requires exact confirmation text before locking.",
+                )
+            if not _heating_stage_has_required_values(new_stage):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Heating step '{step_key}' must be fully documented before completion.",
+                )
+            completed_by = str(new_stage.get("completed_by") or "").strip()
+            if completed_by != str(user_id).strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Heating step '{step_key}' must store the current worker id as completed_by.",
+                )
+            completed_at = str(new_stage.get("completed_at") or "").strip()
+            try:
+                datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+            except Exception:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Heating step '{step_key}' must include a valid completed_at timestamp.",
+                )
