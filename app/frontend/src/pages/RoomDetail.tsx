@@ -64,6 +64,7 @@ import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationN
 import {
   HEATING_CABLE_STAGES,
   HEATING_CABLE_DERIVED_STATUS_LABEL,
+  heatingCableDateForDateInput,
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
   formatHeatingCablePerformedShort,
@@ -87,6 +88,19 @@ const STATUS_OPTIONS = [
 
 const HEATING_AUTOSAVE_DEBOUNCE_MS = 900;
 const HEATING_SAVE_UI_IDLE_MS = 2600;
+
+function heatingTraceEnabled(): boolean {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('SHEPHERD_HEATING_TRACE') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function heatingTrace(...args: unknown[]) {
+  if (!heatingTraceEnabled()) return;
+  console.debug('[HeatingTrace]', ...args);
+}
 
 function buildHeatingCablePayload(
   doc: HeatingCableDoc,
@@ -751,6 +765,11 @@ export default function RoomDetail() {
       return;
     }
     const n = normalizeHeatingCableDoc(room.heating_cable_doc);
+    heatingTrace('room load -> normalized heating_cable_doc', {
+      roomId: room.id,
+      raw: room.heating_cable_doc,
+      normalized: n,
+    });
     setHeatingCableDoc(n);
     setHeatingCableSyncedFp(heatingCablePersistFingerprint(n, displayName));
   }, [room?.id, room?.heating_cable_doc, displayName]);
@@ -1546,6 +1565,10 @@ export default function RoomDetail() {
           const source = useOverride ?? heatingCableDocRef.current;
           useOverride = undefined;
           const payload = buildHeatingCablePayload(source, displayName);
+          heatingTrace('worker save payload', {
+            roomId: room.id,
+            payload,
+          });
           await client.entities.rooms.update({
             id: String(room.id),
             data: { heating_cable_doc: payload } as Record<string, unknown>,
@@ -1615,6 +1638,13 @@ export default function RoomDetail() {
       ) {
         row.performed_by = defaultPerformer;
       }
+      heatingTrace('worker local stage change', {
+        roomId: room?.id,
+        stageKey,
+        field,
+        value,
+        nextStage: row,
+      });
       return {
         ...prev,
         [stageKey]: row,
@@ -2869,7 +2899,7 @@ export default function RoomDetail() {
                               />
                               <Input
                                 type="date"
-                                value={row.date || ''}
+                                value={heatingCableDateForDateInput(row.date)}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateHeatingStageField(stage.key, 'date', e.target.value)}
                                 className="h-9 sm:h-8 text-base sm:text-xs"
@@ -2988,7 +3018,7 @@ export default function RoomDetail() {
                               />
                               <Input
                                 type="date"
-                                value={step.date || ''}
+                                value={heatingCableDateForDateInput(step.date)}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'date', e.target.value)}
                                 className="h-9 sm:h-8 text-base sm:text-xs"

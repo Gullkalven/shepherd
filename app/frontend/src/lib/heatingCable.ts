@@ -146,6 +146,19 @@ export function heatingCableDateForDatetimeLocalInput(stored: string | undefined
   return s;
 }
 
+/** Normalize stored date string for HTML `date` value. */
+export function heatingCableDateForDateInput(stored: string | undefined): string {
+  if (!stored?.trim()) return '';
+  const s = stored.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return s.slice(0, 10);
+  const parsed = Date.parse(s.replace(' ', 'T'));
+  if (!Number.isNaN(parsed)) {
+    return new Date(parsed).toISOString().slice(0, 10);
+  }
+  return s;
+}
+
 /** Compact display for mobile “Performed” row, e.g. `2 May 23:06`. */
 export function formatHeatingCablePerformedShort(stored: string | undefined): string {
   if (!stored?.trim()) return '';

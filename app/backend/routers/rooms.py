@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 
@@ -48,10 +49,31 @@ from sqlalchemy import select
 
 # Set up logging
 logger = logging.getLogger(__name__)
+HEATING_TRACE_ENABLED = os.getenv("SHEPHERD_HEATING_TRACE", "").strip().lower() in {"1", "true", "yes", "on"}
 
 router = APIRouter(prefix="/api/v1/entities/rooms", tags=["rooms"])
 
 DEFAULT_CHECKLIST_SECTION = "Checklist"
+
+
+def _heating_trace_payload(doc: Any) -> Dict[str, Any]:
+    """Compact heating doc trace for debug logging."""
+    out: Dict[str, Any] = {"stages": {}}
+    if not isinstance(doc, dict):
+        out["type"] = type(doc).__name__
+        return out
+    for key in ("before_installation", "after_cable_laid", "after_screed_final"):
+        row = doc.get(key)
+        if isinstance(row, dict):
+            out["stages"][key] = {
+                "date": row.get("date"),
+                "markingDate": row.get("markingDate"),
+                "dateMarking": row.get("dateMarking"),
+                "registeredDate": row.get("registeredDate"),
+                "performed_by": row.get("performed_by"),
+            }
+    out["updated_at"] = doc.get("updated_at")
+    return out
 
 
 def sanitize_phase_tool_overrides(raw: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -427,6 +449,17 @@ async def get_rooms(
         if merged is not None:
             result = merged
 
+        if HEATING_TRACE_ENABLED:
+            try:
+                logger.info(
+                    "HeatingTrace get_rooms id=%s role=%s payload=%s",
+                    id,
+                    app_role,
+                    _heating_trace_payload(getattr(result, "heating_cable_doc", None)),
+                )
+            except Exception:
+                logger.debug("HeatingTrace get_rooms logging failed", exc_info=True)
+
         return result
     except HTTPException:
         raise
@@ -708,6 +741,16 @@ async def update_rooms(
             raise HTTPException(status_code=400, detail=str(e)) from e
         if app_role == ROLE_ADMIN:
             await _sync_phase_statuses_on_update(db, existing, update_dict)
+        if HEATING_TRACE_ENABLED and "heating_cable_doc" in update_dict:
+            try:
+                logger.info(
+                    "HeatingTrace update_rooms request id=%s role=%s payload=%s",
+                    id,
+                    app_role,
+                    _heating_trace_payload(update_dict.get("heating_cable_doc")),
+                )
+            except Exception:
+                logger.debug("HeatingTrace update request logging failed", exc_info=True)
         result = await service.update(
             id,
             update_dict,
@@ -733,6 +776,17 @@ async def update_rooms(
             user_id=str(current_user.id),
             worker_project_id=worker_project_scope(current_user),
         )
+        if HEATING_TRACE_ENABLED and "heating_cable_doc" in update_dict:
+            try:
+                trace_obj = refreshed if refreshed else result
+                logger.info(
+                    "HeatingTrace update_rooms persisted id=%s role=%s payload=%s",
+                    id,
+                    app_role,
+                    _heating_trace_payload(getattr(trace_obj, "heating_cable_doc", None)),
+                )
+            except Exception:
+                logger.debug("HeatingTrace update persisted logging failed", exc_info=True)
         return refreshed if refreshed else result
     except HTTPException:
         raise
