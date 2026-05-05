@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getAPIBaseURL } from '@/lib/config';
 import { clearWorkerLastRoom } from '@/lib/workerLastRoom';
@@ -31,6 +31,13 @@ export default function WorkerLoginPage() {
     }
     setBootReady(true);
   }, [navigate]);
+
+  useEffect(() => {
+    document.documentElement.classList.add('login-screen-lock');
+    return () => {
+      document.documentElement.classList.remove('login-screen-lock');
+    };
+  }, []);
 
   const submit = async () => {
     const pid = Number(projectId.trim());
@@ -85,8 +92,8 @@ export default function WorkerLoginPage() {
   const ttlHours = Math.round(WORKER_SESSION_TTL_MS / 3600000);
 
   return (
-    <div className="flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] dark:bg-background">
-      <Card className="w-full max-w-md border-border p-5 shadow-sm sm:p-6">
+    <div className="fixed inset-0 flex h-dvh min-h-dvh w-full flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] dark:bg-background">
+      <Card className="max-h-full w-full max-w-md overflow-hidden border-border p-5 shadow-sm sm:p-6">
         <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">
           Site worker sign-in
         </h1>

@@ -43,6 +43,13 @@ export default function AdminLoginPage() {
     }
   }, [bootReady, permLoading, isAdmin, sessionIsProvisionalAdmin, navigate]);
 
+  useEffect(() => {
+    document.documentElement.classList.add('login-screen-lock');
+    return () => {
+      document.documentElement.classList.remove('login-screen-lock');
+    };
+  }, []);
+
   const handleBack = () => {
     if (window.history.length > 1) {
       navigate(-1);
@@ -108,7 +115,7 @@ export default function AdminLoginPage() {
   const ttlHours = Math.round(ADMIN_SESSION_TTL_MS / 3600000);
 
   return (
-    <div className="relative flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] dark:bg-background">
+    <div className="fixed inset-0 flex h-dvh min-h-dvh w-full flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] dark:bg-background">
       <Button
         type="button"
         variant="ghost"
@@ -118,7 +125,7 @@ export default function AdminLoginPage() {
         <ChevronLeft className="h-4 w-4" aria-hidden />
         Back
       </Button>
-      <Card className="w-full max-w-md border-border p-5 shadow-sm sm:p-6">
+      <Card className="max-h-full w-full max-w-md overflow-hidden border-border p-5 shadow-sm sm:p-6">
         <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">
           Administrator sign-in
         </h1>

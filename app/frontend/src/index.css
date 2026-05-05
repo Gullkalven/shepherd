@@ -109,6 +109,27 @@
     @apply min-h-dvh min-w-0 max-w-full overflow-x-hidden;
     box-sizing: border-box;
   }
+
+  html.login-screen-lock,
+  html.login-screen-lock body,
+  html.login-screen-lock body #root {
+    height: 100dvh;
+    overflow: hidden;
+  }
+
+  html.login-screen-lock body {
+    position: fixed;
+    width: 100%;
+    inset: 0;
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: auto;
+  }
+
+  html.login-screen-lock body #root {
+    position: fixed;
+    width: 100%;
+    inset: 0;
+  }
 }
 
 @layer components {
