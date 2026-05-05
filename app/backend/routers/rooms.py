@@ -109,6 +109,12 @@ def _normalize_heating_stage_for_api(stage_raw: Any) -> Dict[str, Any]:
         if isinstance(fallback_name, str) and fallback_name.strip():
             out["completed_by_name"] = fallback_name.strip()
 
+    completed_by = out.get("completed_by")
+    if not isinstance(completed_by, str) or not completed_by.strip():
+        fallback_completed_by = out.get("completed_by_name") or out.get("performed_by")
+        if isinstance(fallback_completed_by, str) and fallback_completed_by.strip():
+            out["completed_by"] = fallback_completed_by.strip()
+
     return out
 
 

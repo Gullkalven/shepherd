@@ -537,6 +537,7 @@ export default function RoomDetail() {
       setProject(projRes?.data || null);
       setFloor(floorRes?.data || null);
       const roomData = roomRes?.data;
+      console.log('[HeatingCable][API room payload]', roomData?.heating_cable_doc);
       if (roomData) {
         setRoom({
           ...roomData,
@@ -3054,9 +3055,29 @@ export default function RoomDetail() {
                     <div className="p-2 space-y-3">
                       {HEATING_CABLE_STAGES.map((stage) => {
                         const row = heatingCableDoc[stage.key] || {};
+                        const completedBy =
+                          row.completed_by_name?.trim() || row.completed_by?.trim() || row.performed_by?.trim() || '';
+                        const completedAt = row.completed_at?.trim() || '';
+                        const stagePhotos = heatingStageGalleryById.get(stage.key) || [];
                         return (
                           <div key={stage.key} className="rounded-md border border-border/50 p-2 space-y-2">
                             <p className="text-xs font-semibold text-foreground">{stage.label}</p>
+                            {(completedAt || completedBy) && (
+                              <div className="space-y-1 text-[11px] leading-snug">
+                                {completedAt ? (
+                                  <p>
+                                    <span className="text-muted-foreground">Completed at: </span>
+                                    <span className="text-foreground">{formatVisitDate(completedAt)}</span>
+                                  </p>
+                                ) : null}
+                                {completedBy ? (
+                                  <p>
+                                    <span className="text-muted-foreground">Completed by: </span>
+                                    <span className="text-foreground">{completedBy}</span>
+                                  </p>
+                                ) : null}
+                              </div>
+                            )}
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <Input
                                 type="number"
@@ -3107,6 +3128,28 @@ export default function RoomDetail() {
                               rows={2}
                               className="text-base sm:text-xs"
                             />
+                            {stagePhotos.length > 0 ? (
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] text-muted-foreground">Stage photos</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {stagePhotos.map((item, pi) => {
+                                    const src =
+                                      item.displayUrl || resolveHeatingCablePhotoDownloadUrl(item.objectKey, photos);
+                                    if (!src) return null;
+                                    return (
+                                      <button
+                                        key={`${stage.key}-editable-p-${pi}`}
+                                        type="button"
+                                        className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
+                                        onClick={() => setShowPhotoPreview(src)}
+                                      >
+                                        <img src={src} alt="" className="h-full w-full object-cover" />
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
                             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                               <input
                                 ref={(el) => {
@@ -3159,6 +3202,10 @@ export default function RoomDetail() {
                       })}
                       {(heatingCableDoc.extra_steps || []).map((step, idx) => {
                         const sid = step.id || `extra-${idx}`;
+                        const completedBy =
+                          step.completed_by_name?.trim() || step.completed_by?.trim() || step.performed_by?.trim() || '';
+                        const completedAt = step.completed_at?.trim() || '';
+                        const stagePhotos = heatingStageGalleryById.get(sid) || [];
                         return (
                           <div key={sid} className="rounded-md border border-border/50 p-2 space-y-2">
                             <div className="flex items-center justify-between gap-2">
@@ -3180,6 +3227,22 @@ export default function RoomDetail() {
                                 Remove
                               </Button>
                             </div>
+                            {(completedAt || completedBy) && (
+                              <div className="space-y-1 text-[11px] leading-snug">
+                                {completedAt ? (
+                                  <p>
+                                    <span className="text-muted-foreground">Completed at: </span>
+                                    <span className="text-foreground">{formatVisitDate(completedAt)}</span>
+                                  </p>
+                                ) : null}
+                                {completedBy ? (
+                                  <p>
+                                    <span className="text-muted-foreground">Completed by: </span>
+                                    <span className="text-foreground">{completedBy}</span>
+                                  </p>
+                                ) : null}
+                              </div>
+                            )}
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <Input
                                 type="number"
@@ -3224,6 +3287,28 @@ export default function RoomDetail() {
                               rows={2}
                               className="text-base sm:text-xs"
                             />
+                            {stagePhotos.length > 0 ? (
+                              <div className="space-y-1.5">
+                                <p className="text-[10px] text-muted-foreground">Stage photos</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                  {stagePhotos.map((item, pi) => {
+                                    const src =
+                                      item.displayUrl || resolveHeatingCablePhotoDownloadUrl(item.objectKey, photos);
+                                    if (!src) return null;
+                                    return (
+                                      <button
+                                        key={`${sid}-editable-p-${pi}`}
+                                        type="button"
+                                        className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
+                                        onClick={() => setShowPhotoPreview(src)}
+                                      >
+                                        <img src={src} alt="" className="h-full w-full object-cover" />
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
                             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                               <input
                                 ref={(el) => {
