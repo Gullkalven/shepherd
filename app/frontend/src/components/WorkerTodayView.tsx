@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { client } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
 import { resolveWorkerActorLabel } from '@/lib/workerIdentity';
 import {
@@ -30,6 +31,16 @@ export type WorkerTodayViewProps = {
   sitesLoading: boolean;
   sitesLoadFailed: boolean;
   onRefreshSites: () => void;
+};
+
+type MyWorkerTask = {
+  id: number;
+  room_id: number;
+  room_number?: string | null;
+  floor_id?: number | null;
+  project_id?: number | null;
+  type: string;
+  status: string;
 };
 
 function isLocalDateToday(iso: string | null | undefined): boolean {
@@ -171,6 +182,7 @@ export default function WorkerTodayView({
   const { displayName, sessionIsPinWorker } = usePermissions();
   const [lastLocal, setLastLocal] = useState<WorkerLastRoom | null>(() => readWorkerLastRoom());
   const [roomSearch, setRoomSearch] = useState('');
+  const [myTasks, setMyTasks] = useState<MyWorkerTask[]>([]);
 
   const { roomsFlat, tasks, enrichmentLoading, taskSummaryUnavailable } = useWorkerRoomEnrichment(
     sites,
@@ -189,6 +201,32 @@ export default function WorkerTodayView({
   useEffect(() => {
     setLastLocal(readWorkerLastRoom());
   }, [roomsFlat]);
+
+  useEffect(() => {
+    if (!hasUser || !sessionIsPinWorker) {
+      setMyTasks([]);
+      return;
+    }
+    let cancelled = false;
+    const loadMyTasks = async () => {
+      try {
+        const res = await client.apiCall.invoke({
+          url: '/api/v1/worker-tasks/my',
+          method: 'GET',
+          data: {},
+        });
+        if (cancelled) return;
+        const items = Array.isArray(res?.data) ? (res.data as MyWorkerTask[]) : [];
+        setMyTasks(items.filter((t) => t.status !== 'done'));
+      } catch {
+        if (!cancelled) setMyTasks([]);
+      }
+    };
+    void loadMyTasks();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasUser, sessionIsPinWorker]);
 
   /** Bottom nav “Search” opens `/#find-room` and focuses the room finder. */
   useEffect(() => {
@@ -547,6 +585,39 @@ export default function WorkerTodayView({
                   {completedTodayCount}
                 </span>
               </div>
+            </section>
+
+            <section className="space-y-2" aria-labelledby="my-tasks-heading">
+              <h2 id="my-tasks-heading" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                My Tasks
+              </h2>
+              {myTasks.length === 0 ? (
+                <Card className="p-3 text-sm text-muted-foreground">No assigned tasks</Card>
+              ) : (
+                <ul className="space-y-2">
+                  {myTasks.map((task) => (
+                    <li key={task.id}>
+                      <Card
+                        className="shepherd-interactive-card cursor-pointer p-3.5 transition hover:bg-slate-50/90 dark:hover:bg-slate-900/40"
+                        onClick={() => {
+                          if (!task.project_id || !task.floor_id) return;
+                          navigate(workerRoomPath(task.project_id, task.floor_id, task.room_id, { focusChecklist: true }));
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-base font-semibold text-slate-900 dark:text-foreground">
+                              Room {task.room_number ?? task.room_id}
+                            </p>
+                            <p className="text-sm text-muted-foreground">Task: {task.type}</p>
+                          </div>
+                          <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
+                        </div>
+                      </Card>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
 
             <section

@@ -13,6 +13,7 @@ class UserResponse(BaseModel):
     # Project-worker PIN session (JWT): actor name + single-project scope
     is_worker_session: bool = False
     worker_project_id: Optional[int] = None
+    worker_id: Optional[int] = None
     # Provisional admin PIN session (JWT) — separate from workers and OIDC
     is_provisional_admin: bool = False
 

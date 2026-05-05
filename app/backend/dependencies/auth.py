@@ -55,8 +55,13 @@ async def get_current_user(token: str = Depends(get_bearer_token)) -> UserRespon
     if payload.get("shepherd_typ") == "project_worker":
         owner_id = payload.get("sub")
         pid = payload.get("pid")
+        wid_raw = payload.get("wid")
         wname = (payload.get("worker_name") or "").strip() or None
-        if not owner_id or pid is None:
+        try:
+            wid = int(wid_raw) if wid_raw is not None else None
+        except (TypeError, ValueError):
+            wid = None
+        if not owner_id or pid is None or wid is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid worker session")
         return UserResponse(
             id=str(owner_id),
@@ -66,6 +71,7 @@ async def get_current_user(token: str = Depends(get_bearer_token)) -> UserRespon
             last_login=None,
             is_worker_session=True,
             worker_project_id=int(pid),
+            worker_id=wid,
         )
 
     if payload.get("shepherd_typ") == "provisional_admin":
