@@ -13,6 +13,7 @@ export interface HeatingCableStage {
   id?: string;
   label?: string;
   step_status?: 'locked' | 'unlocked';
+  completed_by_user_id?: string;
   completed_by?: string;
   completed_by_name?: string;
   completed_at?: string;
@@ -82,6 +83,12 @@ function normalizeStage(raw: unknown): HeatingCableStage {
     id: typeof row.id === 'string' ? row.id : '',
     label: typeof row.label === 'string' ? row.label : '',
     step_status: row.step_status === 'locked' ? 'locked' : 'unlocked',
+    completed_by_user_id:
+      typeof row.completed_by_user_id === 'string'
+        ? row.completed_by_user_id
+        : typeof row.completed_by === 'string'
+          ? row.completed_by
+          : '',
     completed_by: typeof row.completed_by === 'string' ? row.completed_by : '',
     completed_by_name: typeof row.completed_by_name === 'string' ? row.completed_by_name : '',
     completed_at: typeof row.completed_at === 'string' ? row.completed_at : '',

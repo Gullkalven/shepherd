@@ -1309,17 +1309,10 @@ export function WorkerRoomView(p: Props) {
                           onCommit={(v) => p.onHeatingFieldChange(stage.key, 'date', v)}
                         />
                         <div className="space-y-1.5 pt-0.5">
-                          <Label htmlFor={`heat-${sid}-by`} className="text-[11px] font-medium text-muted-foreground">
-                            Performed by
-                          </Label>
-                          <Input
-                            id={`heat-${sid}-by`}
-                            placeholder="Name"
-                            value={row.performed_by || ''}
-                            className="h-11 text-base sm:text-sm"
-                            disabled={stageReadOnly}
-                            onChange={(e) => p.onHeatingFieldChange(stage.key, 'performed_by', e.target.value)}
-                          />
+                          <Label className="text-[11px] font-medium text-muted-foreground">Performed by</Label>
+                          <div className="h-11 rounded-md border border-input bg-muted/20 px-3 text-sm text-foreground flex items-center">
+                            {row.performed_by?.trim() || p.heatingDefaultPerformedBy?.trim() || 'Signed-in worker'}
+                          </div>
                         </div>
                       </div>
                       <div className="space-y-1">
@@ -1491,20 +1484,10 @@ export function WorkerRoomView(p: Props) {
                           onCommit={(v) => p.onExtraHeatingFieldChange(idx, 'date', v)}
                         />
                         <div className="space-y-1.5 pt-0.5">
-                          <Label
-                            htmlFor={`heat-extra-${photoKey}-by`}
-                            className="text-[11px] font-medium text-muted-foreground"
-                          >
-                            Performed by
-                          </Label>
-                          <Input
-                            id={`heat-extra-${photoKey}-by`}
-                            placeholder="Name"
-                            value={step.performed_by || ''}
-                            className="h-11 text-base sm:text-sm"
-                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
-                            onChange={(e) => p.onExtraHeatingFieldChange(idx, 'performed_by', e.target.value)}
-                          />
+                          <Label className="text-[11px] font-medium text-muted-foreground">Performed by</Label>
+                          <div className="h-11 rounded-md border border-input bg-muted/20 px-3 text-sm text-foreground flex items-center">
+                            {step.performed_by?.trim() || p.heatingDefaultPerformedBy?.trim() || 'Signed-in worker'}
+                          </div>
                         </div>
                       </div>
                       <div className="space-y-1">

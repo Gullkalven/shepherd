@@ -1914,7 +1914,7 @@ export default function RoomDetail() {
         toast.error('This step is already locked.');
         return;
       }
-      if (!current.resistance_ohm?.trim() || !current.insulation_mohm?.trim() || !current.date?.trim() || !current.performed_by?.trim()) {
+      if (!current.resistance_ohm?.trim() || !current.insulation_mohm?.trim() || !current.date?.trim()) {
         toast.error('Fill all required fields before completing this step.');
         return;
       }
@@ -1930,9 +1930,11 @@ export default function RoomDetail() {
         [stageKey]: {
           ...current,
           step_status: 'locked',
+          completed_by_user_id: workerId,
           completed_by: workerId,
           completed_by_name: completedByName || '',
           completed_at: new Date().toISOString(),
+          performed_by: current.performed_by?.trim() ? current.performed_by : completedByName || '',
           confirmation_text: 'confirmed',
         },
       };
@@ -3121,15 +3123,6 @@ export default function RoomDetail() {
                                 onChange={(e) => updateHeatingStageField(stage.key, 'date', e.target.value)}
                                 className="h-9 sm:h-8 text-base sm:text-xs"
                               />
-                              <Input
-                                placeholder="Performed by"
-                                value={row.performed_by || ''}
-                                disabled={!canEditHeatingCable || heatingCableBlocking}
-                                onChange={(e) =>
-                                  updateHeatingStageField(stage.key, 'performed_by', e.target.value)
-                                }
-                                className="h-9 sm:h-8 text-base sm:text-xs"
-                              />
                             </div>
                             <Textarea
                               placeholder="Optional note / deviation"
@@ -3280,13 +3273,6 @@ export default function RoomDetail() {
                                 value={heatingCableDateForDateInput(step.date)}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'date', e.target.value)}
-                                className="h-9 sm:h-8 text-base sm:text-xs"
-                              />
-                              <Input
-                                placeholder="Performed by"
-                                value={step.performed_by || ''}
-                                disabled={!canEditHeatingCable || heatingCableBlocking}
-                                onChange={(e) => updateExtraHeatingStepField(idx, 'performed_by', e.target.value)}
                                 className="h-9 sm:h-8 text-base sm:text-xs"
                               />
                             </div>
