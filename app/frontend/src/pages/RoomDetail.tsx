@@ -602,6 +602,7 @@ export default function RoomDetail() {
         setRoom({
           ...roomData,
           phase_lock_overrides: coercePhaseLockOverrides(roomData.phase_lock_overrides),
+          phase_assigned_worker_ids: coercePhaseAssignedWorkerIds(roomData.phase_assigned_worker_ids),
         });
       }
     } catch {
@@ -1232,11 +1233,21 @@ export default function RoomDetail() {
     else next[key] = workerId;
     setAssigningPhaseKey(key);
     try {
-      await client.entities.rooms.update({
+      const updateRes = await client.entities.rooms.update({
         id: String(room.id),
         data: { phase_assigned_worker_ids: next },
       });
-      setRoom({ ...room, phase_assigned_worker_ids: next });
+      const updatedRoom = updateRes?.data as Room | undefined;
+      if (updatedRoom) {
+        setRoom({
+          ...updatedRoom,
+          phase_lock_overrides: coercePhaseLockOverrides(updatedRoom.phase_lock_overrides),
+          phase_assigned_worker_ids: coercePhaseAssignedWorkerIds(updatedRoom.phase_assigned_worker_ids),
+        });
+      } else {
+        setRoom({ ...room, phase_assigned_worker_ids: next });
+      }
+      await refreshRoom();
       toast.success(workerId == null ? 'Phase assignment cleared' : 'Worker assigned to phase');
     } catch {
       toast.error('Failed to assign worker to phase');
