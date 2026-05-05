@@ -143,7 +143,7 @@ type Props = {
   ) => void;
   onHeatingStagePhotoChange: (stageId: string, file?: File) => void;
   onSaveHeatingCable: () => void;
-  onCompleteHeatingStage: (stageKey: HeatingCableStageKey, confirmationText: string) => void;
+  onCompleteHeatingStage: (stageKey: HeatingCableStageKey) => void;
   onPhotoPreview: (url: string) => void;
 
   /** Session display name — seeds empty "Performed by" / date on the active stage only. */
@@ -399,7 +399,6 @@ function heatingStageCollapseSummary(stage: HeatingCableStage): string {
 }
 
 export function WorkerRoomView(p: Props) {
-  const HEATING_STEP_CONFIRM_TEXT = 'I confirm this step is completed';
   const selectedLabel = phaseLabel(p.selectedPhaseKey, p.phaseWorkflow);
   const inProgressKeys =
     p.inProgressPhaseKeys && p.inProgressPhaseKeys.length > 0
@@ -452,7 +451,7 @@ export function WorkerRoomView(p: Props) {
   }, [focusTarget]);
 
   const [heatingOpenOverrides, setHeatingOpenOverrides] = useState<Record<string, boolean>>({});
-  const [heatingConfirmTextByStage, setHeatingConfirmTextByStage] = useState<Record<string, string>>({});
+  const [confirmStageKey, setConfirmStageKey] = useState<HeatingCableStageKey | null>(null);
   useEffect(() => {
     if (focusStageId !== 'all-complete') {
       setHeatingOpenOverrides((prev) => ({ ...prev, [focusStageId]: true }));
@@ -1353,8 +1352,14 @@ export function WorkerRoomView(p: Props) {
                       </div>
                       {isLocked ? (
                         <div className="rounded-md border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-100">
-                          Completed by {row.completed_by_name?.trim() || row.completed_by?.trim() || 'Unknown'} on{' '}
-                          {row.completed_at?.trim() ? formatVisitDateShort(row.completed_at) : 'unknown time'}.
+                          <p>
+                            <span className="text-muted-foreground">Completed by: </span>
+                            {row.completed_by_name?.trim() || row.completed_by?.trim() || 'Unknown'}
+                          </p>
+                          <p>
+                            <span className="text-muted-foreground">Time: </span>
+                            {row.completed_at?.trim() ? formatVisitDateShort(row.completed_at) : 'unknown time'}
+                          </p>
                         </div>
                       ) : !canAccessStage ? (
                         <div className="rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-100">
@@ -1363,31 +1368,14 @@ export function WorkerRoomView(p: Props) {
                       ) : null}
                       {!isLocked && canAccessStage ? (
                         <div className="space-y-2 rounded-md border border-border/60 bg-background/70 px-3 py-2.5">
-                          <p className="text-xs text-muted-foreground">
-                            Type <span className="font-medium text-foreground">{HEATING_STEP_CONFIRM_TEXT}</span> to
-                            complete and lock this step permanently.
-                          </p>
-                          <Input
-                            value={heatingConfirmTextByStage[sid] || ''}
-                            onChange={(e) =>
-                              setHeatingConfirmTextByStage((prev) => ({ ...prev, [sid]: e.target.value }))
-                            }
-                            placeholder={HEATING_STEP_CONFIRM_TEXT}
-                            className="h-10 text-sm"
-                            disabled={stageReadOnly || !complete}
-                          />
                           <Button
                             type="button"
                             variant="secondary"
                             className="h-10 w-full"
-                            disabled={
-                              stageReadOnly ||
-                              !complete ||
-                              (heatingConfirmTextByStage[sid] || '').trim() !== HEATING_STEP_CONFIRM_TEXT
-                            }
-                            onClick={() => p.onCompleteHeatingStage(stage.key, (heatingConfirmTextByStage[sid] || '').trim())}
+                            disabled={stageReadOnly || !complete}
+                            onClick={() => setConfirmStageKey(stage.key)}
                           >
-                            Complete and lock step
+                            Confirm step
                           </Button>
                         </div>
                       ) : null}
@@ -1702,6 +1690,33 @@ export function WorkerRoomView(p: Props) {
               }}
             >
               {p.completingPhase ? 'Recording…' : 'Confirm handoff'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmStageKey !== null} onOpenChange={(open) => !open && setConfirmStageKey(null)}>
+        <DialogContent className="max-w-md gap-4 px-5 pb-6 pt-6">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle className="text-xl leading-snug">Confirm step</DialogTitle>
+            <DialogDescription className="text-left text-base leading-relaxed text-muted-foreground">
+              Are you sure you want to confirm this step?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setConfirmStageKey(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="w-full bg-emerald-600 text-white hover:bg-emerald-700 sm:w-auto"
+              onClick={() => {
+                if (!confirmStageKey) return;
+                p.onCompleteHeatingStage(confirmStageKey);
+                setConfirmStageKey(null);
+              }}
+            >
+              Confirm step
             </Button>
           </DialogFooter>
         </DialogContent>

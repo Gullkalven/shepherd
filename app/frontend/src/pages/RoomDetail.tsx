@@ -89,7 +89,6 @@ const STATUS_OPTIONS = [
 
 const HEATING_AUTOSAVE_DEBOUNCE_MS = 900;
 const HEATING_SAVE_UI_IDLE_MS = 2600;
-const HEATING_STEP_CONFIRM_TEXT = 'I confirm this step is completed';
 
 function heatingTraceEnabled(): boolean {
   try {
@@ -1811,11 +1810,8 @@ export default function RoomDetail() {
   };
 
   const completeHeatingStage = useCallback(
-    async (stageKey: HeatingCableStageKey, confirmationText: string) => {
-      if (!room || confirmationText.trim() !== HEATING_STEP_CONFIRM_TEXT) {
-        toast.error('Type the exact confirmation text before completing this step.');
-        return;
-      }
+    async (stageKey: HeatingCableStageKey) => {
+      if (!room) return;
       const idx = HEATING_CABLE_STAGES.findIndex((s) => s.key === stageKey);
       const prevLocked =
         idx <= 0
@@ -1840,16 +1836,16 @@ export default function RoomDetail() {
         toast.error('Missing worker session id. Sign in again.');
         return;
       }
-      const completedByName = resolveWorkerActorLabel(displayName);
+      const completedByName = resolveWorkerActorLabel(ws?.name || displayName);
       const nextDoc: HeatingCableDoc = {
         ...heatingCableDocRef.current,
         [stageKey]: {
           ...current,
           step_status: 'locked',
           completed_by: workerId,
-          completed_by_name: completedByName || current.performed_by || '',
+          completed_by_name: completedByName || '',
           completed_at: new Date().toISOString(),
-          confirmation_text: HEATING_STEP_CONFIRM_TEXT,
+          confirmation_text: 'confirmed',
         },
       };
       setHeatingCableDoc(nextDoc);
@@ -2116,9 +2112,7 @@ export default function RoomDetail() {
               onExtraHeatingFieldChange={updateExtraHeatingStepField}
               onHeatingStagePhotoChange={(stageId, file) => void handleHeatingStagePhotoInput(stageId, file)}
               onSaveHeatingCable={() => void saveHeatingCableDoc()}
-              onCompleteHeatingStage={(stageKey, confirmationText) =>
-                void completeHeatingStage(stageKey, confirmationText)
-              }
+              onCompleteHeatingStage={(stageKey) => void completeHeatingStage(stageKey)}
               onPhotoPreview={(url) => setShowPhotoPreview(url)}
               showPhotosSection={sectionVisibility.photos}
               canUploadPhoto={canUploadPhoto}
