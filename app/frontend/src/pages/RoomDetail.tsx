@@ -66,6 +66,7 @@ import {
   HEATING_CABLE_DERIVED_STATUS_LABEL,
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
+  formatHeatingCablePerformedShort,
   heatingStageHasAnyData,
   heatingCableStageCaption,
   isHeatingCablePhase,
@@ -2671,7 +2672,7 @@ export default function RoomDetail() {
                                   {row.date ? (
                                     <p>
                                       <span className="text-muted-foreground">Date: </span>
-                                      <span className="text-foreground">{row.date}</span>
+                                      <span className="text-foreground">{formatHeatingCablePerformedShort(row.date)}</span>
                                     </p>
                                   ) : null}
                                   {row.performed_by ? (
@@ -2739,7 +2740,7 @@ export default function RoomDetail() {
                                   {step.date ? (
                                     <p>
                                       <span className="text-muted-foreground">Date: </span>
-                                      <span className="text-foreground">{step.date}</span>
+                                      <span className="text-foreground">{formatHeatingCablePerformedShort(step.date)}</span>
                                     </p>
                                   ) : null}
                                   {step.performed_by ? (

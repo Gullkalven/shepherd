@@ -59,14 +59,24 @@ function isFilled(v: unknown): boolean {
 function normalizeStage(raw: unknown): HeatingCableStage {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const row = raw as Record<string, unknown>;
+  // Keep one canonical key (`date`) but accept legacy aliases from older payloads.
+  const dateRaw =
+    row.date ??
+    row.markingDate ??
+    row.dateMarking ??
+    row.datomerking ??
+    row.installedDate ??
+    row.heatingCableDate ??
+    row.registeredDate;
+  const performedByRaw = row.performed_by ?? row.performedBy;
   const photosRaw = Array.isArray(row.photos) ? row.photos : [];
   return {
     id: typeof row.id === 'string' ? row.id : '',
     label: typeof row.label === 'string' ? row.label : '',
     resistance_ohm: typeof row.resistance_ohm === 'string' ? row.resistance_ohm : '',
     insulation_mohm: typeof row.insulation_mohm === 'string' ? row.insulation_mohm : '',
-    date: typeof row.date === 'string' ? row.date : '',
-    performed_by: typeof row.performed_by === 'string' ? row.performed_by : '',
+    date: typeof dateRaw === 'string' ? dateRaw : '',
+    performed_by: typeof performedByRaw === 'string' ? performedByRaw : '',
     note: typeof row.note === 'string' ? row.note : '',
     photos: photosRaw.filter((p) => typeof p === 'string').map((p) => String(p)),
   };
