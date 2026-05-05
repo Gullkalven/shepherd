@@ -90,7 +90,7 @@ export default function AdminLoginPage() {
 
   if (!bootReady) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center bg-slate-50 px-4 dark:bg-background">
+      <div className="flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pt-[env(safe-area-inset-top)] dark:bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1E3A5F] border-t-transparent dark:border-blue-400" />
       </div>
     );
@@ -99,8 +99,8 @@ export default function AdminLoginPage() {
   const ttlHours = Math.round(ADMIN_SESSION_TTL_MS / 3600000);
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-slate-50 px-4 pb-16 pt-10 dark:bg-background">
-      <Card className="w-full max-w-md border-border p-6 shadow-sm">
+    <div className="flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] dark:bg-background">
+      <Card className="w-full max-w-md border-border p-5 shadow-sm sm:p-6">
         <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">
           Administrator sign-in
         </h1>
