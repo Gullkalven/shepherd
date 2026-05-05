@@ -23,6 +23,7 @@ export interface HeatingCableStage {
   performed_by?: string;
   note?: string;
   photos?: string[];
+  images?: string[];
 }
 
 export interface HeatingCableDoc {
@@ -75,6 +76,8 @@ function normalizeStage(raw: unknown): HeatingCableStage {
     row.registeredDate;
   const performedByRaw = row.performed_by ?? row.performedBy;
   const photosRaw = Array.isArray(row.photos) ? row.photos : [];
+  const imagesRaw = Array.isArray(row.images) ? row.images : [];
+  const mergedImages = [...photosRaw, ...imagesRaw].filter((p) => typeof p === 'string').map((p) => String(p));
   return {
     id: typeof row.id === 'string' ? row.id : '',
     label: typeof row.label === 'string' ? row.label : '',
@@ -88,7 +91,8 @@ function normalizeStage(raw: unknown): HeatingCableStage {
     date: typeof dateRaw === 'string' ? dateRaw : '',
     performed_by: typeof performedByRaw === 'string' ? performedByRaw : '',
     note: typeof row.note === 'string' ? row.note : '',
-    photos: photosRaw.filter((p) => typeof p === 'string').map((p) => String(p)),
+    photos: mergedImages,
+    images: mergedImages,
   };
 }
 

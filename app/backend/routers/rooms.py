@@ -76,6 +76,73 @@ def _heating_trace_payload(doc: Any) -> Dict[str, Any]:
     return out
 
 
+def _normalize_heating_stage_for_api(stage_raw: Any) -> Dict[str, Any]:
+    if not isinstance(stage_raw, dict):
+        return {}
+    out = dict(stage_raw)
+    image_candidates = []
+    for key in ("images", "photos"):
+        val = out.get(key)
+        if isinstance(val, list):
+            for item in val:
+                if isinstance(item, str) and item.strip():
+                    image_candidates.append(item.strip())
+    seen = set()
+    images: List[str] = []
+    for item in image_candidates:
+        if item in seen:
+            continue
+        seen.add(item)
+        images.append(item)
+    out["images"] = images
+    out["photos"] = images
+
+    completed_at = out.get("completed_at")
+    if not isinstance(completed_at, str) or not completed_at.strip():
+        fallback = out.get("date")
+        if isinstance(fallback, str) and fallback.strip():
+            out["completed_at"] = fallback.strip()
+
+    completed_by_name = out.get("completed_by_name")
+    if not isinstance(completed_by_name, str) or not completed_by_name.strip():
+        fallback_name = out.get("performed_by")
+        if isinstance(fallback_name, str) and fallback_name.strip():
+            out["completed_by_name"] = fallback_name.strip()
+
+    return out
+
+
+def normalize_heating_doc_for_api(doc_raw: Any) -> Any:
+    if not isinstance(doc_raw, dict):
+        return doc_raw
+    out = dict(doc_raw)
+    for key in ("before_installation", "after_cable_laid", "after_screed_final"):
+        out[key] = _normalize_heating_stage_for_api(out.get(key))
+    extras = out.get("extra_steps")
+    if isinstance(extras, list):
+        out["extra_steps"] = [_normalize_heating_stage_for_api(x) for x in extras if isinstance(x, dict)]
+    return out
+
+
+def _normalize_room_heating_doc_inplace(room_obj: Any) -> Any:
+    if room_obj is None:
+        return room_obj
+    raw_doc = getattr(room_obj, "heating_cable_doc", None)
+    normalized = normalize_heating_doc_for_api(raw_doc)
+    if normalized is not raw_doc:
+        setattr(room_obj, "heating_cable_doc", normalized)
+    return room_obj
+
+
+def _normalize_rooms_list_heating_docs(result: Any) -> Any:
+    if isinstance(result, dict):
+        items = result.get("items")
+        if isinstance(items, list):
+            for room_obj in items:
+                _normalize_room_heating_doc_inplace(room_obj)
+    return result
+
+
 def sanitize_phase_tool_overrides(raw: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     """Keep optional per-phase tool toggles small and boolean-safe."""
     if raw is None:
@@ -374,6 +441,7 @@ async def query_roomss(
             user_id=owner_uid,
             worker_project_id=worker_project_scope(current_user),
         )
+        _normalize_rooms_list_heating_docs(result)
         logger.debug(f"Found {result['total']} roomss")
         return result
     except HTTPException:
@@ -413,6 +481,7 @@ async def query_roomss_all(
             query_dict=query_dict,
             sort=sort
         )
+        _normalize_rooms_list_heating_docs(result)
         logger.debug(f"Found {result['total']} roomss")
         return result
     except HTTPException:
@@ -448,6 +517,7 @@ async def get_rooms(
         merged = await maybe_backfill_legacy_visits_photos(db, result, str(current_user.id))
         if merged is not None:
             result = merged
+        _normalize_room_heating_doc_inplace(result)
 
         if HEATING_TRACE_ENABLED:
             try:
@@ -557,7 +627,7 @@ async def worker_phase_handoff(
         user_id=str(current_user.id),
         worker_project_id=worker_project_scope(current_user),
     )
-    return refreshed if refreshed else result
+    return _normalize_room_heating_doc_inplace(refreshed if refreshed else result)
 
 
 @router.post("", response_model=RoomsResponse, status_code=201)
@@ -581,12 +651,14 @@ async def create_rooms(
                 raise HTTPException(status_code=400, detail=str(e)) from e
         if dump.get("phase_tool_overrides") is not None:
             dump["phase_tool_overrides"] = sanitize_phase_tool_overrides(dump["phase_tool_overrides"])
+        if dump.get("heating_cable_doc") is not None:
+            dump["heating_cable_doc"] = normalize_heating_doc_for_api(dump.get("heating_cable_doc"))
         result = await service.create(dump, user_id=str(current_user.id))
         if not result:
             raise HTTPException(status_code=400, detail="Failed to create rooms")
         
         logger.info(f"Rooms created successfully with id: {result.id}")
-        return result
+        return _normalize_room_heating_doc_inplace(result)
     except ValueError as e:
         logger.error(f"Validation error creating rooms: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
@@ -620,9 +692,11 @@ async def create_roomss_batch(
                     raise HTTPException(status_code=400, detail=str(e)) from e
             if dump_b.get("phase_tool_overrides") is not None:
                 dump_b["phase_tool_overrides"] = sanitize_phase_tool_overrides(dump_b["phase_tool_overrides"])
+            if dump_b.get("heating_cable_doc") is not None:
+                dump_b["heating_cable_doc"] = normalize_heating_doc_for_api(dump_b.get("heating_cable_doc"))
             result = await service.create(dump_b, user_id=str(current_user.id))
             if result:
-                results.append(result)
+                results.append(_normalize_room_heating_doc_inplace(result))
         
         logger.info(f"Batch created {len(results)} roomss successfully")
         return results
@@ -660,6 +734,8 @@ async def update_roomss_batch(
             if existing_b:
                 _prepare_room_update_dict(existing_b, update_dict, app_role)
                 await _sync_phase_statuses_on_update(db, existing_b, update_dict)
+            if update_dict.get("heating_cable_doc") is not None:
+                update_dict["heating_cable_doc"] = normalize_heating_doc_for_api(update_dict.get("heating_cable_doc"))
             result = await service.update(
                 item.id,
                 update_dict,
@@ -676,7 +752,7 @@ async def update_roomss_batch(
                         str(current_user.id),
                         worker_project_scope(current_user),
                     )
-                results.append(result)
+                results.append(_normalize_room_heating_doc_inplace(result))
         
         logger.info(f"Batch updated {len(results)} roomss successfully")
         return results
@@ -735,6 +811,8 @@ async def update_rooms(
             update_dict["checklist_labels"] = sanitize_checklist_labels(update_dict["checklist_labels"])
         if "phase_tool_overrides" in update_dict and update_dict["phase_tool_overrides"] is not None:
             update_dict["phase_tool_overrides"] = sanitize_phase_tool_overrides(update_dict["phase_tool_overrides"])
+        if "heating_cable_doc" in update_dict and update_dict["heating_cable_doc"] is not None:
+            update_dict["heating_cable_doc"] = normalize_heating_doc_for_api(update_dict["heating_cable_doc"])
         try:
             _prepare_room_update_dict(existing, update_dict, app_role)
         except ValueError as e:
@@ -787,7 +865,7 @@ async def update_rooms(
                 )
             except Exception:
                 logger.debug("HeatingTrace update persisted logging failed", exc_info=True)
-        return refreshed if refreshed else result
+        return _normalize_room_heating_doc_inplace(refreshed if refreshed else result)
     except HTTPException:
         raise
     except ValueError as e:

@@ -70,6 +70,7 @@ import {
   formatHeatingCablePerformedShort,
   heatingStageHasAnyData,
   heatingCableStageCaption,
+  buildHeatingCableGallerySections,
   isHeatingCablePhase,
   parseHeatingCableStageFromCaption,
   resolveHeatingCablePhotoDownloadUrl,
@@ -2001,6 +2002,9 @@ export default function RoomDetail() {
   const duePast = isDeadlinePast(room.deadline_at ?? null);
   const heatingDerived = deriveHeatingCableStatus(heatingCableDoc);
   const heatingLockedByAdmin = heatingCableDoc.locked_by_admin === true;
+  const heatingStageGalleryById = new Map(
+    buildHeatingCableGallerySections(heatingCableDoc, photos).map((sec) => [sec.stageId, sec.items])
+  );
   const canEditHeatingCable =
     !editsBlocked && (!heatingLockedByAdmin || canEdit) && (canEdit || !phaseReadOnly);
   const selectedPhaseLabel = phaseLabel(selPhase, phaseWorkflow);
@@ -2757,7 +2761,14 @@ export default function RoomDetail() {
                     <div className="p-2 space-y-3">
                       {HEATING_CABLE_STAGES.map((stage) => {
                         const row = heatingCableDoc[stage.key] || {};
-                        const has = heatingStageHasAnyData(row);
+                        const completedBy = row.completed_by_name?.trim() || row.completed_by?.trim() || row.performed_by?.trim() || '';
+                        const completedAt = row.completed_at?.trim() || '';
+                        const stagePhotos = heatingStageGalleryById.get(stage.key) || [];
+                        const has =
+                          heatingStageHasAnyData(row) ||
+                          Boolean(completedAt) ||
+                          Boolean(completedBy) ||
+                          stagePhotos.length > 0;
                         return (
                           <div key={stage.key} className="rounded-md border border-border/50 p-2 space-y-2">
                             <p className="text-xs font-semibold text-foreground">{stage.label}</p>
@@ -2766,6 +2777,18 @@ export default function RoomDetail() {
                             ) : (
                               <>
                                 <div className="space-y-1.5 text-[11px] leading-snug">
+                                  {completedAt ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Completed at: </span>
+                                      <span className="text-foreground">{formatVisitDate(completedAt)}</span>
+                                    </p>
+                                  ) : null}
+                                  {completedBy ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Completed by: </span>
+                                      <span className="text-foreground">{completedBy}</span>
+                                    </p>
+                                  ) : null}
                                   {row.resistance_ohm ? (
                                     <p>
                                       <span className="text-muted-foreground">Resistance: </span>
@@ -2796,19 +2819,19 @@ export default function RoomDetail() {
                                     {row.note}
                                   </p>
                                 ) : null}
-                                {Array.isArray(row.photos) && row.photos.length > 0 ? (
+                                {stagePhotos.length > 0 ? (
                                   <div className="grid grid-cols-3 gap-2">
-                                    {row.photos.map((url, pi) => {
-                                      const src = resolveHeatingCablePhotoDownloadUrl(url, photos);
+                                    {stagePhotos.map((item, pi) => {
+                                      const src = item.displayUrl || resolveHeatingCablePhotoDownloadUrl(item.objectKey, photos);
                                       return (
                                       <button
                                         key={`${stage.key}-p-${pi}`}
                                         type="button"
                                         className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
-                                        onClick={() => setShowPhotoPreview(src || url)}
+                                        onClick={() => src && setShowPhotoPreview(src)}
                                       >
                                         <img
-                                          src={src || url}
+                                          src={src}
                                           alt=""
                                           className="h-full w-full object-cover"
                                         />
@@ -2823,7 +2846,15 @@ export default function RoomDetail() {
                       })}
                       {(heatingCableDoc.extra_steps || []).map((step, idx) => {
                         const sid = step.id || `extra-${idx}`;
-                        const has = heatingStageHasAnyData(step);
+                        const completedBy =
+                          step.completed_by_name?.trim() || step.completed_by?.trim() || step.performed_by?.trim() || '';
+                        const completedAt = step.completed_at?.trim() || '';
+                        const stagePhotos = heatingStageGalleryById.get(sid) || [];
+                        const has =
+                          heatingStageHasAnyData(step) ||
+                          Boolean(completedAt) ||
+                          Boolean(completedBy) ||
+                          stagePhotos.length > 0;
                         return (
                           <div key={sid} className="rounded-md border border-border/50 p-2 space-y-2">
                             <p className="text-xs font-semibold text-foreground">
@@ -2834,6 +2865,18 @@ export default function RoomDetail() {
                             ) : (
                               <>
                                 <div className="space-y-1.5 text-[11px] leading-snug">
+                                  {completedAt ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Completed at: </span>
+                                      <span className="text-foreground">{formatVisitDate(completedAt)}</span>
+                                    </p>
+                                  ) : null}
+                                  {completedBy ? (
+                                    <p>
+                                      <span className="text-muted-foreground">Completed by: </span>
+                                      <span className="text-foreground">{completedBy}</span>
+                                    </p>
+                                  ) : null}
                                   {step.resistance_ohm ? (
                                     <p>
                                       <span className="text-muted-foreground">Resistance: </span>
@@ -2864,18 +2907,18 @@ export default function RoomDetail() {
                                     {step.note}
                                   </p>
                                 ) : null}
-                                {Array.isArray(step.photos) && step.photos.length > 0 ? (
+                                {stagePhotos.length > 0 ? (
                                   <div className="grid grid-cols-3 gap-2">
-                                    {step.photos.map((url, pi) => {
-                                      const src = resolveHeatingCablePhotoDownloadUrl(url, photos);
+                                    {stagePhotos.map((item, pi) => {
+                                      const src = item.displayUrl || resolveHeatingCablePhotoDownloadUrl(item.objectKey, photos);
                                       return (
                                       <button
                                         key={`${sid}-p-${pi}`}
                                         type="button"
                                         className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
-                                        onClick={() => setShowPhotoPreview(src || url)}
+                                        onClick={() => src && setShowPhotoPreview(src)}
                                       >
-                                        <img src={src || url} alt="" className="h-full w-full object-cover" />
+                                        <img src={src} alt="" className="h-full w-full object-cover" />
                                       </button>
                                     );})}
                                   </div>
