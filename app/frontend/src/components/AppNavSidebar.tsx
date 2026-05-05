@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ChevronRight, HardHat, LogOut, Moon, Sun } from 'lucide-react';
+import { ChevronRight, HardHat, House, LogOut, Moon, Sun } from 'lucide-react';
 import { client } from '@/lib/api';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import { useProjectList } from '@/contexts/ProjectListContext';
@@ -41,7 +41,7 @@ function floorLabel(f: FloorRow): string {
 type Variant = 'desktop' | 'sheet';
 
 const LOGO_BUTTON_CLASS =
-  'mb-3 flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left transition-[background-color,box-shadow] duration-200 ease-out hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90';
+  'flex cursor-pointer items-center gap-2 rounded-md px-1 py-1 text-left transition-[background-color,box-shadow] duration-200 ease-out hover:bg-slate-200/90 hover:shadow-sm dark:hover:bg-slate-800/90';
 
 function ShepherdLogoButton({ afterNav }: { afterNav: () => void }) {
   const navigate = useNavigate();
@@ -82,6 +82,34 @@ function ShepherdLogoButton({ afterNav }: { afterNav: () => void }) {
   );
 }
 
+function DesktopHomeButton({ afterNav }: { afterNav: () => void }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isActive = location.pathname === '/';
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className={cn(
+        'h-8 justify-start gap-2 px-2 text-sm',
+        isActive
+          ? 'bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-foreground'
+          : 'text-muted-foreground hover:text-foreground'
+      )}
+      onClick={() => {
+        if (isActive) return;
+        navigate('/');
+        afterNav();
+      }}
+      aria-current={isActive ? 'page' : undefined}
+    >
+      <House className="h-4 w-4" />
+      <span>Home</span>
+    </Button>
+  );
+}
+
 export default function AppNavSidebar({
   variant,
   onNavigate,
@@ -93,7 +121,10 @@ export default function AppNavSidebar({
 
   const inner = (
     <div className="flex h-full min-h-0 flex-col p-3 pt-4">
-      <ShepherdLogoButton afterNav={afterNav} />
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <ShepherdLogoButton afterNav={afterNav} />
+        {variant === 'desktop' ? <DesktopHomeButton afterNav={afterNav} /> : null}
+      </div>
 
       <NavSections afterNav={afterNav} />
 
