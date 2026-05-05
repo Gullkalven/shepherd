@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { ChevronLeft } from 'lucide-react';
 import { PROJECTS_NAV_REFRESH_EVENT } from '@/lib/runAppLogout';
 
 type LoginResponse = {
@@ -41,6 +42,14 @@ export default function AdminLoginPage() {
       navigate('/', { replace: true });
     }
   }, [bootReady, permLoading, isAdmin, sessionIsProvisionalAdmin, navigate]);
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate('/');
+  };
 
   const submit = async () => {
     const p = password.trim();
@@ -99,7 +108,16 @@ export default function AdminLoginPage() {
   const ttlHours = Math.round(ADMIN_SESSION_TTL_MS / 3600000);
 
   return (
-    <div className="flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] dark:bg-background">
+    <div className="relative flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] dark:bg-background">
+      <Button
+        type="button"
+        variant="ghost"
+        className="absolute left-4 top-[max(0.5rem,env(safe-area-inset-top))] z-10 h-10 gap-1 text-foreground/80 hover:text-foreground"
+        onClick={handleBack}
+      >
+        <ChevronLeft className="h-4 w-4" aria-hidden />
+        Back
+      </Button>
       <Card className="w-full max-w-md border-border p-5 shadow-sm sm:p-6">
         <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">
           Administrator sign-in
