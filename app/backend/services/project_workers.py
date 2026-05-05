@@ -18,12 +18,16 @@ logger = logging.getLogger(__name__)
 
 
 async def list_for_project(db: AsyncSession, *, project_id: int) -> List[Project_workers]:
+    logger.debug("ProjectWorkers.list_for_project start project_id=%s", project_id)
     if not await _project_exists(db, project_id):
+        logger.warning("ProjectWorkers.list_for_project missing_project project_id=%s", project_id)
         return []
     r = await db.execute(
         select(Project_workers).where(Project_workers.project_id == project_id).order_by(Project_workers.id.asc())
     )
-    return list(r.scalars().all())
+    rows = list(r.scalars().all())
+    logger.debug("ProjectWorkers.list_for_project done project_id=%s count=%s", project_id, len(rows))
+    return rows
 
 
 async def create_worker(
@@ -34,7 +38,9 @@ async def create_worker(
     pin: str,
     role: str = "worker",
 ) -> Optional[Project_workers]:
+    logger.info("ProjectWorkers.create_worker start project_id=%s role=%s", project_id, role)
     if not await _project_exists(db, project_id):
+        logger.warning("ProjectWorkers.create_worker missing_project project_id=%s", project_id)
         return None
     nm = (name or "").strip()
     if not nm:
@@ -52,8 +58,14 @@ async def create_worker(
         updated_at=datetime.now(timezone.utc),
     )
     db.add(row)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.exception("ProjectWorkers.create_worker commit_failed project_id=%s name=%s", project_id, nm)
+        raise
     await db.refresh(row)
+    logger.info("ProjectWorkers.create_worker created project_id=%s worker_id=%s", project_id, row.id)
     return row
 
 

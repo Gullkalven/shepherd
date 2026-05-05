@@ -712,6 +712,7 @@ export default function RoomDetail() {
     let cancelled = false;
     const loadWorkers = async () => {
       try {
+        console.debug('[RoomDetail] fetching project workers', { projectId });
         const res = await client.apiCall.invoke({
           url: `/api/v1/projects/${projectId}/workers`,
           method: 'GET',
@@ -719,6 +720,7 @@ export default function RoomDetail() {
         });
         if (cancelled) return;
         const rows = Array.isArray(res?.data) ? (res.data as ProjectWorker[]) : [];
+        console.debug('[RoomDetail] project workers fetched', { projectId, count: rows.length });
         setProjectWorkers(rows.filter((w) => w.active));
       } catch {
         if (!cancelled) setProjectWorkers([]);

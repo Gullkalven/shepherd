@@ -46,7 +46,9 @@ async def list_workers(
     admin: UserResponse = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    logger.debug("ProjectWorkersRoute.list_workers project_id=%s admin_id=%s", project_id, getattr(admin, "id", None))
     rows = await pw_svc.list_for_project(db, project_id=project_id)
+    logger.debug("ProjectWorkersRoute.list_workers result project_id=%s count=%s", project_id, len(rows))
     return [ProjectWorkerResponse(**pw_svc.public_worker_dict(r)) for r in rows]
 
 
@@ -57,6 +59,12 @@ async def create_worker_route(
     admin: UserResponse = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    logger.info(
+        "ProjectWorkersRoute.create_worker start project_id=%s admin_id=%s name=%s",
+        project_id,
+        getattr(admin, "id", None),
+        (body.name or "").strip(),
+    )
     try:
         row = await pw_svc.create_worker(
             db,
@@ -69,6 +77,7 @@ async def create_worker_route(
         raise HTTPException(status_code=400, detail=str(e)) from e
     if not row:
         raise HTTPException(status_code=404, detail="Project not found")
+    logger.info("ProjectWorkersRoute.create_worker created project_id=%s worker_id=%s", project_id, row.id)
     return ProjectWorkerResponse(**pw_svc.public_worker_dict(row))
 
 

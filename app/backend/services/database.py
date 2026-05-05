@@ -2,6 +2,7 @@ import logging
 import os
 import time
 
+import models  # noqa: F401  # Ensure all ORM models are registered before create_all
 from core.database import db_manager
 from sqlalchemy import text
 

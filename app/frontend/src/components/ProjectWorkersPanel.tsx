@@ -33,13 +33,16 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      console.debug('[ProjectWorkersPanel] fetching workers', { projectId });
       const res = await client.apiCall.invoke({
         url: `/api/v1/projects/${projectId}/workers`,
         method: 'GET',
         data: {},
       });
       const data = res?.data;
-      setWorkers(Array.isArray(data) ? (data as ProjectWorker[]) : []);
+      const rows = Array.isArray(data) ? (data as ProjectWorker[]) : [];
+      console.debug('[ProjectWorkersPanel] workers fetched', { projectId, count: rows.length });
+      setWorkers(rows);
     } catch (err) {
       devLogApiFailure('ProjectWorkersPanel.load', err);
       toast.error(apiFailureMessage(err) ?? 'Failed to load site workers');
@@ -60,16 +63,17 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
     }
     setCreating(true);
     try {
+      console.debug('[ProjectWorkersPanel] create worker start', { projectId, name: newName.trim() });
       await client.apiCall.invoke({
         url: `/api/v1/projects/${projectId}/workers`,
         method: 'POST',
         data: { name: newName.trim(), pin: newPin.trim(), role: 'worker' },
       });
+      await load();
       toast.success('Worker created');
       setCreateOpen(false);
       setNewName('');
       setNewPin('');
-      void load();
     } catch (err) {
       devLogApiFailure('ProjectWorkersPanel.createWorker', err);
       toast.error(apiFailureMessage(err) ?? 'Could not create worker');
