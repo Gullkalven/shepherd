@@ -1472,15 +1472,15 @@ export default function FloorDetail() {
 
       {/* Bulk Generate Dialog */}
       <Dialog open={showBulkCreate} onOpenChange={(open) => { if (!bulkCreating) setShowBulkCreate(open); }}>
-        <DialogContent className="max-w-sm mx-4">
-          <DialogForm onSubmit={(e) => { e.preventDefault(); handleBulkCreate(); }}>
-          <DialogHeader>
+        <DialogContent className="mx-4 flex max-h-[90vh] w-[calc(100vw-2rem)] max-w-lg flex-col overflow-hidden p-0">
+          <DialogForm onSubmit={(e) => { e.preventDefault(); handleBulkCreate(); }} className="flex min-h-0 flex-1 flex-col space-y-0">
+          <DialogHeader className="shrink-0 border-b px-4 pt-5 pb-4 sm:px-6">
             <DialogTitle className="flex items-center gap-2">
               <Zap className="h-5 w-5 text-amber-500" />
               Bulk Generate Rooms
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
             <div>
               <label className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1 block">
                 Room Prefix (optional)
@@ -1678,7 +1678,7 @@ export default function FloorDetail() {
               </div>
             )}
           </div>
-          <DialogFooter>
+          <DialogFooter className="shrink-0 border-t px-4 py-4 sm:px-6">
             <Button
               type="submit"
               disabled={bulkCreating || (parseInt(bulkCount) || 0) <= 0}
