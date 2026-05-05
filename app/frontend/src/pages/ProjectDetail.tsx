@@ -4,6 +4,7 @@ import { client } from '@/lib/api';
 import { useProjectList } from '@/contexts/ProjectListContext';
 import { usePermissions } from '@/lib/permissions';
 import DashboardStats from '@/components/DashboardStats';
+import ProjectWorkersPanel from '@/components/ProjectWorkersPanel';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -440,6 +441,9 @@ export default function ProjectDetail() {
             </>
           )}
         </div>
+
+        {/* Admin worker management (project-scoped PIN workers used in room phase assignment). */}
+        {isAdmin ? <ProjectWorkersPanel projectId={project.id} /> : null}
 
         {/* Floors */}
         <div className="flex items-center justify-between">
