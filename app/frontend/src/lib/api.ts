@@ -94,6 +94,56 @@ export async function postWorkerPhaseHandoff(
   }
 }
 
+export async function patchHeatingCableStep(
+  roomId: number,
+  stepKey: string,
+  payload: {
+    resistance?: string;
+    insulation?: string;
+    performed_at?: string;
+    photos?: string[];
+    note?: string;
+  }
+): Promise<{ heating_cable_doc?: unknown }> {
+  const base = getAPIBaseURL().replace(/\/$/, '');
+  const url = `${base}/api/v1/rooms/${roomId}/heating-cable/${encodeURIComponent(stepKey)}`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token = globalThis.localStorage?.getItem('token');
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    /* ignore */
+  }
+  if (typeof globalThis.window?.location?.origin === 'string') headers['App-Host'] = globalThis.window.location.origin;
+  const res = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(payload) });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : {};
+  if (!res.ok) throw Object.assign(new Error(body?.detail || `HTTP ${res.status}`), { response: { status: res.status, data: body } });
+  return body;
+}
+
+export async function confirmHeatingCableStep(
+  roomId: number,
+  stepKey: string,
+  payload: { completed_by: string }
+): Promise<{ heating_cable_doc?: unknown }> {
+  const base = getAPIBaseURL().replace(/\/$/, '');
+  const url = `${base}/api/v1/rooms/${roomId}/heating-cable/${encodeURIComponent(stepKey)}/confirm`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token = globalThis.localStorage?.getItem('token');
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    /* ignore */
+  }
+  if (typeof globalThis.window?.location?.origin === 'string') headers['App-Host'] = globalThis.window.location.origin;
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload) });
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : {};
+  if (!res.ok) throw Object.assign(new Error(body?.detail || `HTTP ${res.status}`), { response: { status: res.status, data: body } });
+  return body;
+}
+
 export function extractProjectItemsFromListBody(body: unknown): unknown[] {
   if (body == null) return [];
   if (Array.isArray(body)) return body;

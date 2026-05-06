@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { client, postWorkerPhaseHandoff } from '@/lib/api';
+import { client, confirmHeatingCableStep, patchHeatingCableStep, postWorkerPhaseHandoff } from '@/lib/api';
 import {
   persistWorkerLastRoom,
   WORKER_ROOM_CHECKLIST_ANCHOR,
@@ -76,11 +76,11 @@ import {
   heatingCableDateForDateInput,
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
+  isHeatingCableStageComplete,
   formatHeatingCableDateTimeReadable,
   heatingStageHasAnyData,
   heatingCableStageCaption,
   buildHeatingCableGallerySections,
-  HEATING_CONFIRM_TEXT,
   isHeatingCablePhase,
   parseHeatingCableStageFromCaption,
   resolveHeatingCablePhotoDownloadUrl,
@@ -542,6 +542,7 @@ export default function RoomDetail() {
   const [heatingCableSyncedFp, setHeatingCableSyncedFp] = useState('');
   const heatingCableDocRef = useRef<HeatingCableDoc>({});
   const heatingAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heatingAutosaveStepRef = useRef<HeatingCableStageKey>('before_installation');
   const heatingSaveUiIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipHeatingDocSyncRef = useRef(false);
   const heatingPhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -1691,10 +1692,10 @@ export default function RoomDetail() {
   }, [room, canEdit, checklistTitleDraft, phaseTab, phaseWorkflow, defaultChecklistTitle, refreshRoom]);
 
   const persistHeatingCableDoc = useCallback(
-    async (options?: { overrideDoc?: HeatingCableDoc; manual?: boolean }) => {
+    async (stepKey: HeatingCableStageKey, options?: { overrideDoc?: HeatingCableDoc; manual?: boolean }) => {
       if (!room) return false;
       const manualToast = options?.manual ?? false;
-      let useOverride = options?.overrideDoc;
+      const source = options?.overrideDoc ?? heatingCableDocRef.current;
 
       if (heatingSaveUiIdleTimerRef.current) {
         clearTimeout(heatingSaveUiIdleTimerRef.current);
@@ -1702,38 +1703,32 @@ export default function RoomDetail() {
       }
       setHeatingCableSaveUi('saving');
 
-      let chain = 0;
       try {
-        while (chain < 5) {
-          const source = useOverride ?? heatingCableDocRef.current;
-          useOverride = undefined;
-          const payload = normalizeMainStageOrderForWorker(buildHeatingCablePayload(source, displayName));
-          if (import.meta.env.DEV) {
-            console.debug('[HeatingCable] autosave', {
-              activeStepKey: firstIncompleteMainHeatingStageKey(heatingCableDocRef.current),
-              stepBeingSaved: firstIncompleteMainHeatingStageKey(source),
-              payload,
-            });
-          }
-          heatingTrace('worker save payload', {
-            roomId: room.id,
-            payload,
+        const payloadDoc = normalizeMainStageOrderForWorker(buildHeatingCablePayload(source, displayName));
+        const stage = payloadDoc[stepKey] || {};
+        const stepPayload = {
+          resistance: stage.resistance_ohm || '',
+          insulation: stage.insulation_mohm || '',
+          performed_at: stage.date || '',
+          note: stage.note || '',
+          photos: Array.isArray(stage.photos) ? stage.photos : [],
+        };
+        if (import.meta.env.DEV) {
+          console.debug('[HeatingCable] save', {
+            activeStepKey: firstIncompleteMainHeatingStageKey(heatingCableDocRef.current),
+            stepBeingSaved: stepKey,
+            endpoint: `/api/v1/rooms/${room.id}/heating-cable/${stepKey}`,
+            payloadKeys: Object.keys(stepPayload),
+            after_cable_laid_present: Object.prototype.hasOwnProperty.call(stepPayload, 'after_cable_laid'),
+            payload: stepPayload,
           });
-          await client.entities.rooms.update({
-            id: String(room.id),
-            data: { heating_cable_doc: payload } as Record<string, unknown>,
-          });
-          skipHeatingDocSyncRef.current = true;
-          setRoom((prev) => (prev ? { ...prev, heating_cable_doc: payload } : null));
-
-          const fpSent = heatingCableContentFingerprint(payload);
-          const fpLatest = heatingCableContentFingerprint(
-            buildHeatingCablePayload(heatingCableDocRef.current, displayName)
-          );
-          if (fpSent === fpLatest) break;
-          chain++;
         }
-        setHeatingCableSyncedFp(heatingCablePersistFingerprint(heatingCableDocRef.current, displayName));
+        const res = await patchHeatingCableStep(room.id, stepKey, stepPayload);
+        const persisted = normalizeHeatingCableDoc(res?.heating_cable_doc);
+        skipHeatingDocSyncRef.current = true;
+        setHeatingCableDoc(persisted);
+        setRoom((prev) => (prev ? { ...prev, heating_cable_doc: persisted } : null));
+        setHeatingCableSyncedFp(heatingCablePersistFingerprint(persisted, displayName));
         await refreshRoom();
         setHeatingCableSaveUi('saved');
         heatingSaveUiIdleTimerRef.current = setTimeout(() => {
@@ -1744,7 +1739,7 @@ export default function RoomDetail() {
         return true;
       } catch (err) {
         setHeatingCableSaveUi('error');
-        devLogApiFailure('heating_cable_doc.save', err);
+        devLogApiFailure(`heating_cable.${stepKey}.save`, err);
         const reason = apiFailureMessage(err);
         if (reason) {
           console.error('[HeatingCable] Save failed:', reason);
@@ -1756,11 +1751,12 @@ export default function RoomDetail() {
     [room, displayName, refreshRoom]
   );
 
-  const scheduleHeatingAutosave = useCallback(() => {
+  const scheduleHeatingAutosave = useCallback((stepKey: HeatingCableStageKey) => {
     if (heatingAutosaveTimerRef.current) clearTimeout(heatingAutosaveTimerRef.current);
+    heatingAutosaveStepRef.current = stepKey;
     heatingAutosaveTimerRef.current = setTimeout(() => {
       heatingAutosaveTimerRef.current = null;
-      void persistHeatingCableDoc();
+      void persistHeatingCableDoc(heatingAutosaveStepRef.current);
     }, HEATING_AUTOSAVE_DEBOUNCE_MS);
   }, [persistHeatingCableDoc]);
 
@@ -1770,7 +1766,8 @@ export default function RoomDetail() {
       clearTimeout(heatingAutosaveTimerRef.current);
       heatingAutosaveTimerRef.current = null;
     }
-    await persistHeatingCableDoc({ manual: true });
+    const target = firstIncompleteMainHeatingStageKey(heatingCableDocRef.current);
+    await persistHeatingCableDoc(target, { manual: true });
   }, [room, persistHeatingCableDoc]);
 
   const updateHeatingStageField = (
@@ -1802,7 +1799,7 @@ export default function RoomDetail() {
         [stageKey]: row,
       };
     });
-    scheduleHeatingAutosave();
+    scheduleHeatingAutosave(stageKey);
   };
 
   const addExtraHeatingStep = () => {
@@ -1820,7 +1817,7 @@ export default function RoomDetail() {
       });
       return { ...prev, extra_steps: extra };
     });
-    scheduleHeatingAutosave();
+    scheduleHeatingAutosave('after_screed_final');
   };
 
   const updateExtraHeatingStepField = (
@@ -1838,7 +1835,7 @@ export default function RoomDetail() {
       extra[stepIndex] = step;
       return { ...prev, extra_steps: extra };
     });
-    scheduleHeatingAutosave();
+    scheduleHeatingAutosave('after_screed_final');
   };
 
   const removeExtraHeatingStep = (stepIndex: number) => {
@@ -1847,7 +1844,7 @@ export default function RoomDetail() {
       extra.splice(stepIndex, 1);
       return { ...prev, extra_steps: extra };
     });
-    scheduleHeatingAutosave();
+    scheduleHeatingAutosave('after_screed_final');
   };
 
   const uploadHeatingModulePhoto = async (stageId: string, file: File) => {
@@ -1903,7 +1900,13 @@ export default function RoomDetail() {
     });
     const nextDoc = mergeHeatingModulePhotoIntoDoc(heatingCableDocRef.current, stageId, objectKey);
     setHeatingCableDoc(nextDoc);
-    await persistHeatingCableDoc({ overrideDoc: nextDoc });
+    if (
+      stageId === 'before_installation' ||
+      stageId === 'after_cable_laid' ||
+      stageId === 'after_screed_final'
+    ) {
+      await persistHeatingCableDoc(stageId, { overrideDoc: nextDoc });
+    }
     await loadData();
   };
 
@@ -1973,32 +1976,26 @@ export default function RoomDetail() {
         toast.error('Du må være logget inn som bruker for å bekrefte dette trinnet.');
         return;
       }
-      const completedByName = resolveWorkerActorLabel(displayName);
-      const nextDoc: HeatingCableDoc = {
-        ...heatingCableDocRef.current,
-        [stageKey]: {
-          ...current,
-          step_status: 'locked',
-          completed_by_user_id: workerUserId,
-          completed_by: workerUserId,
-          completed_by_name: completedByName || '',
-          completed_at: new Date().toISOString(),
-          performed_by: current.performed_by?.trim() ? current.performed_by : completedByName || '',
-          confirmation_text: HEATING_CONFIRM_TEXT,
-        },
-      };
       if (import.meta.env.DEV) {
         console.debug('[HeatingCable] confirm', {
           activeStepKey: firstIncompleteMainHeatingStageKey(heatingCableDocRef.current),
           stepBeingConfirmed: stageKey,
-          payload: nextDoc,
+          endpoint: `/api/v1/rooms/${room.id}/heating-cable/${stageKey}/confirm`,
+          payloadKeys: ['completed_by'],
+          after_cable_laid_present: false,
+          payload: { completed_by: workerUserId },
         });
       }
-      setHeatingCableDoc(nextDoc);
-      const ok = await persistHeatingCableDoc({ overrideDoc: nextDoc, manual: true });
-      if (ok) toast.success('Step completed and locked');
+      const res = await confirmHeatingCableStep(room.id, stageKey, { completed_by: workerUserId });
+      const persisted = normalizeHeatingCableDoc(res?.heating_cable_doc);
+      skipHeatingDocSyncRef.current = true;
+      setHeatingCableDoc(persisted);
+      setRoom((prev) => (prev ? { ...prev, heating_cable_doc: persisted } : null));
+      setHeatingCableSyncedFp(heatingCablePersistFingerprint(persisted, displayName));
+      await refreshRoom();
+      toast.success('Step completed and locked');
     },
-    [room, currentUserId, displayName, persistHeatingCableDoc]
+    [room, currentUserId, displayName, refreshRoom]
   );
 
   const toggleHeatingCableLock = async () => {
