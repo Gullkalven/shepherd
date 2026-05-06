@@ -474,7 +474,24 @@ export default function ProjectDetail() {
               sort: '-created_at',
               limit: 500,
             });
-            const items = Array.isArray(res?.data?.items) ? (res.data.items as RoomPhoto[]) : [];
+            const baseItems = Array.isArray(res?.data?.items) ? (res.data.items as RoomPhoto[]) : [];
+            const items = await Promise.all(
+              baseItems.map(async (photo) => {
+                try {
+                  const dlRes = await client.storage.getDownloadUrl({
+                    bucket_name: 'room-photos',
+                    object_key: photo.object_key,
+                  });
+                  return {
+                    ...photo,
+                    downloadUrl:
+                      typeof dlRes?.data?.download_url === 'string' ? dlRes.data.download_url : photo.downloadUrl,
+                  };
+                } catch {
+                  return photo;
+                }
+              })
+            );
             roomPhotos.set(room.id, items);
             for (const photo of items) photoById.set(photo.id, photo);
           } catch {
@@ -492,11 +509,11 @@ export default function ProjectDetail() {
           const gallery = buildHeatingCableGallerySections(doc, photos);
           const floor = floorById.get(room.floor_id);
           const floorLabel = floor?.name || `Floor ${floor?.floor_number ?? room.floor_id}`;
-          const stageRows: Array<{ id: string; label: string; row: Record<string, string> }> = [
+          const stageRows: Array<{ id: string; label: string; row: Record<string, unknown> }> = [
             ...HEATING_CABLE_STAGES.map((s) => ({
               id: s.key,
               label: s.label,
-              row: ((doc[s.key] || {}) as Record<string, string>) ?? {},
+              row: ((doc[s.key] || {}) as Record<string, unknown>) ?? {},
             })),
             ...((doc.extra_steps || [])
               .map((step, idx) => {
@@ -504,7 +521,7 @@ export default function ProjectDetail() {
                 return {
                   id: sid,
                   label: step.label?.trim() || `Extra step ${idx + 1}`,
-                  row: (step as Record<string, string>) ?? {},
+                  row: (step as Record<string, unknown>) ?? {},
                   visible: heatingExtraStepRowVisible(step),
                 };
               })
@@ -529,6 +546,23 @@ export default function ProjectDetail() {
                   const stagePhotos = gallery.find((g) => g.stageId === stage.id)?.items || [];
                   const fallbackPhotos = gallery.find((g) => g.label === stage.label)?.items || [];
                   const items = stagePhotos.length > 0 ? stagePhotos : fallbackPhotos;
+                  const docFieldPhotos = Array.isArray(stage.row.photos)
+                    ? stage.row.photos.filter((x) => typeof x === 'string' && x.trim())
+                    : [];
+                  const sourceUsed =
+                    stagePhotos.length > 0
+                      ? `gallery.stageId:${stage.id}`
+                      : fallbackPhotos.length > 0
+                        ? `gallery.label:${stage.label}`
+                        : docFieldPhotos.length > 0
+                          ? `heating_cable_doc.${stage.id}.photos`
+                          : 'none';
+                  console.info('[HeatingPdfExport] stage photos', {
+                    roomId: room.id,
+                    stepKey: stage.id,
+                    photoCount: items.length,
+                    sourcePath: sourceUsed,
+                  });
                   const photoCards = items
                     .filter((x) => x.displayUrl)
                     .map((x) => {

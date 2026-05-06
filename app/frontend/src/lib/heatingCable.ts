@@ -356,7 +356,7 @@ export function resolveHeatingCablePhotoDownloadUrl(
 ): string {
   const trimmed = String(stored || '').trim();
   if (!trimmed) return '';
-  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('blob:')) return trimmed;
+  if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('blob:') || trimmed.startsWith('data:')) return trimmed;
   const hit = resolvedPhotos.find((p) => p.object_key === trimmed);
   const u = hit?.downloadUrl;
   return typeof u === 'string' && u.trim() ? u.trim() : '';
