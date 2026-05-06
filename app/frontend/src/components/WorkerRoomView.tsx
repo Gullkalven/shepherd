@@ -106,6 +106,7 @@ type Props = {
   onPhaseSelect: (key: string) => void;
 
   heatingDerived: HeatingCableDerived;
+  currentWorkerUserId?: string | null;
 
   phaseReadOnly: boolean;
   /** True when this phase tab is locked for the worker (future phase or admin override). */
@@ -401,6 +402,23 @@ function heatingStageCollapseSummary(stage: HeatingCableStage): string {
 }
 
 export function WorkerRoomView(p: Props) {
+  const heatingStepConfirmBlockedReason = (
+    stageKey: HeatingCableStageKey,
+    stage: HeatingCableStage,
+    canAccessStage: boolean
+  ): string | null => {
+    if (!canAccessStage) return 'Fullforrige trinn før du bekrefter dette.';
+    if (!stage.resistance_ohm?.trim()) return 'Fyll inn motstand før bekreftelse.';
+    if (!stage.insulation_mohm?.trim()) return 'Fyll inn isolasjon før bekreftelse.';
+    if (!stage.date?.trim()) return 'Velg utført dato/tid før bekreftelse.';
+    if (!p.currentWorkerUserId?.trim()) return 'Du må være logget inn som bruker for å bekrefte dette trinnet.';
+    if (stageKey === 'after_cable_laid') {
+      const hasPhoto = Array.isArray(stage.photos) && stage.photos.some((x) => typeof x === 'string' && x.trim());
+      if (!hasPhoto) return 'Legg til minst ett bilde før bekreftelse av dette trinnet.';
+    }
+    return null;
+  };
+
   const selectedLabel = phaseLabel(p.selectedPhaseKey, p.phaseWorkflow);
   const inProgressKeys =
     p.inProgressPhaseKeys && p.inProgressPhaseKeys.length > 0
@@ -1197,6 +1215,7 @@ export function WorkerRoomView(p: Props) {
               const stageReadOnly = !p.canEditHeatingCable || p.heatingCableBlocking || isLocked || !canAccessStage;
               const sid = stage.key;
               const complete = isHeatingCableStageComplete(row, stage.key);
+              const confirmBlockedReason = heatingStepConfirmBlockedReason(stage.key, row, canAccessStage);
               const isFocus = focusStageId === sid;
               const open = heatingStageOpen(sid);
               const started = heatingStageHasAnyData(row);
@@ -1364,11 +1383,14 @@ export function WorkerRoomView(p: Props) {
                             type="button"
                             variant="secondary"
                             className="h-10 w-full"
-                            disabled={stageReadOnly || !complete}
+                            disabled={stageReadOnly || Boolean(confirmBlockedReason)}
                             onClick={() => setConfirmStageKey(stage.key)}
                           >
                             Confirm step
                           </Button>
+                          {confirmBlockedReason ? (
+                            <p className="text-[11px] text-muted-foreground leading-snug">{confirmBlockedReason}</p>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>

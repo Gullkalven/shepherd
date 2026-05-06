@@ -39,6 +39,7 @@ const DEFAULT_VISIBILITY: SectionVisibility = {
 interface PermissionContextType {
   role: AppRole;
   displayName: string | null;
+  currentUserId: string | null;
   loading: boolean;
   isAdmin: boolean;
   isWorker: boolean;
@@ -72,6 +73,7 @@ interface PermissionContextType {
 const PermissionContext = createContext<PermissionContextType>({
   role: 'worker',
   displayName: null,
+  currentUserId: null,
   loading: true,
   isAdmin: false,
   isWorker: true,
@@ -103,6 +105,7 @@ const PermissionContext = createContext<PermissionContextType>({
 export function PermissionProvider({ children, isAuthenticated }: { children: ReactNode; isAuthenticated: boolean }) {
   const [role, setRole] = useState<AppRole>('worker');
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sessionIsPinWorker, setSessionIsPinWorker] = useState(false);
   const [sessionIsProvisionalAdmin, setSessionIsProvisionalAdmin] = useState(false);
@@ -112,6 +115,7 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
     if (!isAuthenticated) {
       setRole('worker');
       setDisplayName(null);
+      setCurrentUserId(null);
       setSessionIsPinWorker(false);
       setSessionIsProvisionalAdmin(false);
       setLoading(false);
@@ -131,12 +135,14 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
         const data = res?.data as {
           app_role?: string;
           display_name?: string | null;
+          current_user_id?: string | null;
           is_worker_session?: boolean;
           is_provisional_admin?: boolean;
         };
         setSessionIsPinWorker(!!data?.is_worker_session);
         setSessionIsProvisionalAdmin(!!data?.is_provisional_admin);
         const pinLabel = readWorkerSession()?.name?.trim() || null;
+        setCurrentUserId(data?.current_user_id || null);
         if (data?.app_role) {
           setRole(normalizeAppRole(data.app_role));
           setDisplayName(data.display_name || pinLabel || null);
@@ -148,6 +154,7 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
           invalidateClientSession();
         }
         setRole('worker');
+        setCurrentUserId(null);
         setSessionIsPinWorker(false);
         setSessionIsProvisionalAdmin(false);
       } finally {
@@ -179,6 +186,7 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
       setSessionIsProvisionalAdmin(false);
       setRole(normalizeAppRole(localRole));
       setDisplayName(localUser?.name || null);
+      setCurrentUserId(typeof localUser?.id === 'string' ? localUser.id : null);
       setLoading(false);
       return;
     }
@@ -192,12 +200,14 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
       const data = res?.data as {
         app_role?: string;
         display_name?: string | null;
+        current_user_id?: string | null;
         is_worker_session?: boolean;
         is_provisional_admin?: boolean;
       };
       setSessionIsPinWorker(!!data?.is_worker_session);
       setSessionIsProvisionalAdmin(!!data?.is_provisional_admin);
       const pinLabel = readWorkerSession()?.name?.trim() || null;
+      setCurrentUserId(data?.current_user_id || null);
       if (data?.app_role) {
         setRole(normalizeAppRole(data.app_role));
         setDisplayName(data.display_name || pinLabel || null);
@@ -209,6 +219,7 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
         invalidateClientSession();
       }
       setRole('worker');
+      setCurrentUserId(null);
       setSessionIsPinWorker(false);
       setSessionIsProvisionalAdmin(false);
     } finally {
@@ -276,6 +287,7 @@ export function PermissionProvider({ children, isAuthenticated }: { children: Re
   const value: PermissionContextType = {
     role,
     displayName,
+    currentUserId,
     loading,
     isAdmin,
     isWorker,

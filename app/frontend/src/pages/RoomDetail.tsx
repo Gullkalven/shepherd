@@ -154,6 +154,34 @@ function buildHeatingCablePayload(
   };
 }
 
+function stripMainStageForLockedOrder(stageRaw: HeatingCableStage | undefined): HeatingCableStage {
+  const stage = stageRaw || {};
+  return {
+    ...stage,
+    resistance_ohm: '',
+    insulation_mohm: '',
+    date: '',
+    performed_by: '',
+    note: '',
+    photos: [],
+    images: [],
+  };
+}
+
+function normalizeMainStageOrderForWorker(doc: HeatingCableDoc): HeatingCableDoc {
+  const out: HeatingCableDoc = { ...doc };
+  const before = out.before_installation || {};
+  const after = out.after_cable_laid || {};
+  const final = out.after_screed_final || {};
+  const beforeLocked = before.step_status === 'locked';
+  const afterLocked = after.step_status === 'locked';
+  if (!beforeLocked && !afterLocked) out.after_cable_laid = stripMainStageForLockedOrder(after);
+  if ((!beforeLocked || !afterLocked) && final.step_status !== 'locked') {
+    out.after_screed_final = stripMainStageForLockedOrder(final);
+  }
+  return out;
+}
+
 /** Compare docs for drift detection — ignores `updated_at` only. */
 function heatingCableContentFingerprint(doc: HeatingCableDoc): string {
   const { updated_at: _u, ...rest } = doc;
@@ -430,6 +458,7 @@ export default function RoomDetail() {
     canCheckItem, canUploadPhoto, canDeletePhoto, canMovePhase,
     sectionVisibility,
     displayName,
+    currentUserId,
     loading: permissionsLoading,
     sessionIsPinWorker,
   } = usePermissions();
@@ -1671,7 +1700,7 @@ export default function RoomDetail() {
         while (chain < 5) {
           const source = useOverride ?? heatingCableDocRef.current;
           useOverride = undefined;
-          const payload = buildHeatingCablePayload(source, displayName);
+          const payload = normalizeMainStageOrderForWorker(buildHeatingCablePayload(source, displayName));
           heatingTrace('worker save payload', {
             roomId: room.id,
             payload,
@@ -1925,20 +1954,19 @@ export default function RoomDetail() {
         toast.error('Add at least one photo before completing "After cable laid".');
         return;
       }
-      const ws = readWorkerSession();
-      const workerId = ws?.workerId ? String(ws.workerId) : '';
-      if (!workerId) {
-        toast.error('Missing worker session id. Sign in again.');
+      const workerUserId = (currentUserId || '').trim();
+      if (!workerUserId) {
+        toast.error('Du må være logget inn som bruker for å bekrefte dette trinnet.');
         return;
       }
-      const completedByName = resolveWorkerActorLabel(ws?.name || displayName);
+      const completedByName = resolveWorkerActorLabel(displayName);
       const nextDoc: HeatingCableDoc = {
         ...heatingCableDocRef.current,
         [stageKey]: {
           ...current,
           step_status: 'locked',
-          completed_by_user_id: workerId,
-          completed_by: workerId,
+          completed_by_user_id: workerUserId,
+          completed_by: workerUserId,
           completed_by_name: completedByName || '',
           completed_at: new Date().toISOString(),
           performed_by: current.performed_by?.trim() ? current.performed_by : completedByName || '',
@@ -1949,7 +1977,7 @@ export default function RoomDetail() {
       const ok = await persistHeatingCableDoc({ overrideDoc: nextDoc, manual: true });
       if (ok) toast.success('Step completed and locked');
     },
-    [room, displayName, persistHeatingCableDoc]
+    [room, currentUserId, displayName, persistHeatingCableDoc]
   );
 
   const toggleHeatingCableLock = async () => {
@@ -2188,6 +2216,7 @@ export default function RoomDetail() {
               selectedPhaseKey={selPhase}
               onPhaseSelect={setPhaseTab}
               heatingDerived={heatingDerived}
+              currentWorkerUserId={currentUserId}
               phaseReadOnly={phaseReadOnly}
               phaseTabLocked={phaseWorkerLocked}
               editsBlocked={editsBlocked}

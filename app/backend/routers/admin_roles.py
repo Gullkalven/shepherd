@@ -52,6 +52,7 @@ class UserWithRoleResponse(BaseModel):
 class MyRoleResponse(BaseModel):
     app_role: str
     display_name: Optional[str] = None
+    current_user_id: Optional[str] = None
     is_worker_session: bool = False
     is_provisional_admin: bool = False
 
@@ -108,6 +109,7 @@ async def get_my_role(
         return MyRoleResponse(
             app_role=ROLE_WORKER,
             display_name=current_user.name,
+            current_user_id=str(current_user.id),
             is_worker_session=True,
         )
 
@@ -115,6 +117,7 @@ async def get_my_role(
         return MyRoleResponse(
             app_role=ROLE_ADMIN,
             display_name=current_user.name,
+            current_user_id=str(current_user.id),
             is_worker_session=False,
             is_provisional_admin=True,
         )
@@ -128,6 +131,7 @@ async def get_my_role(
         return MyRoleResponse(
             app_role=normalize_role(role_record.app_role),
             display_name=role_record.display_name,
+            current_user_id=str(current_user.id),
         )
 
     # Check if there are no roles at all (first user becomes admin)
@@ -144,10 +148,10 @@ async def get_my_role(
         )
         db.add(new_role)
         await db.commit()
-        return MyRoleResponse(app_role="admin", display_name=new_role.display_name)
+        return MyRoleResponse(app_role="admin", display_name=new_role.display_name, current_user_id=str(current_user.id))
 
     # Default role for users without an assigned role
-    return MyRoleResponse(app_role=ROLE_WORKER, display_name=None)
+    return MyRoleResponse(app_role=ROLE_WORKER, display_name=None, current_user_id=str(current_user.id))
 
 
 @router.get("/users", response_model=List[UserWithRoleResponse])
