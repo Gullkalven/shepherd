@@ -182,6 +182,13 @@ function normalizeMainStageOrderForWorker(doc: HeatingCableDoc): HeatingCableDoc
   return out;
 }
 
+function firstIncompleteMainHeatingStageKey(doc: HeatingCableDoc): HeatingCableStageKey {
+  for (const stage of HEATING_CABLE_STAGES) {
+    if (!isHeatingCableStageComplete(doc[stage.key], stage.key)) return stage.key;
+  }
+  return 'after_screed_final';
+}
+
 /** Compare docs for drift detection — ignores `updated_at` only. */
 function heatingCableContentFingerprint(doc: HeatingCableDoc): string {
   const { updated_at: _u, ...rest } = doc;
@@ -1701,6 +1708,13 @@ export default function RoomDetail() {
           const source = useOverride ?? heatingCableDocRef.current;
           useOverride = undefined;
           const payload = normalizeMainStageOrderForWorker(buildHeatingCablePayload(source, displayName));
+          if (import.meta.env.DEV) {
+            console.debug('[HeatingCable] autosave', {
+              activeStepKey: firstIncompleteMainHeatingStageKey(heatingCableDocRef.current),
+              stepBeingSaved: firstIncompleteMainHeatingStageKey(source),
+              payload,
+            });
+          }
           heatingTrace('worker save payload', {
             roomId: room.id,
             payload,
@@ -1973,6 +1987,13 @@ export default function RoomDetail() {
           confirmation_text: HEATING_CONFIRM_TEXT,
         },
       };
+      if (import.meta.env.DEV) {
+        console.debug('[HeatingCable] confirm', {
+          activeStepKey: firstIncompleteMainHeatingStageKey(heatingCableDocRef.current),
+          stepBeingConfirmed: stageKey,
+          payload: nextDoc,
+        });
+      }
       setHeatingCableDoc(nextDoc);
       const ok = await persistHeatingCableDoc({ overrideDoc: nextDoc, manual: true });
       if (ok) toast.success('Step completed and locked');

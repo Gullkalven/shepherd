@@ -335,6 +335,28 @@ def _heating_stage_content_fingerprint(stage_raw: Any) -> Dict[str, Any]:
     return out
 
 
+def _heating_stage_user_edit_fingerprint(stage_raw: Any) -> Dict[str, Any]:
+    """Only fields workers are expected to edit while documenting a stage."""
+    if not isinstance(stage_raw, dict):
+        return {}
+    photos_raw = stage_raw.get("photos")
+    if not isinstance(photos_raw, list):
+        photos_raw = stage_raw.get("images")
+    photos: List[str] = []
+    if isinstance(photos_raw, list):
+        for x in photos_raw:
+            if isinstance(x, str) and x.strip():
+                photos.append(x.strip())
+    return {
+        "resistance_ohm": str(stage_raw.get("resistance_ohm") or "").strip(),
+        "insulation_mohm": str(stage_raw.get("insulation_mohm") or "").strip(),
+        "date": str(stage_raw.get("date") or "").strip(),
+        "performed_by": str(stage_raw.get("performed_by") or "").strip(),
+        "note": str(stage_raw.get("note") or "").strip(),
+        "photos": photos,
+    }
+
+
 def ensure_worker_heating_doc_update_allowed(old_raw: Any, new_raw: Any, user_id: str) -> None:
     if new_raw is None:
         return
@@ -370,8 +392,9 @@ def ensure_worker_heating_doc_update_allowed(old_raw: Any, new_raw: Any, user_id
             prev_key = HEATING_STEP_KEYS[i - 1]
             prev_stage = new_doc.get(prev_key) if isinstance(new_doc.get(prev_key), dict) else {}
             prev_locked = prev_stage.get("step_status") == "locked"
-            current_has_data = bool(_heating_stage_content_fingerprint(new_stage))
-            if not prev_locked and (new_locked or current_has_data):
+            current_changed = _heating_stage_user_edit_fingerprint(new_stage) != _heating_stage_user_edit_fingerprint(old_stage)
+            current_has_user_data = bool(_heating_stage_user_edit_fingerprint(new_stage))
+            if not prev_locked and ((new_locked and not old_locked) or (current_changed and current_has_user_data)):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Heating step '{step_key}' is locked until '{prev_key}' is completed.",
