@@ -30,6 +30,12 @@ import {
 import { clearWorkerLastRoomIfMatchesProject } from '@/lib/workerLastRoom';
 import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
 import { clearStoredSelectedProjectIfMatches } from '@/lib/selectedProjectStorage';
+import {
+  HEATING_CABLE_STAGES,
+  buildHeatingCableGallerySections,
+  formatHeatingCableDateTimeReadable,
+  normalizeHeatingCableDoc,
+} from '@/lib/heatingCable';
 
 /** Compact labels for default phases; other keys use first letter */
 function phaseProgressLetter(key: string): string {
@@ -60,6 +66,15 @@ interface Room {
   heating_cable_doc?: unknown;
 }
 
+interface RoomPhoto {
+  id: number;
+  room_id: number;
+  object_key: string;
+  caption?: string | null;
+  downloadUrl?: string;
+  created_at?: string | null;
+}
+
 interface ProjectTaskRow {
   room_id: number;
   phase?: string | null;
@@ -85,6 +100,9 @@ export default function ProjectDetail() {
   const [floorName, setFloorName] = useState('');
   const [creating, setCreating] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [showHeatingExport, setShowHeatingExport] = useState(false);
+  const [heatingExportRoomIds, setHeatingExportRoomIds] = useState<number[]>([]);
+  const [exportingHeatingPdf, setExportingHeatingPdf] = useState(false);
   const [loading, setLoading] = useState(true);
   /** Non-404 failure — show retry without pretending the project exists. */
   const [loadError, setLoadError] = useState(false);
@@ -369,6 +387,137 @@ export default function ProjectDetail() {
 
   const routeProjectPath = `/project/${project.id}`;
 
+  const heatingRooms = allRooms.filter((r) => {
+    const doc = normalizeHeatingCableDoc(r.heating_cable_doc);
+    return HEATING_CABLE_STAGES.some((s) => Boolean(doc[s.key]));
+  });
+
+  const toggleHeatingRoom = (roomId: number) => {
+    setHeatingExportRoomIds((prev) =>
+      prev.includes(roomId) ? prev.filter((id) => id !== roomId) : [...prev, roomId]
+    );
+  };
+
+  const handleOpenHeatingExport = () => {
+    setHeatingExportRoomIds(heatingRooms.map((r) => r.id));
+    setShowHeatingExport(true);
+  };
+
+  const exportHeatingDocumentation = async () => {
+    if (!project || heatingExportRoomIds.length === 0) {
+      toast.error('Select at least one room');
+      return;
+    }
+    setExportingHeatingPdf(true);
+    try {
+      const roomById = new Map(allRooms.map((r) => [r.id, r]));
+      const floorById = new Map(floors.map((f) => [f.id, f]));
+      const selectedRooms = heatingExportRoomIds
+        .map((id) => roomById.get(id))
+        .filter((r): r is Room => Boolean(r));
+
+      const roomPhotos = new Map<number, RoomPhoto[]>();
+      await Promise.all(
+        selectedRooms.map(async (room) => {
+          try {
+            const res = await client.entities.room_photos.query({
+              query: { room_id: room.id },
+              sort: '-created_at',
+              limit: 500,
+            });
+            roomPhotos.set(room.id, Array.isArray(res?.data?.items) ? (res.data.items as RoomPhoto[]) : []);
+          } catch {
+            roomPhotos.set(room.id, []);
+          }
+        })
+      );
+
+      const sections = selectedRooms
+        .map((room) => {
+          const doc = normalizeHeatingCableDoc(room.heating_cable_doc);
+          const photos = roomPhotos.get(room.id) ?? [];
+          const gallery = buildHeatingCableGallerySections(doc, photos);
+          const floor = floorById.get(room.floor_id);
+          const floorLabel = floor?.name || `Floor ${floor?.floor_number ?? room.floor_id}`;
+          const stageRows = HEATING_CABLE_STAGES.map((s) => ({
+            label: s.label,
+            row: doc[s.key] || {},
+          }));
+          return `
+            <section class="room">
+              <h2>Room ${room.room_number}</h2>
+              <p><strong>Project:</strong> ${project.name}</p>
+              <p><strong>Floor/Room:</strong> ${floorLabel} / ${room.room_number}</p>
+              ${stageRows
+                .map((stage) => {
+                  const completedBy =
+                    stage.row.completed_by_name?.trim() ||
+                    stage.row.completed_by?.trim() ||
+                    stage.row.performed_by?.trim() ||
+                    '-';
+                  const registeredAt = formatHeatingCableDateTimeReadable(
+                    stage.row.completed_at?.trim() || stage.row.date?.trim() || ''
+                  );
+                  const stagePhotos = gallery.find((g) => g.stageId === (stage.row.id || ''))?.items || [];
+                  const fallbackPhotos = gallery.find((g) => g.label === stage.label)?.items || [];
+                  const items = stagePhotos.length > 0 ? stagePhotos : fallbackPhotos;
+                  return `
+                    <div class="stage">
+                      <h3>${stage.label}</h3>
+                      <p><strong>Resistance:</strong> ${stage.row.resistance_ohm || '-'}</p>
+                      <p><strong>Insulation:</strong> ${stage.row.insulation_mohm || '-'}</p>
+                      <p><strong>Registered:</strong> ${registeredAt || '-'}</p>
+                      <p><strong>Performed/Confirmed by:</strong> ${completedBy}</p>
+                      ${
+                        items.length > 0
+                          ? `<div class="photos">${items
+                              .filter((x) => x.displayUrl)
+                              .map((x) => `<img src="${x.displayUrl}" alt="${stage.label}" />`)
+                              .join('')}</div>`
+                          : '<p><strong>Photos:</strong> -</p>'
+                      }
+                    </div>
+                  `;
+                })
+                .join('')}
+            </section>
+          `;
+        })
+        .join('');
+
+      const w = window.open('', '_blank');
+      if (!w) throw new Error('Popup blocked');
+      w.document.write(`
+        <html>
+          <head>
+            <title>Heating Cable Documentation - ${project.name}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 20px; }
+              h1 { margin-bottom: 20px; }
+              .room { page-break-after: always; margin-bottom: 24px; }
+              .stage { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin: 10px 0; }
+              .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+              .photos img { width: 100%; height: 140px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; }
+            </style>
+          </head>
+          <body>
+            <h1>Heating Cable Documentation</h1>
+            ${sections}
+          </body>
+        </html>
+      `);
+      w.document.close();
+      w.focus();
+      w.print();
+      setShowHeatingExport(false);
+      toast.success('Export opened. Choose Save as PDF in the print dialog.');
+    } catch {
+      toast.error('Failed to export heating cable documentation');
+    } finally {
+      setExportingHeatingPdf(false);
+    }
+  };
+
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
       <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
@@ -390,6 +539,11 @@ export default function ProjectDetail() {
             {showDashboard && (
               <Card className="p-4">
                 <DashboardStats rooms={allRooms} />
+                <div className="mt-3">
+                  <Button type="button" variant="outline" className="h-10" onClick={handleOpenHeatingExport}>
+                    Export heating cable PDF
+                  </Button>
+                </div>
               </Card>
             )}
           </>
@@ -612,6 +766,37 @@ export default function ProjectDetail() {
               </Button>
             </DialogFooter>
           </DialogForm>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showHeatingExport} onOpenChange={setShowHeatingExport}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select rooms for heating cable PDF</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-80 space-y-2 overflow-y-auto rounded-md border border-border p-2">
+            {heatingRooms.map((room) => (
+              <label key={room.id} className="flex items-center gap-2 rounded px-2 py-1.5 hover:bg-muted/40">
+                <input
+                  type="checkbox"
+                  checked={heatingExportRoomIds.includes(room.id)}
+                  onChange={() => toggleHeatingRoom(room.id)}
+                />
+                <span className="text-sm">Room {room.room_number}</span>
+              </label>
+            ))}
+            {heatingRooms.length === 0 ? (
+              <p className="text-sm text-muted-foreground px-2 py-1">No rooms with heating cable documentation.</p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowHeatingExport(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={() => void exportHeatingDocumentation()} disabled={exportingHeatingPdf}>
+              {exportingHeatingPdf ? 'Preparing…' : 'Export PDF'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

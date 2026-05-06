@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -133,12 +132,12 @@ type Props = {
   heatingPhotoInputRefs: RefObject<Record<string, HTMLInputElement | null>>;
   onHeatingFieldChange: (
     stageKey: HeatingCableStageKey,
-    field: 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
+    field: 'resistance_ohm' | 'insulation_mohm' | 'date' | 'note',
     value: string
   ) => void;
   onExtraHeatingFieldChange: (
     index: number,
-    field: 'label' | 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
+    field: 'label' | 'resistance_ohm' | 'insulation_mohm' | 'date' | 'note',
     value: string
   ) => void;
   onHeatingStagePhotoChange: (stageId: string, file?: File) => void;
@@ -1308,12 +1307,6 @@ export function WorkerRoomView(p: Props) {
                           disabled={stageReadOnly}
                           onCommit={(v) => p.onHeatingFieldChange(stage.key, 'date', v)}
                         />
-                        <div className="space-y-1.5 pt-0.5">
-                          <Label className="text-[11px] font-medium text-muted-foreground">Performed by</Label>
-                          <div className="h-11 rounded-md border border-input bg-muted/20 px-3 text-sm text-foreground flex items-center">
-                            {row.performed_by?.trim() || p.heatingDefaultPerformedBy?.trim() || 'Signed-in worker'}
-                          </div>
-                        </div>
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-muted-foreground">Note (optional)</span>
@@ -1361,6 +1354,9 @@ export function WorkerRoomView(p: Props) {
                       ) : null}
                       {!isLocked && canAccessStage ? (
                         <div className="space-y-2 rounded-md border border-border/60 bg-background/70 px-3 py-2.5">
+                          <p className="text-[11px] text-muted-foreground leading-snug">
+                            Navnet ditt logges automatisk når du bekrefter dette trinnet.
+                          </p>
                           <Button
                             type="button"
                             variant="secondary"
@@ -1483,12 +1479,6 @@ export function WorkerRoomView(p: Props) {
                           disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onCommit={(v) => p.onExtraHeatingFieldChange(idx, 'date', v)}
                         />
-                        <div className="space-y-1.5 pt-0.5">
-                          <Label className="text-[11px] font-medium text-muted-foreground">Performed by</Label>
-                          <div className="h-11 rounded-md border border-input bg-muted/20 px-3 text-sm text-foreground flex items-center">
-                            {step.performed_by?.trim() || p.heatingDefaultPerformedBy?.trim() || 'Signed-in worker'}
-                          </div>
-                        </div>
                       </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-muted-foreground">Note (optional)</span>

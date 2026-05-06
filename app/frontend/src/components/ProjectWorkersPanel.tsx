@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogF
 import { Plus, Pencil, UserX, UserCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFailureMessage, devLogApiFailure } from '@/lib/apiErrors';
+import { getAPIBaseURL } from '@/lib/config';
 
 type ProjectWorker = {
   id: number;
@@ -130,11 +131,15 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
     if (!deleting) return;
     setDeletingBusy(true);
     try {
-      await client.apiCall.invoke({
-        url: `/api/v1/projects/${projectId}/workers/${deleting.id}`,
-        method: 'DELETE',
-        data: {},
-      });
+      const token = localStorage.getItem('token');
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+      if (typeof window.location.origin === 'string') headers['App-Host'] = window.location.origin;
+      const url = `${getAPIBaseURL().replace(/\/$/, '')}/api/v1/projects/${projectId}/workers/${deleting.id}`;
+      const res = await fetch(url, { method: 'DELETE', headers });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
       setWorkers((prev) => prev.filter((w) => w.id !== deleting.id));
       toast.success('Worker deleted');
       setDeleting(null);

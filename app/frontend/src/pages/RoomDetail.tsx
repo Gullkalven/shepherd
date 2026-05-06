@@ -76,7 +76,7 @@ import {
   heatingCableDateForDateInput,
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
-  formatHeatingCablePerformedShort,
+  formatHeatingCableDateTimeReadable,
   heatingStageHasAnyData,
   heatingCableStageCaption,
   buildHeatingCableGallerySections,
@@ -299,9 +299,17 @@ function coercePhaseLockOverrides(raw: unknown): Record<string, boolean> {
 }
 
 function coercePhaseAssignedWorkerIds(raw: unknown): Record<string, number> {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  let source: unknown = raw;
+  if (typeof source === 'string') {
+    try {
+      source = JSON.parse(source);
+    } catch {
+      source = null;
+    }
+  }
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
   const out: Record<string, number> = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(source as Record<string, unknown>)) {
     const key = String(k || '').trim();
     if (!key) continue;
     const id = Number(v);
@@ -1709,7 +1717,7 @@ export default function RoomDetail() {
 
   const updateHeatingStageField = (
     stageKey: HeatingCableStageKey,
-    field: 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
+    field: 'resistance_ohm' | 'insulation_mohm' | 'date' | 'note',
     value: string
   ) => {
     const idx = HEATING_CABLE_STAGES.findIndex((s) => s.key === stageKey);
@@ -1719,21 +1727,11 @@ export default function RoomDetail() {
         : heatingCableDocRef.current[HEATING_CABLE_STAGES[idx - 1].key]?.step_status === 'locked';
     const curLocked = heatingCableDocRef.current[stageKey]?.step_status === 'locked';
     if (!prevLocked || curLocked) return;
-    const defaultPerformer = resolveWorkerActorLabel(displayName);
     setHeatingCableDoc((prev) => {
       const row: HeatingCableStage = {
         ...(prev[stageKey] || {}),
         [field]: value,
       };
-      const measurementKeys = ['resistance_ohm', 'insulation_mohm', 'date'] as const;
-      if (
-        defaultPerformer &&
-        (measurementKeys as readonly string[]).includes(field) &&
-        value.trim() &&
-        !(row.performed_by?.trim())
-      ) {
-        row.performed_by = defaultPerformer;
-      }
       heatingTrace('worker local stage change', {
         roomId: room?.id,
         stageKey,
@@ -1769,26 +1767,16 @@ export default function RoomDetail() {
 
   const updateExtraHeatingStepField = (
     stepIndex: number,
-    field: 'label' | 'resistance_ohm' | 'insulation_mohm' | 'date' | 'performed_by' | 'note',
+    field: 'label' | 'resistance_ohm' | 'insulation_mohm' | 'date' | 'note',
     value: string
   ) => {
     if (stepIndex >= 0) {
       const prevLocked = heatingCableDocRef.current.after_screed_final?.step_status === 'locked';
       if (!prevLocked) return;
     }
-    const defaultPerformer = resolveWorkerActorLabel(displayName);
     setHeatingCableDoc((prev) => {
       const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
       const step: HeatingCableStage = { ...(extra[stepIndex] || {}), [field]: value };
-      const measurementKeys = ['resistance_ohm', 'insulation_mohm', 'date'] as const;
-      if (
-        defaultPerformer &&
-        (measurementKeys as readonly string[]).includes(field) &&
-        value.trim() &&
-        !(step.performed_by?.trim())
-      ) {
-        step.performed_by = defaultPerformer;
-      }
       extra[stepIndex] = step;
       return { ...prev, extra_steps: extra };
     });
@@ -2857,7 +2845,7 @@ export default function RoomDetail() {
                                   {completedAt ? (
                                     <p>
                                       <span className="text-muted-foreground">Completed at: </span>
-                                      <span className="text-foreground">{formatVisitDate(completedAt)}</span>
+                                      <span className="text-foreground">{formatHeatingCableDateTimeReadable(completedAt)}</span>
                                     </p>
                                   ) : null}
                                   {completedBy ? (
@@ -2881,7 +2869,7 @@ export default function RoomDetail() {
                                   {row.date ? (
                                     <p>
                                       <span className="text-muted-foreground">Date: </span>
-                                      <span className="text-foreground">{formatHeatingCablePerformedShort(row.date)}</span>
+                                      <span className="text-foreground">{formatHeatingCableDateTimeReadable(row.date)}</span>
                                     </p>
                                   ) : null}
                                   {row.performed_by ? (
@@ -2945,7 +2933,7 @@ export default function RoomDetail() {
                                   {completedAt ? (
                                     <p>
                                       <span className="text-muted-foreground">Completed at: </span>
-                                      <span className="text-foreground">{formatVisitDate(completedAt)}</span>
+                                      <span className="text-foreground">{formatHeatingCableDateTimeReadable(completedAt)}</span>
                                     </p>
                                   ) : null}
                                   {completedBy ? (
@@ -2969,7 +2957,7 @@ export default function RoomDetail() {
                                   {step.date ? (
                                     <p>
                                       <span className="text-muted-foreground">Date: </span>
-                                      <span className="text-foreground">{formatHeatingCablePerformedShort(step.date)}</span>
+                                      <span className="text-foreground">{formatHeatingCableDateTimeReadable(step.date)}</span>
                                     </p>
                                   ) : null}
                                   {step.performed_by ? (
@@ -3080,7 +3068,7 @@ export default function RoomDetail() {
                                 {completedAt ? (
                                   <p>
                                     <span className="text-muted-foreground">Completed at: </span>
-                                    <span className="text-foreground">{formatVisitDate(completedAt)}</span>
+                                    <span className="text-foreground">{formatHeatingCableDateTimeReadable(completedAt)}</span>
                                   </p>
                                 ) : null}
                                 {completedBy ? (
@@ -3236,7 +3224,7 @@ export default function RoomDetail() {
                                 {completedAt ? (
                                   <p>
                                     <span className="text-muted-foreground">Completed at: </span>
-                                    <span className="text-foreground">{formatVisitDate(completedAt)}</span>
+                                    <span className="text-foreground">{formatHeatingCableDateTimeReadable(completedAt)}</span>
                                   </p>
                                 ) : null}
                                 {completedBy ? (

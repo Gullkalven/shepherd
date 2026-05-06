@@ -197,6 +197,24 @@ export function formatHeatingCablePerformedShort(stored: string | undefined): st
   return `${d.getDate()} ${months[d.getMonth()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** Readable local date + time for admin/docs, e.g. 03/05/2026, 12:00. */
+export function formatHeatingCableDateTimeReadable(stored: string | undefined): string {
+  if (!stored?.trim()) return '';
+  const s = stored.trim();
+  const raw = /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T12:00` : s.replace(' ', 'T');
+  const t = Date.parse(raw);
+  if (Number.isNaN(t)) return s;
+  const d = new Date(t);
+  return d.toLocaleString(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
 export type HeatingCableFocusTarget =
   | { kind: 'main'; key: HeatingCableStageKey }
   | { kind: 'extra'; index: number };

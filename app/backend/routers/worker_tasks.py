@@ -206,6 +206,11 @@ async def list_my_phase_assignments(
     out: List[WorkerPhaseAssignmentResponse] = []
     for room in rooms:
         raw = getattr(room, "phase_assigned_worker_ids", None)
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except Exception:
+                raw = None
         if not isinstance(raw, dict):
             continue
         for phase_key_raw, assigned_worker_raw in raw.items():

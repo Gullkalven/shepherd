@@ -203,7 +203,7 @@ export default function WorkerTodayView({
   }, [roomsFlat]);
 
   useEffect(() => {
-    if (!hasUser || !sessionIsPinWorker) {
+    if (!hasUser) {
       setMyTasks([]);
       return;
     }
