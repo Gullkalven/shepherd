@@ -33,6 +33,7 @@ import { clearStoredSelectedProjectIfMatches } from '@/lib/selectedProjectStorag
 import {
   HEATING_CABLE_STAGES,
   buildHeatingCableGallerySections,
+  heatingExtraStepRowVisible,
   formatHeatingCableDateTimeReadable,
   normalizeHeatingCableDoc,
 } from '@/lib/heatingCable';
@@ -70,9 +71,56 @@ interface RoomPhoto {
   id: number;
   room_id: number;
   object_key: string;
+  user_id?: string;
   caption?: string | null;
   downloadUrl?: string;
   created_at?: string | null;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function parseUploadedByFromCaption(caption: string | null | undefined): string {
+  if (!caption) return '';
+  const marker = 'Uploaded by ';
+  const idx = caption.indexOf(marker);
+  if (idx < 0) return '';
+  return caption.slice(idx + marker.length).split(' · ')[0]?.trim() || '';
+}
+
+async function downscaleImageForPdf(url: string): Promise<string> {
+  const MAX_SIDE = 1600;
+  const JPEG_QUALITY = 0.78;
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const node = new Image();
+      node.crossOrigin = 'anonymous';
+      node.onload = () => resolve(node);
+      node.onerror = () => reject(new Error('image load failed'));
+      node.src = url;
+    });
+    const srcW = img.naturalWidth || img.width;
+    const srcH = img.naturalHeight || img.height;
+    if (!srcW || !srcH) return url;
+    const scale = Math.min(1, MAX_SIDE / Math.max(srcW, srcH));
+    const targetW = Math.max(1, Math.round(srcW * scale));
+    const targetH = Math.max(1, Math.round(srcH * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = targetW;
+    canvas.height = targetH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return url;
+    ctx.drawImage(img, 0, 0, targetW, targetH);
+    return canvas.toDataURL('image/jpeg', JPEG_QUALITY);
+  } catch {
+    return url;
+  }
 }
 
 interface ProjectTaskRow {
@@ -417,6 +465,7 @@ export default function ProjectDetail() {
         .filter((r): r is Room => Boolean(r));
 
       const roomPhotos = new Map<number, RoomPhoto[]>();
+      const photoById = new Map<number, RoomPhoto>();
       await Promise.all(
         selectedRooms.map(async (room) => {
           try {
@@ -425,13 +474,17 @@ export default function ProjectDetail() {
               sort: '-created_at',
               limit: 500,
             });
-            roomPhotos.set(room.id, Array.isArray(res?.data?.items) ? (res.data.items as RoomPhoto[]) : []);
+            const items = Array.isArray(res?.data?.items) ? (res.data.items as RoomPhoto[]) : [];
+            roomPhotos.set(room.id, items);
+            for (const photo of items) photoById.set(photo.id, photo);
           } catch {
             roomPhotos.set(room.id, []);
           }
         })
       );
 
+      const preparedPhotoUrlById = new Map<number, string>();
+      const photoUrlTasks: Promise<void>[] = [];
       const sections = selectedRooms
         .map((room) => {
           const doc = normalizeHeatingCableDoc(room.heating_cable_doc);
@@ -439,15 +492,30 @@ export default function ProjectDetail() {
           const gallery = buildHeatingCableGallerySections(doc, photos);
           const floor = floorById.get(room.floor_id);
           const floorLabel = floor?.name || `Floor ${floor?.floor_number ?? room.floor_id}`;
-          const stageRows = HEATING_CABLE_STAGES.map((s) => ({
-            label: s.label,
-            row: doc[s.key] || {},
-          }));
+          const stageRows: Array<{ id: string; label: string; row: Record<string, string> }> = [
+            ...HEATING_CABLE_STAGES.map((s) => ({
+              id: s.key,
+              label: s.label,
+              row: ((doc[s.key] || {}) as Record<string, string>) ?? {},
+            })),
+            ...((doc.extra_steps || [])
+              .map((step, idx) => {
+                const sid = (step.id && String(step.id).trim()) || `extra-${idx}`;
+                return {
+                  id: sid,
+                  label: step.label?.trim() || `Extra step ${idx + 1}`,
+                  row: (step as Record<string, string>) ?? {},
+                  visible: heatingExtraStepRowVisible(step),
+                };
+              })
+              .filter((x) => x.visible)
+              .map(({ id, label, row }) => ({ id, label, row }))),
+          ];
           return `
             <section class="room">
-              <h2>Room ${room.room_number}</h2>
-              <p><strong>Project:</strong> ${project.name}</p>
-              <p><strong>Floor/Room:</strong> ${floorLabel} / ${room.room_number}</p>
+              <h2>Room ${escapeHtml(room.room_number)}</h2>
+              <p><strong>Project:</strong> ${escapeHtml(project.name)}</p>
+              <p><strong>Floor/Room:</strong> ${escapeHtml(floorLabel)} / ${escapeHtml(room.room_number)}</p>
               ${stageRows
                 .map((stage) => {
                   const completedBy =
@@ -458,23 +526,48 @@ export default function ProjectDetail() {
                   const registeredAt = formatHeatingCableDateTimeReadable(
                     stage.row.completed_at?.trim() || stage.row.date?.trim() || ''
                   );
-                  const stagePhotos = gallery.find((g) => g.stageId === (stage.row.id || ''))?.items || [];
+                  const stagePhotos = gallery.find((g) => g.stageId === stage.id)?.items || [];
                   const fallbackPhotos = gallery.find((g) => g.label === stage.label)?.items || [];
                   const items = stagePhotos.length > 0 ? stagePhotos : fallbackPhotos;
+                  const photoCards = items
+                    .filter((x) => x.displayUrl)
+                    .map((x) => {
+                      if (typeof x.photoId === 'number') {
+                        photoUrlTasks.push(
+                          downscaleImageForPdf(x.displayUrl).then((prepared) => {
+                            preparedPhotoUrlById.set(x.photoId!, prepared);
+                          })
+                        );
+                      }
+                      const meta = typeof x.photoId === 'number' ? photoById.get(x.photoId) : undefined;
+                      const uploadedBy =
+                        parseUploadedByFromCaption(meta?.caption ?? null) || meta?.user_id?.trim() || '';
+                      const uploadedAt = formatHeatingCableDateTimeReadable(meta?.created_at || '');
+                      const details = [
+                        uploadedBy ? `<span>Uploaded by: ${escapeHtml(uploadedBy)}</span>` : '',
+                        uploadedAt ? `<span>Recorded: ${escapeHtml(uploadedAt)}</span>` : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ');
+                      return `
+                        <figure class="photo-card" data-photo-id="${x.photoId ?? ''}">
+                          <img src="${escapeHtml(x.displayUrl)}" alt="${escapeHtml(stage.label)}" />
+                          ${details ? `<figcaption>${details}</figcaption>` : ''}
+                        </figure>
+                      `;
+                    })
+                    .join('');
                   return `
                     <div class="stage">
-                      <h3>${stage.label}</h3>
-                      <p><strong>Resistance:</strong> ${stage.row.resistance_ohm || '-'}</p>
-                      <p><strong>Insulation:</strong> ${stage.row.insulation_mohm || '-'}</p>
-                      <p><strong>Registered:</strong> ${registeredAt || '-'}</p>
-                      <p><strong>Performed/Confirmed by:</strong> ${completedBy}</p>
+                      <h3>${escapeHtml(stage.label)}</h3>
+                      <p><strong>Resistance:</strong> ${escapeHtml(stage.row.resistance_ohm || '-')}</p>
+                      <p><strong>Insulation:</strong> ${escapeHtml(stage.row.insulation_mohm || '-')}</p>
+                      <p><strong>Registered:</strong> ${escapeHtml(registeredAt || '-')}</p>
+                      <p><strong>Performed/Confirmed by:</strong> ${escapeHtml(completedBy)}</p>
                       ${
                         items.length > 0
-                          ? `<div class="photos">${items
-                              .filter((x) => x.displayUrl)
-                              .map((x) => `<img src="${x.displayUrl}" alt="${stage.label}" />`)
-                              .join('')}</div>`
-                          : '<p><strong>Photos:</strong> -</p>'
+                          ? `<div class="photos">${photoCards}</div>`
+                          : '<p class="muted">No photos uploaded</p>'
                       }
                     </div>
                   `;
@@ -484,6 +577,8 @@ export default function ProjectDetail() {
           `;
         })
         .join('');
+
+      await Promise.all(photoUrlTasks);
 
       const w = window.open('', '_blank');
       if (!w) throw new Error('Popup blocked');
@@ -496,8 +591,11 @@ export default function ProjectDetail() {
               h1 { margin-bottom: 20px; }
               .room { page-break-after: always; margin-bottom: 24px; }
               .stage { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin: 10px 0; }
-              .photos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
-              .photos img { width: 100%; height: 140px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd; }
+              .photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+              .photo-card { margin: 0; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; background: #fff; }
+              .photo-card img { display: block; width: 100%; max-height: 220px; object-fit: cover; }
+              .photo-card figcaption { padding: 6px 8px; font-size: 11px; color: #444; }
+              .muted { color: #666; font-style: italic; }
             </style>
           </head>
           <body>
@@ -506,6 +604,12 @@ export default function ProjectDetail() {
           </body>
         </html>
       `);
+      for (const [photoId, preparedUrl] of preparedPhotoUrlById.entries()) {
+        const imgNodes = w.document.querySelectorAll(`img[data-photo-id="${photoId}"], figure[data-photo-id="${photoId}"] img`);
+        imgNodes.forEach((node) => {
+          if (node instanceof HTMLImageElement) node.src = preparedUrl;
+        });
+      }
       w.document.close();
       w.focus();
       w.print();
