@@ -7,11 +7,13 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.project_workers import Project_workers
 from models.projects import Projects
+from models.rooms import Rooms
+from models.worker_tasks import WorkerTasks
 from services.pin_hash import hash_pin, verify_pin
 
 logger = logging.getLogger(__name__)
@@ -151,7 +153,7 @@ async def delete_worker(
     project_id: int,
     worker_id: int,
 ) -> bool:
-    """Delete a worker record without touching historical room logs.
+    """Delete a worker record while preserving historical text logs.
 
     Historical logs keep plain `worker_name` strings, so deleting the worker
     account does not break old activity rows.
@@ -167,9 +169,55 @@ async def delete_worker(
     row = r.scalar_one_or_none()
     if not row:
         return False
-    await db.delete(row)
-    await db.commit()
-    return True
+    try:
+        # Remove assignment pointers in rooms so deleted workers do not remain on phase cards.
+        rooms_res = await db.execute(select(Rooms).where(Rooms.project_id == project_id))
+        rooms = rooms_res.scalars().all()
+        for room in rooms:
+            raw = getattr(room, "phase_assigned_worker_ids", None)
+            if not isinstance(raw, dict):
+                continue
+            next_map: Dict[str, Any] = {}
+            changed = False
+            for k, v in raw.items():
+                try:
+                    wid = int(v)
+                except (TypeError, ValueError):
+                    next_map[str(k)] = v
+                    continue
+                if wid == worker_id:
+                    changed = True
+                    continue
+                next_map[str(k)] = v
+            if changed:
+                room.phase_assigned_worker_ids = next_map or None
+
+        # Remove explicit worker task assignments for this account.
+        await db.execute(delete(WorkerTasks).where(WorkerTasks.worker_id == worker_id))
+
+        await db.delete(row)
+        await db.commit()
+        logger.info("ProjectWorkers.delete_worker deleted project_id=%s worker_id=%s", project_id, worker_id)
+        return True
+    except Exception:
+        await db.rollback()
+        logger.exception(
+            "ProjectWorkers.delete_worker failed project_id=%s worker_id=%s",
+            project_id,
+            worker_id,
+        )
+        # Fallback: soft-delete by deactivating and replacing PIN hash, keeping history intact.
+        row.active = False
+        row.pin_hash = hash_pin(f"deleted-{worker_id}-{datetime.now(timezone.utc).isoformat()}")
+        row.name = f"{row.name} (deleted)"
+        row.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        logger.warning(
+            "ProjectWorkers.delete_worker fallback_soft_delete project_id=%s worker_id=%s",
+            project_id,
+            worker_id,
+        )
+        return True
 
 
 async def _project_exists(db: AsyncSession, project_id: int) -> bool:

@@ -113,7 +113,28 @@ async def delete_worker_route(
     admin: UserResponse = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    deleted = await pw_svc.delete_worker(db, project_id=project_id, worker_id=worker_id)
-    if not deleted:
-        raise HTTPException(status_code=404, detail="Worker not found")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    logger.info(
+        "ProjectWorkersRoute.delete_worker start project_id=%s worker_id=%s admin_id=%s",
+        project_id,
+        worker_id,
+        getattr(admin, "id", None),
+    )
+    try:
+        deleted = await pw_svc.delete_worker(db, project_id=project_id, worker_id=worker_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Worker not found")
+        logger.info(
+            "ProjectWorkersRoute.delete_worker success project_id=%s worker_id=%s",
+            project_id,
+            worker_id,
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "ProjectWorkersRoute.delete_worker failed project_id=%s worker_id=%s",
+            project_id,
+            worker_id,
+        )
+        raise HTTPException(status_code=500, detail="Failed to delete worker")
