@@ -17,6 +17,8 @@ from services.rooms import RoomsService
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/rooms", tags=["room_heating_cable"])
+entities_router = APIRouter(prefix="/api/v1/entities/rooms", tags=["room_heating_cable"])
+admin_router = entities_router
 
 HEATING_STEP_KEYS: List[str] = ["before_installation", "after_cable_laid", "after_screed_final"]
 HEATING_CONFIRM_TEXT = "I confirm this step is completed"
@@ -26,6 +28,7 @@ class HeatingCableDraftPatch(BaseModel):
     resistance: Optional[str] = None
     insulation: Optional[str] = None
     performed_at: Optional[str] = None
+    recorded_at: Optional[str] = None
     photos: Optional[List[str]] = None
     note: Optional[str] = None
 
@@ -80,8 +83,7 @@ def _ensure_step_editable(doc: Dict[str, Any], step_key: str) -> None:
             raise HTTPException(status_code=400, detail=f"Heating step '{step_key}' is locked until '{prev_key}' is completed.")
 
 
-@router.patch("/{room_id}/heating-cable/{step_key}")
-async def patch_heating_cable_step(
+async def _patch_heating_cable_step_impl(
     room_id: int,
     step_key: str,
     body: HeatingCableDraftPatch,
@@ -90,6 +92,7 @@ async def patch_heating_cable_step(
     app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
+    logger.info("HEATING CABLE PATCH ROUTE HIT room_id=%s step_key=%s", room_id, step_key)
     await ensure_room_mutable(db, room_id, str(current_user.id), app_role, worker_project_scope(current_user))
     service = RoomsService(db)
     room = await service.get_by_id(
@@ -107,8 +110,9 @@ async def patch_heating_cable_step(
         stage["resistance_ohm"] = str(body.resistance)
     if body.insulation is not None:
         stage["insulation_mohm"] = str(body.insulation)
-    if body.performed_at is not None:
-        stage["date"] = str(body.performed_at)
+    performed_value = body.performed_at if body.performed_at is not None else body.recorded_at
+    if performed_value is not None:
+        stage["date"] = str(performed_value)
     if body.note is not None:
         stage["note"] = str(body.note)
     if body.photos is not None:
@@ -129,8 +133,7 @@ async def patch_heating_cable_step(
     return {"ok": True, "step_key": step_key, "heating_cable_doc": doc}
 
 
-@router.post("/{room_id}/heating-cable/{step_key}/confirm")
-async def confirm_heating_cable_step(
+async def _confirm_heating_cable_step_impl(
     room_id: int,
     step_key: str,
     body: HeatingCableConfirmBody,
@@ -139,6 +142,7 @@ async def confirm_heating_cable_step(
     app_role: str = Depends(get_current_app_role),
     db: AsyncSession = Depends(get_db),
 ):
+    logger.info("HEATING CABLE CONFIRM ROUTE HIT room_id=%s step_key=%s", room_id, step_key)
     await ensure_room_mutable(db, room_id, str(current_user.id), app_role, worker_project_scope(current_user))
     service = RoomsService(db)
     room = await service.get_by_id(
@@ -188,3 +192,55 @@ async def confirm_heating_cable_step(
     if not updated:
         raise HTTPException(status_code=404, detail="Room not found")
     return {"ok": True, "step_key": step_key, "heating_cable_doc": doc}
+
+
+@router.patch("/{room_id}/heating-cable/{step_key}")
+async def patch_heating_cable_step(
+    room_id: int,
+    step_key: str,
+    body: HeatingCableDraftPatch,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _patch_heating_cable_step_impl(room_id, step_key, body, current_user, _role, app_role, db)
+
+
+@entities_router.patch("/{room_id}/heating-cable/{step_key}")
+async def patch_heating_cable_step_entities(
+    room_id: int,
+    step_key: str,
+    body: HeatingCableDraftPatch,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _patch_heating_cable_step_impl(room_id, step_key, body, current_user, _role, app_role, db)
+
+
+@router.post("/{room_id}/heating-cable/{step_key}/confirm")
+async def confirm_heating_cable_step(
+    room_id: int,
+    step_key: str,
+    body: HeatingCableConfirmBody,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _confirm_heating_cable_step_impl(room_id, step_key, body, current_user, _role, app_role, db)
+
+
+@entities_router.post("/{room_id}/heating-cable/{step_key}/confirm")
+async def confirm_heating_cable_step_entities(
+    room_id: int,
+    step_key: str,
+    body: HeatingCableConfirmBody,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _confirm_heating_cable_step_impl(room_id, step_key, body, current_user, _role, app_role, db)
