@@ -58,6 +58,7 @@ export const HEATING_CABLE_STAGES: { key: HeatingCableStageKey; label: string }[
   { key: 'after_cable_laid', label: 'After cable laid' },
   { key: 'after_screed_final', label: 'After screed / final' },
 ];
+export const HEATING_CONFIRM_TEXT = 'I confirm this step is completed';
 
 function isFilled(v: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0;
@@ -139,14 +140,21 @@ function stageStarted(stage: HeatingCableStage | undefined): boolean {
 }
 
 /** All required measurement fields present for a stage. */
-export function isHeatingCableStageComplete(stage: HeatingCableStage | undefined): boolean {
+export function isHeatingCableStageComplete(
+  stage: HeatingCableStage | undefined,
+  stageKey?: HeatingCableStageKey
+): boolean {
   if (!stage) return false;
-  return (
+  const hasCoreValues =
     isFilled(stage.resistance_ohm) &&
     isFilled(stage.insulation_mohm) &&
-    isFilled(stage.date) &&
-    isFilled(stage.performed_by)
-  );
+    isFilled(stage.date);
+  if (!hasCoreValues) return false;
+  if (stageKey === 'after_cable_laid') {
+    const photos = Array.isArray(stage.photos) ? stage.photos : Array.isArray(stage.images) ? stage.images : [];
+    return photos.some((p) => typeof p === 'string' && p.trim().length > 0);
+  }
+  return true;
 }
 
 /** Value for `datetime-local` / legacy `date` inputs (local). */
@@ -223,7 +231,7 @@ export type HeatingCableFocusTarget =
 export function getHeatingCableFocusTarget(doc: HeatingCableDoc): HeatingCableFocusTarget | null {
   const normalized = normalizeHeatingCableDoc(doc);
   for (const { key } of HEATING_CABLE_STAGES) {
-    if (!isHeatingCableStageComplete(normalized[key])) return { kind: 'main', key };
+    if (!isHeatingCableStageComplete(normalized[key], key)) return { kind: 'main', key };
   }
   const extras = normalized.extra_steps || [];
   for (let i = 0; i < extras.length; i++) {
@@ -246,7 +254,7 @@ export function heatingDocumentationProgress(docRaw: unknown): { complete: numbe
   const doc = normalizeHeatingCableDoc(docRaw);
   let complete = 0;
   for (const stage of HEATING_CABLE_STAGES) {
-    if (isHeatingCableStageComplete(doc[stage.key])) complete++;
+    if (isHeatingCableStageComplete(doc[stage.key], stage.key)) complete++;
   }
   const extras = doc.extra_steps || [];
   let extraTotal = 0;
@@ -272,7 +280,7 @@ export function deriveHeatingCableStatus(docRaw: unknown): HeatingCableDerived {
   for (const stage of HEATING_CABLE_STAGES) {
     const value = doc[stage.key];
     const started = stageStarted(value);
-    const complete = isHeatingCableStageComplete(value);
+    const complete = isHeatingCableStageComplete(value, stage.key);
     hasStartedAny = hasStartedAny || started;
     if (!complete) allComplete = false;
     if (!started) missingStages.push(stage.key);

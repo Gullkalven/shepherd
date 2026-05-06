@@ -31,7 +31,7 @@ import {
   Lock, Unlock, ChevronDown, AlertTriangle, History, Calendar, Circle, EllipsisVertical,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { httpStatusFromError } from '@/lib/apiErrors';
+import { apiFailureMessage, devLogApiFailure, httpStatusFromError } from '@/lib/apiErrors';
 import { flashProjectNotFoundOnce } from '@/lib/projectNotFoundFlash';
 import { parseProjectRouteParam } from '@/lib/projectEntity';
 import { clearStoredSelectedProjectIfMatches } from '@/lib/selectedProjectStorage';
@@ -80,6 +80,7 @@ import {
   heatingStageHasAnyData,
   heatingCableStageCaption,
   buildHeatingCableGallerySections,
+  HEATING_CONFIRM_TEXT,
   isHeatingCablePhase,
   parseHeatingCableStageFromCaption,
   resolveHeatingCablePhotoDownloadUrl,
@@ -339,10 +340,17 @@ function coerceWorkflowDeviations(raw: unknown): WorkflowDeviation[] {
   return out;
 }
 
-function parseActivityTime(s: string | null | undefined): number {
+function parseTimestampMs(s: string | null | undefined): number {
   if (!s) return 0;
-  const t = Date.parse(String(s).replace(' ', 'T'));
+  const raw = String(s).trim().replace(' ', 'T');
+  if (!raw) return 0;
+  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/i.test(raw) ? raw : `${raw}Z`;
+  const t = Date.parse(normalized);
   return Number.isNaN(t) ? 0 : t;
+}
+
+function parseActivityTime(s: string | null | undefined): number {
+  return parseTimestampMs(s);
 }
 
 function formatActivityWhen(ts: number): string {
@@ -384,7 +392,9 @@ function isDeadlinePast(iso?: string | null): boolean {
 
 function formatVisitDate(dateStr: string): string {
   try {
-    const d = new Date(dateStr);
+    const t = parseTimestampMs(dateStr);
+    if (!t) return dateStr;
+    const d = new Date(t);
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -1689,9 +1699,14 @@ export default function RoomDetail() {
         }, HEATING_SAVE_UI_IDLE_MS);
         if (manualToast) toast.success('Heating cable documentation saved');
         return true;
-      } catch {
+      } catch (err) {
         setHeatingCableSaveUi('error');
-        if (manualToast) toast.error('Failed to save heating cable documentation');
+        devLogApiFailure('heating_cable_doc.save', err);
+        const reason = apiFailureMessage(err);
+        if (reason) {
+          console.error('[HeatingCable] Save failed:', reason);
+        }
+        if (manualToast) toast.error(reason ? `Failed to save: ${reason}` : 'Failed to save heating cable documentation');
         return false;
       }
     },
@@ -1906,6 +1921,10 @@ export default function RoomDetail() {
         toast.error('Fill all required fields before completing this step.');
         return;
       }
+      if (stageKey === 'after_cable_laid' && !(Array.isArray(current.photos) && current.photos.some((x) => !!x?.trim()))) {
+        toast.error('Add at least one photo before completing "After cable laid".');
+        return;
+      }
       const ws = readWorkerSession();
       const workerId = ws?.workerId ? String(ws.workerId) : '';
       if (!workerId) {
@@ -1923,7 +1942,7 @@ export default function RoomDetail() {
           completed_by_name: completedByName || '',
           completed_at: new Date().toISOString(),
           performed_by: current.performed_by?.trim() ? current.performed_by : completedByName || '',
-          confirmation_text: 'confirmed',
+          confirmation_text: HEATING_CONFIRM_TEXT,
         },
       };
       setHeatingCableDoc(nextDoc);

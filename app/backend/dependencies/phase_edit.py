@@ -307,13 +307,19 @@ async def ensure_worker_may_update_room_gated_content(
         )
 
 
-def _heating_stage_has_required_values(stage_raw: Any) -> bool:
+def _heating_stage_has_required_values(stage_raw: Any, step_key: str) -> bool:
     if not isinstance(stage_raw, dict):
         return False
-    required = ("resistance_ohm", "insulation_mohm", "date", "performed_by")
+    required = ("resistance_ohm", "insulation_mohm", "date")
     for k in required:
         v = stage_raw.get(k)
         if not isinstance(v, str) or not v.strip():
+            return False
+    if step_key == "after_cable_laid":
+        photos = stage_raw.get("photos")
+        if not isinstance(photos, list):
+            photos = stage_raw.get("images")
+        if not isinstance(photos, list) or not any(isinstance(x, str) and x.strip() for x in photos):
             return False
     return True
 
@@ -378,7 +384,7 @@ def ensure_worker_heating_doc_update_allowed(old_raw: Any, new_raw: Any, user_id
                     status_code=400,
                     detail=f"Heating step '{step_key}' requires exact confirmation text before locking.",
                 )
-            if not _heating_stage_has_required_values(new_stage):
+            if not _heating_stage_has_required_values(new_stage, step_key):
                 raise HTTPException(
                     status_code=400,
                     detail=f"Heating step '{step_key}' must be fully documented before completion.",

@@ -29,6 +29,7 @@ import {
 import {
   HEATING_CABLE_STAGES,
   HEATING_CABLE_DERIVED_STATUS_LABEL,
+  HEATING_CONFIRM_TEXT,
   buildHeatingCableGallerySections,
   formatHeatingCableDatetimeLocalNow,
   formatHeatingCablePerformedShort,
@@ -217,7 +218,9 @@ function heroPhaseStateLabel(s: HeroPhaseChipState): string {
 
 function formatVisitDateShort(dateStr: string): string {
   try {
-    const d = new Date(dateStr);
+    const raw = String(dateStr).trim().replace(' ', 'T');
+    const normalized = /(?:Z|[+-]\d{2}:\d{2})$/i.test(raw) ? raw : `${raw}Z`;
+    const d = new Date(normalized);
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -315,15 +318,15 @@ function HeatingPerformedCompactRow(props: {
 
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm leading-snug">
-        <span className="text-muted-foreground shrink-0">Performed:</span>
-        <span className="min-w-0 font-semibold tabular-nums text-foreground">{display || '—'}</span>
+      <div className="flex flex-col gap-1 text-sm leading-snug sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1.5 sm:gap-y-1">
+        <span className="text-muted-foreground">Performed:</span>
+        <span className="min-w-0 break-words font-semibold tabular-nums text-foreground">{display || '—'}</span>
         {!props.disabled ? (
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-8 shrink-0 px-2 text-xs font-medium"
+            className="h-8 w-full justify-start px-2 text-xs font-medium sm:w-auto sm:justify-center"
             onClick={() => setEditing((e) => !e)}
           >
             {editing ? 'Done' : 'Edit'}
@@ -1193,7 +1196,7 @@ export function WorkerRoomView(p: Props) {
               const isLocked = heatingStageIsLocked(row);
               const stageReadOnly = !p.canEditHeatingCable || p.heatingCableBlocking || isLocked || !canAccessStage;
               const sid = stage.key;
-              const complete = isHeatingCableStageComplete(row);
+              const complete = isHeatingCableStageComplete(row, stage.key);
               const isFocus = focusStageId === sid;
               const open = heatingStageOpen(sid);
               const started = heatingStageHasAnyData(row);
@@ -1673,7 +1676,7 @@ export function WorkerRoomView(p: Props) {
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle className="text-xl leading-snug">Confirm step</DialogTitle>
             <DialogDescription className="text-left text-base leading-relaxed text-muted-foreground">
-              Are you sure you want to confirm this step?
+              Are you sure you want to confirm this step? Signature text: "{HEATING_CONFIRM_TEXT}".
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">

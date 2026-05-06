@@ -18,6 +18,20 @@ from services.rooms import RoomsService
 logger = logging.getLogger(__name__)
 
 
+def _iso_utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _iso_utc_from_dt(value: Any) -> str:
+    if not hasattr(value, "astimezone"):
+        return _iso_utc_now()
+    try:
+        as_utc = value.astimezone(timezone.utc)
+        return as_utc.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    except Exception:
+        return _iso_utc_now()
+
+
 async def phase_display_label(db: AsyncSession, room: Rooms, phase_key: str) -> str:
     try:
         row = await db.execute(select(Projects).where(Projects.id == room.project_id))
@@ -71,7 +85,7 @@ async def append_room_activity(
         return False
     raw = getattr(room, "activity_log", None)
     log: List[Dict[str, Any]] = list(raw) if isinstance(raw, list) else []
-    ts = at_iso or datetime.now(timezone.utc).isoformat()
+    ts = at_iso or _iso_utc_now()
     entry: Dict[str, Any] = {
         "id": str(uuid.uuid4()),
         "at": ts,
@@ -130,7 +144,7 @@ async def maybe_backfill_legacy_visits_photos(
             pk = keys_wf[0] if keys_wf else ""
         label = await phase_display_label(db, room, pk)
         visited = getattr(v, "visited_at", None)
-        ts = visited.isoformat() if hasattr(visited, "isoformat") else datetime.now(timezone.utc).isoformat()
+        ts = _iso_utc_from_dt(visited)
         aid = getattr(v, "area_id", None)
         if isinstance(aid, str):
             aid = aid.strip() or None
@@ -164,7 +178,7 @@ async def maybe_backfill_legacy_visits_photos(
             pk = keys_wf[0] if keys_wf else ""
         label = await phase_display_label(db, room, pk)
         created = getattr(p, "created_at", None)
-        ts = created.isoformat() if hasattr(created, "isoformat") else datetime.now(timezone.utc).isoformat()
+        ts = _iso_utc_from_dt(created)
         aid = getattr(p, "area_id", None)
         if isinstance(aid, str):
             aid = aid.strip() or None
