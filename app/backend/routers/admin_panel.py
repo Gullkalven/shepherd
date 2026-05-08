@@ -26,7 +26,12 @@ DEFAULT_FEATURES = {k: True for k in FEATURE_KEYS}
 
 class FeatureToggle(BaseModel):
     key: str
+    label: Optional[str] = None
     enabled: bool
+
+
+class FeaturesResponse(BaseModel):
+    features: List[FeatureToggle]
 
 
 class ProjectOverviewResponse(BaseModel):
@@ -37,6 +42,7 @@ class ProjectOverviewResponse(BaseModel):
     active_workers: int
     site_workers: int = 0
     admin_count: int = 0
+    enabled_feature_count: int = 0
     enabled_features: List[str]
 
 
@@ -111,11 +117,12 @@ async def project_overview(
         active_workers=sum(1 for w in workers if bool(w.active)),
         site_workers=len(workers),
         admin_count=admin_count,
+        enabled_feature_count=len(enabled),
         enabled_features=enabled,
     )
 
 
-@router.get("/projects/{project_id}/features", response_model=List[FeatureToggle])
+@router.get("/projects/{project_id}/features", response_model=FeaturesResponse)
 async def get_project_features(
     project_id: int,
     admin: UserResponse = Depends(require_admin),
@@ -126,7 +133,16 @@ async def get_project_features(
     if project_result.scalar_one_or_none() is None:
         raise HTTPException(status_code=404, detail="Project not found")
     feature_map = await _read_project_features(db, project_id)
-    return [FeatureToggle(key=key, enabled=feature_map[key]) for key in FEATURE_KEYS]
+    return FeaturesResponse(
+        features=[
+            FeatureToggle(
+                key=key,
+                label=key.replace("_", " ").title(),
+                enabled=feature_map[key],
+            )
+            for key in FEATURE_KEYS
+        ]
+    )
 
 
 @router.put("/projects/{project_id}/features/{feature_key}", response_model=FeatureToggle)

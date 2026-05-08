@@ -33,6 +33,7 @@ interface ProjectOverview {
 
 interface FeatureToggle {
   key: string;
+  label?: string;
   enabled: boolean;
 }
 
@@ -126,7 +127,13 @@ export default function AdminUsers() {
       ]);
       if (requestId !== projectRequestSeq.current) return;
       setOverview((overviewRes?.data ?? null) as ProjectOverview | null);
-      setFeatures(Array.isArray(featuresRes?.data) ? (featuresRes.data as FeatureToggle[]) : []);
+      const featuresPayload = featuresRes?.data as { features?: FeatureToggle[] } | FeatureToggle[] | undefined;
+      const parsedFeatures = Array.isArray(featuresPayload)
+        ? featuresPayload
+        : Array.isArray(featuresPayload?.features)
+          ? featuresPayload.features
+          : [];
+      setFeatures(parsedFeatures);
       setSiteWorkers(Array.isArray(workersRes?.data) ? (workersRes.data as SiteWorkerCard[]) : []);
     } catch (e: unknown) {
       if (requestId !== projectRequestSeq.current) return;
@@ -141,8 +148,9 @@ export default function AdminUsers() {
       }
       throw e;
     } finally {
-      if (requestId !== projectRequestSeq.current) return;
-      setProjectScopedLoading(false);
+      if (requestId === projectRequestSeq.current) {
+        setProjectScopedLoading(false);
+      }
     }
   }, [selectedProjectId]);
 
@@ -376,7 +384,7 @@ export default function AdminUsers() {
             <h3 className="font-semibold">Enabled Features</h3>
             {features.map((feature) => (
               <div key={feature.key} className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-                <span className="text-sm font-medium">{FEATURE_LABELS[feature.key] ?? feature.key}</span>
+                <span className="text-sm font-medium">{feature.label || FEATURE_LABELS[feature.key] || feature.key}</span>
                 <Switch checked={feature.enabled} onCheckedChange={() => void toggleFeature(feature)} />
               </div>
             ))}

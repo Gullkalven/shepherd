@@ -57,6 +57,18 @@ class SystemAdminResetPasswordRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class SystemAdminListItem(BaseModel):
+    id: str
+    user_id: str
+    email: str
+    name: str
+    role: str = ROLE_ADMIN
+    app_role: str = ROLE_ADMIN
+    is_current_user: bool = False
+    can_remove: bool = False
+    display_name: Optional[str] = None
+
+
 class MyRoleResponse(BaseModel):
     app_role: str
     display_name: Optional[str] = None
@@ -267,12 +279,12 @@ async def assign_role(
     )
 
 
-@router.get("/system-admins", response_model=List[UserWithRoleResponse])
+@router.get("/system-admins", response_model=List[SystemAdminListItem])
 async def list_system_admins(
     admin: UserResponse = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    del admin
+    current_admin_id = str(admin.id)
     users_result = await db.execute(select(User))
     users = users_result.scalars().all()
     users_map = {u.id: u for u in users}
@@ -280,18 +292,28 @@ async def list_system_admins(
     roles_result = await db.execute(select(User_roles))
     roles = roles_result.scalars().all()
     admin_roles = [r for r in roles if normalize_role(r.app_role) == ROLE_ADMIN]
+    admin_count = len(admin_roles)
 
-    response: List[UserWithRoleResponse] = []
+    response: List[SystemAdminListItem] = []
     for role_record in admin_roles:
         user = users_map.get(role_record.user_id)
+        name_value = (
+            (user.name if user and user.name else None)
+            or role_record.display_name
+            or (user.email if user and user.email else "")
+        )
+        can_remove = admin_count > 1 and role_record.user_id != current_admin_id
         response.append(
-            UserWithRoleResponse(
+            SystemAdminListItem(
+                id=role_record.user_id,
                 user_id=role_record.user_id,
                 email=user.email if user else "",
-                name=user.name if user else role_record.display_name,
+                name=name_value,
+                role=ROLE_ADMIN,
                 app_role=ROLE_ADMIN,
+                is_current_user=role_record.user_id == current_admin_id,
+                can_remove=can_remove,
                 display_name=role_record.display_name,
-                role_id=role_record.id,
             )
         )
     return sorted(response, key=lambda row: (row.name or row.email or "").lower())
