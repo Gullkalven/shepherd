@@ -40,9 +40,10 @@ class DatabaseManager:
         """
         try:
             url = make_url(raw_url)
-        except Exception as e:
-            # If parsing fails, fall back to original; engine creation will raise with details
-            logger.error(f"Failed to parse database URL: {e}")
+        except Exception:
+            # If parsing fails, fall back to original; engine creation will raise with details.
+            # Intentionally avoid logging raw URL/error details to prevent credential leakage.
+            logger.error("Failed to parse database URL safely.")
             return raw_url
 
         drivername = url.drivername or ""
@@ -58,6 +59,7 @@ class DatabaseManager:
             self._check_db_exist(raw_url)
         elif drivername in ("postgresql", "postgres"):
             url = url.set(drivername="postgresql+asyncpg")
+            logger.info("Detected PostgreSQL sync URL; converting to asyncpg driver internally.")
         elif drivername in ("mysql",):
             url = url.set(drivername="mysql+aiomysql")
         elif drivername in ("mariadb",):
@@ -207,8 +209,8 @@ class DatabaseManager:
             logger.info("Async session maker created successfully")
 
             logger.info("Database connection initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize database: {e}", exc_info=True)
+        except Exception:
+            logger.error("Failed to initialize database engine/session safely (details redacted).")
             raise
 
     async def close_db(self):
