@@ -45,6 +45,43 @@ def _sha256_prefix8(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
 
 
+# Known async driver prefixes (longest / most specific first where relevant).
+_ASYNC_DRIVER_PREFIXES: tuple[str, ...] = (
+    "postgresql+asyncpg://",
+    "postgres+asyncpg://",
+    "sqlite+aiosqlite://",
+    "mysql+aiomysql://",
+    "mariadb+aiomysql://",
+)
+
+# Sync scheme -> async driver prefix (single prefix replacement only; never parse/rebuild URLs).
+_SYNC_TO_ASYNC_PREFIX: tuple[tuple[str, str], ...] = (
+    ("postgresql://", "postgresql+asyncpg://"),
+    ("postgres://", "postgresql+asyncpg://"),
+    ("sqlite://", "sqlite+aiosqlite://"),
+    ("mysql://", "mysql+aiomysql://"),
+    ("mariadb://", "mariadb+aiomysql://"),
+)
+
+
+def normalize_async_database_url(raw_url: str) -> str:
+    """Ensure async SQLAlchemy drivers using **prefix replacement only**.
+
+    Does not parse, decode, or re-encode credentials — avoids corrupting passwords with
+    special characters when converting e.g. ``postgresql://`` to ``postgresql+asyncpg://``.
+    """
+    url = raw_url.strip()
+    if not url:
+        return url
+    for async_prefix in _ASYNC_DRIVER_PREFIXES:
+        if url.startswith(async_prefix):
+            return url
+    for sync_prefix, async_prefix in _SYNC_TO_ASYNC_PREFIX:
+        if url.startswith(sync_prefix):
+            return url.replace(sync_prefix, async_prefix, 1)
+    return url
+
+
 def _database_url_safe_fingerprint(raw_url: str) -> dict[str, Any]:
     """Parse URL for non-secret diagnostics; never logs raw URL or password."""
     digest = _sha256_prefix8(raw_url)
@@ -75,6 +112,37 @@ def _database_url_safe_fingerprint(raw_url: str) -> dict[str, Any]:
             "url_sha256_prefix": digest,
             "parse_ok": False,
         }
+
+
+def log_database_connection_diagnostics(log: logging.Logger, raw_url: str, normalized_url: str) -> None:
+    """Log safe fields and URL fingerprints before opening a connection (no password or full URL)."""
+    fp_raw = _database_url_safe_fingerprint(raw_url)
+    fp_norm = _database_url_safe_fingerprint(normalized_url)
+    pw_len_raw = fp_raw["password_length"]
+    pw_len_norm = fp_norm["password_length"]
+    log.info("DB pre-connect diagnostics: username=%s", fp_raw["username"] if fp_raw["username"] else "(empty)")
+    log.info("DB pre-connect diagnostics: host=%s", fp_raw["host"] if fp_raw["host"] else "(empty)")
+    log.info("DB pre-connect diagnostics: database=%s", fp_raw["database"] if fp_raw["database"] else "(empty)")
+    log.info("DB pre-connect diagnostics: password_length=%s (raw), %s (normalized)", pw_len_raw, pw_len_norm)
+    log.info("DB pre-connect diagnostics: raw DATABASE_URL sha256 prefix=%s", fp_raw["url_sha256_prefix"])
+    log.info(
+        "DB pre-connect diagnostics: normalized DATABASE_URL sha256 prefix=%s",
+        fp_norm["url_sha256_prefix"],
+    )
+    raw_stripped = raw_url.strip()
+    norm_stripped = normalized_url.strip()
+    if raw_stripped == norm_stripped:
+        log.info("DB pre-connect diagnostics: driver prefix unchanged; raw and normalized fingerprints match.")
+    else:
+        sha_differs_only_by_prefix = pw_len_raw == pw_len_norm and fp_raw["url_sha256_prefix"] != fp_norm[
+            "url_sha256_prefix"
+        ]
+        log.info(
+            "DB pre-connect diagnostics: password length unchanged=%s; "
+            "sha256 prefixes differ (driver prefix only)=%s",
+            pw_len_raw == pw_len_norm,
+            sha_differs_only_by_prefix,
+        )
 
 
 def _env_nonempty(key: str) -> bool:
@@ -158,14 +226,17 @@ def log_early_database_url_diagnostics(log: logging.Logger) -> None:
     resolution = resolve_database_url()
     raw = resolution.url or ""
     fp = _database_url_safe_fingerprint(raw)
+    normalized = normalize_async_database_url(raw)
+    fp_norm = _database_url_safe_fingerprint(normalized)
 
     log.info("DATABASE_URL exists: %s", "yes" if _env_nonempty("DATABASE_URL") else "no")
     log.info("source: %s", "os.environ" if resolution.from_os_environ else "settings.database_url")
     log.info("username: %s", fp["username"] if fp["username"] else "(empty)")
     log.info("host: %s", fp["host"] if fp["host"] else "(empty)")
     log.info("database: %s", fp["database"] if fp["database"] else "(empty)")
-    log.info("password length: %s", fp["password_length"])
-    log.info("sha256 (first 8 chars): %s", fp["url_sha256_prefix"])
+    log.info("password length: %s (raw), %s (normalized)", fp["password_length"], fp_norm["password_length"])
+    log.info("raw DATABASE_URL sha256 prefix: %s", fp["url_sha256_prefix"])
+    log.info("normalized DATABASE_URL sha256 prefix: %s", fp_norm["url_sha256_prefix"])
 
 
 class Base(DeclarativeBase):
@@ -183,44 +254,18 @@ class DatabaseManager:
     def _normalize_async_database_url(self, raw_url: str) -> str:
         """Ensure the database URL uses an async driver compatible with SQLAlchemy asyncio.
 
-        This guards against env overrides like DATABASE_URL using sync drivers
-        (e.g., sqlite:/// or postgresql://), which would otherwise load 'pysqlite' or
-        other sync drivers and break async engine initialization.
+        Uses prefix replacement only (see :func:`normalize_async_database_url`) so credentials
+        in the URL are never re-serialized by a URL parser.
         """
-        try:
-            url = make_url(raw_url)
-        except Exception:
-            # If parsing fails, fall back to original; engine creation will raise with details.
-            # Intentionally avoid logging raw URL/error details to prevent credential leakage.
-            logger.error("Failed to parse database URL safely.")
-            return raw_url
-
-        drivername = url.drivername or ""
-
-        # Already async drivers
-        if "+aiosqlite" in drivername or "+asyncpg" in drivername or "+aiomysql" in drivername:
-            self._check_db_exist(raw_url)
-            return raw_url
-
-        # Map common sync schemes to async equivalents
-        if drivername == "sqlite":
-            url = url.set(drivername="sqlite+aiosqlite")
-            self._check_db_exist(raw_url)
-        elif drivername in ("postgresql", "postgres"):
-            url = url.set(drivername="postgresql+asyncpg")
-            logger.info("Detected PostgreSQL sync URL; converting to asyncpg driver internally.")
-        elif drivername in ("mysql",):
-            url = url.set(drivername="mysql+aiomysql")
-        elif drivername in ("mariadb",):
-            url = url.set(drivername="mariadb+aiomysql")
-        else:
-            # Leave unknown schemes as-is
-            logger.warning(f"Unknown database driver: {drivername}")
-            return raw_url
-
-        normalized = str(url)
-        if normalized != raw_url:
-            logger.warning("Adjusted database URL driver for async compatibility")
+        normalized = normalize_async_database_url(raw_url)
+        if normalized != raw_url.strip():
+            logger.info("Adjusted database URL driver for async compatibility (prefix-only; credentials unchanged).")
+        # Detect unknown sync schemes: unchanged URL and not a known async prefix.
+        first = normalized.split("://", 1)[0].lower() if "://" in normalized else ""
+        known = first.endswith("+asyncpg") or first.endswith("+aiosqlite") or first.endswith("+aiomysql")
+        if not known and normalized == raw_url.strip():
+            logger.warning("Unknown or non-async database URL scheme prefix: %s", first or "(empty)")
+        self._check_db_exist(normalized)
         return normalized
 
     @staticmethod
@@ -319,9 +364,11 @@ class DatabaseManager:
                 raise RuntimeError(f"Invalid production database URL: {exc}") from exc
 
         try:
+            raw_for_engine = database_url
             logger.info("Normalizing database URL for async compatibility...")
             database_url = self._normalize_async_database_url(database_url)
             logger.info("Database dialect (after async normalization): %s", self._database_dialect(database_url))
+            log_database_connection_diagnostics(logger, raw_for_engine, database_url)
 
             logger.info("Creating async database engine...")
             # Configure engine based on environment (Lambda vs non-Lambda)
