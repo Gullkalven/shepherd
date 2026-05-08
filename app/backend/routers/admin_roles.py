@@ -49,6 +49,14 @@ class UserWithRoleResponse(BaseModel):
     role_id: Optional[int] = None
 
 
+class SystemAdminAddRequest(BaseModel):
+    email: str
+
+
+class SystemAdminResetPasswordRequest(BaseModel):
+    reason: Optional[str] = None
+
+
 class MyRoleResponse(BaseModel):
     app_role: str
     display_name: Optional[str] = None
@@ -58,6 +66,12 @@ class MyRoleResponse(BaseModel):
 
 
 VALID_ROLES = {ROLE_ADMIN, ROLE_WORKER}
+
+
+async def _admin_count(db: AsyncSession) -> int:
+    result = await db.execute(select(User_roles))
+    rows = result.scalars().all()
+    return sum(1 for row in rows if normalize_role(row.app_role) == ROLE_ADMIN)
 
 
 async def require_admin(
@@ -199,13 +213,6 @@ async def assign_role(
             detail=f"Invalid role. Must be one of: {', '.join(VALID_ROLES)}",
         )
 
-    # Prevent admin from removing their own admin role
-    if str(admin.id) == data.user_id and data.app_role != "admin":
-        raise HTTPException(
-            status_code=400,
-            detail="You cannot remove your own admin role",
-        )
-
     # Check if user exists
     user_result = await db.execute(select(User).where(User.id == data.user_id))
     user = user_result.scalar_one_or_none()
@@ -219,6 +226,17 @@ async def assign_role(
     role_record = role_result.scalar_one_or_none()
 
     now = datetime.now()
+
+    existing_role = normalize_role(role_record.app_role) if role_record else ROLE_WORKER
+    target_role = normalize_role(data.app_role)
+
+    # System admins are a separate class from site workers in this architecture.
+    # Never allow downgrading an existing admin to worker through role mutation.
+    if existing_role == ROLE_ADMIN and target_role != ROLE_ADMIN:
+        raise HTTPException(
+            status_code=400,
+            detail="System admins cannot be converted to workers",
+        )
 
     if role_record:
         role_record.app_role = data.app_role
@@ -247,3 +265,127 @@ async def assign_role(
         display_name=role_record.display_name,
         role_id=role_record.id,
     )
+
+
+@router.get("/system-admins", response_model=List[UserWithRoleResponse])
+async def list_system_admins(
+    admin: UserResponse = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    del admin
+    users_result = await db.execute(select(User))
+    users = users_result.scalars().all()
+    users_map = {u.id: u for u in users}
+
+    roles_result = await db.execute(select(User_roles))
+    roles = roles_result.scalars().all()
+    admin_roles = [r for r in roles if normalize_role(r.app_role) == ROLE_ADMIN]
+
+    response: List[UserWithRoleResponse] = []
+    for role_record in admin_roles:
+        user = users_map.get(role_record.user_id)
+        response.append(
+            UserWithRoleResponse(
+                user_id=role_record.user_id,
+                email=user.email if user else "",
+                name=user.name if user else role_record.display_name,
+                app_role=ROLE_ADMIN,
+                display_name=role_record.display_name,
+                role_id=role_record.id,
+            )
+        )
+    return sorted(response, key=lambda row: (row.name or row.email or "").lower())
+
+
+@router.post("/system-admins", response_model=UserWithRoleResponse)
+async def add_system_admin(
+    data: SystemAdminAddRequest,
+    admin: UserResponse = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    del admin
+    email = (data.email or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+
+    user_result = await db.execute(select(User).where(func.lower(User.email) == email))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User with this email was not found")
+
+    role_result = await db.execute(select(User_roles).where(User_roles.user_id == user.id))
+    role_record = role_result.scalar_one_or_none()
+    now = datetime.now()
+    if role_record:
+        role_record.app_role = ROLE_ADMIN
+        role_record.display_name = role_record.display_name or user.name or user.email
+        role_record.updated_at = now
+    else:
+        role_record = User_roles(
+            user_id=user.id,
+            app_role=ROLE_ADMIN,
+            display_name=user.name or user.email,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(role_record)
+
+    await db.commit()
+    await db.refresh(role_record)
+    return UserWithRoleResponse(
+        user_id=user.id,
+        email=user.email,
+        name=user.name,
+        app_role=ROLE_ADMIN,
+        display_name=role_record.display_name,
+        role_id=role_record.id,
+    )
+
+
+@router.delete("/system-admins/{user_id}")
+async def remove_system_admin(
+    user_id: str,
+    admin: UserResponse = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    role_result = await db.execute(select(User_roles).where(User_roles.user_id == user_id))
+    role_record = role_result.scalar_one_or_none()
+    if not role_record or normalize_role(role_record.app_role) != ROLE_ADMIN:
+        raise HTTPException(status_code=404, detail="System admin not found")
+
+    count = await _admin_count(db)
+    if count <= 1:
+        raise HTTPException(status_code=400, detail="Cannot remove the last system admin")
+
+    if str(admin.id) == user_id:
+        raise HTTPException(status_code=400, detail="Use another admin account to remove this admin")
+
+    await db.delete(role_record)
+    await db.commit()
+    return {"ok": True, "removed_user_id": user_id}
+
+
+@router.post("/system-admins/{user_id}/reset-password")
+async def request_system_admin_password_reset(
+    user_id: str,
+    body: SystemAdminResetPasswordRequest,
+    admin: UserResponse = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    del body
+    del admin
+    user_result = await db.execute(select(User).where(User.id == user_id))
+    user = user_result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Admin user not found")
+
+    role_result = await db.execute(select(User_roles).where(User_roles.user_id == user_id))
+    role_record = role_result.scalar_one_or_none()
+    if not role_record or normalize_role(role_record.app_role) != ROLE_ADMIN:
+        raise HTTPException(status_code=400, detail="Password reset is only available for system admins")
+
+    return {
+        "ok": True,
+        "message": "Password reset must be completed in your identity provider (OIDC).",
+        "email": user.email,
+    }

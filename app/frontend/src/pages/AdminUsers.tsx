@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
@@ -7,461 +7,392 @@ import { readAdminSession, ADMIN_SESSION_TTL_MS } from '@/lib/adminSession';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogFooter, DialogForm, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-  Shield, User, Users, Crown, Wrench,
-  Eye, EyeOff, ClipboardList, CheckCircle2, Camera, MessageSquare, Activity, UserCheck,
-} from 'lucide-react';
+import { Crown, HardHat, House, LayoutDashboard, Layers, Pencil, Plus, Shield, UserCheck, UserCog, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 
-interface UserWithRole {
+type AdminTab = 'project' | 'workers' | 'features' | 'admins';
+
+interface ProjectSummary {
+  id: number;
+  name: string;
+}
+
+interface ProjectOverview {
+  project_id: number;
+  project_name: string;
+  floors: number;
+  rooms: number;
+  active_workers: number;
+  enabled_features: string[];
+}
+
+interface FeatureToggle {
+  key: string;
+  enabled: boolean;
+}
+
+interface SiteWorkerCard {
+  id: number;
+  name: string;
+  active: boolean;
+  assigned_floor?: string | null;
+  assigned_room?: string | null;
+  assigned_phase?: string | null;
+  last_active_at?: string | null;
+}
+
+interface SystemAdmin {
   user_id: string;
   email: string;
   name: string | null;
-  app_role: string;
-  display_name: string | null;
-  role_id: number | null;
+  display_name?: string | null;
 }
 
-interface SectionSetting {
-  role_name: string;
-  section_key: string;
-  section_label: string;
-  is_visible: boolean;
-}
-
-const ROLE_CONFIG: Record<
-  string,
-  { label: string; icon: React.ReactNode; color: string; bg: string; description: string }
-> = {
-  admin: {
-    label: 'Admin',
-    icon: <Crown className="h-3.5 w-3.5" />,
-    color: 'text-amber-700 dark:text-amber-300',
-    bg: 'bg-amber-100 dark:bg-amber-900/40',
-    description: 'Full access: projects, structure, phases, settings',
-  },
-  worker: {
-    label: 'Worker',
-    icon: <Wrench className="h-3.5 w-3.5" />,
-    color: 'text-slate-700 dark:text-slate-300',
-    bg: 'bg-slate-100 dark:bg-slate-800',
-    description: 'Rooms, checklists, notes, photos — no structure changes',
-  },
+const FEATURE_LABELS: Record<string, string> = {
+  checklists: 'Checklists',
+  heating_cable: 'Heating Cable',
+  photos: 'Photos',
+  comments: 'Comments',
+  visit_log: 'Visit Log',
 };
-
-const SECTION_ICONS: Record<string, React.ReactNode> = {
-  visit_log: <ClipboardList className="h-4 w-4 text-indigo-500" />,
-  checklist: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
-  photos: <Camera className="h-4 w-4 text-blue-500" />,
-  comments: <MessageSquare className="h-4 w-4 text-purple-500" />,
-  status: <Activity className="h-4 w-4 text-amber-500" />,
-  assigned_worker: <UserCheck className="h-4 w-4 text-teal-500" />,
-};
-
-const SECTION_ORDER = Object.keys(SECTION_ICONS);
-
-const LEGACY_WORKER_ROLES = new Set(['worker', 'electrician', 'apprentice']);
 
 export default function AdminUsers() {
   const navigate = useNavigate();
   const { isAdmin, loading: permLoading, sessionIsProvisionalAdmin } = usePermissions();
-  const [users, setUsers] = useState<UserWithRole[]>([]);
+
+  const [tab, setTab] = useState<AdminTab>('project');
   const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState<string | null>(null);
-  const [sections, setSections] = useState<SectionSetting[]>([]);
-  const [sectionsLoading, setSectionsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'users' | 'sections'>('users');
 
-  const loadUsers = useCallback(async () => {
-    try {
-      const res = await client.apiCall.invoke({
-        url: '/api/v1/admin/roles/users',
-        method: 'GET',
-        data: {},
-      });
-      setUsers(res?.data || []);
-    } catch {
-      toast.error('Failed to load users');
-    } finally {
-      setLoading(false);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [overview, setOverview] = useState<ProjectOverview | null>(null);
+  const [features, setFeatures] = useState<FeatureToggle[]>([]);
+  const [siteWorkers, setSiteWorkers] = useState<SiteWorkerCard[]>([]);
+  const [systemAdmins, setSystemAdmins] = useState<SystemAdmin[]>([]);
+
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
+  const [adminEmailToAdd, setAdminEmailToAdd] = useState('');
+  const [addingAdmin, setAddingAdmin] = useState(false);
+
+  const [workerDialogOpen, setWorkerDialogOpen] = useState(false);
+  const [editingWorker, setEditingWorker] = useState<SiteWorkerCard | null>(null);
+  const [editWorkerName, setEditWorkerName] = useState('');
+  const [editWorkerPin, setEditWorkerPin] = useState('');
+
+  const loadProjects = useCallback(async () => {
+    const res = await client.entities.projects.query({ sort: 'name', limit: 200 });
+    const items = (res?.data?.items ?? []) as ProjectSummary[];
+    setProjects(items);
+    if (items.length === 0) {
+      setSelectedProjectId(null);
+      return;
     }
+    setSelectedProjectId((prev) => prev ?? items[0].id);
   }, []);
 
-  const loadSections = useCallback(async () => {
-    try {
-      const res = await client.apiCall.invoke({
-        url: '/api/v1/sections/visibility',
-        method: 'GET',
-        data: {},
-      });
-      setSections(res?.data || []);
-    } catch {
-      toast.error('Failed to load section settings');
-    } finally {
-      setSectionsLoading(false);
-    }
+  const loadSystemAdmins = useCallback(async () => {
+    const res = await client.apiCall.invoke({ url: '/api/v1/admin/roles/system-admins', method: 'GET', data: {} });
+    setSystemAdmins(Array.isArray(res?.data) ? (res.data as SystemAdmin[]) : []);
   }, []);
+
+  const loadProjectScoped = useCallback(async () => {
+    if (!selectedProjectId) {
+      setOverview(null);
+      setFeatures([]);
+      setSiteWorkers([]);
+      return;
+    }
+    const [overviewRes, featuresRes, workersRes] = await Promise.all([
+      client.apiCall.invoke({ url: `/api/v1/admin/panel/projects/${selectedProjectId}/overview`, method: 'GET', data: {} }),
+      client.apiCall.invoke({ url: `/api/v1/admin/panel/projects/${selectedProjectId}/features`, method: 'GET', data: {} }),
+      client.apiCall.invoke({ url: `/api/v1/admin/panel/projects/${selectedProjectId}/site-workers`, method: 'GET', data: {} }),
+    ]);
+    setOverview((overviewRes?.data ?? null) as ProjectOverview | null);
+    setFeatures(Array.isArray(featuresRes?.data) ? (featuresRes.data as FeatureToggle[]) : []);
+    setSiteWorkers(Array.isArray(workersRes?.data) ? (workersRes.data as SiteWorkerCard[]) : []);
+  }, [selectedProjectId]);
 
   useEffect(() => {
     if (!permLoading && isAdmin) {
-      loadUsers();
-      loadSections();
-    } else if (!permLoading && !isAdmin) {
+      Promise.all([loadProjects(), loadSystemAdmins()])
+        .catch(() => toast.error('Failed to load admin settings'))
+        .finally(() => setLoading(false));
+    } else if (!permLoading) {
       setLoading(false);
-      setSectionsLoading(false);
     }
-  }, [permLoading, isAdmin, loadUsers, loadSections]);
+  }, [permLoading, isAdmin, loadProjects, loadSystemAdmins]);
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    setUpdating(userId);
-    try {
-      await client.apiCall.invoke({
-        url: '/api/v1/admin/roles/assign',
-        method: 'POST',
-        data: { user_id: userId, app_role: newRole },
-      });
-      setUsers((prev) =>
-        prev.map((u) => (u.user_id === userId ? { ...u, app_role: newRole } : u))
-      );
-      toast.success(`Role updated to ${ROLE_CONFIG[newRole]?.label || newRole}`);
-    } catch (e: unknown) {
-      const ax = e as { data?: { detail?: string }; response?: { data?: { detail?: string } }; message?: string };
-      const detail = ax?.data?.detail || ax?.response?.data?.detail || ax?.message || 'Failed to update role';
-      toast.error(detail);
-    } finally {
-      setUpdating(null);
-    }
-  };
-
-  const handleToggleSection = async (roleName: string, sectionKey: string, currentVisible: boolean) => {
-    const newVisible = !currentVisible;
-    const matchesRole = (s: SectionSetting) =>
-      s.section_key === sectionKey &&
-      (roleName === 'admin' ? s.role_name === 'admin' : LEGACY_WORKER_ROLES.has(s.role_name));
-
-    setSections((prev) => {
-      const hasRow = prev.some(matchesRole);
-      if (hasRow) {
-        return prev.map((s) =>
-          matchesRole(s) ? { ...s, is_visible: newVisible, role_name: roleName } : s
-        );
-      }
-      return [
-        ...prev,
-        {
-          role_name: roleName,
-          section_key: sectionKey,
-          section_label: sectionKey.replace(/_/g, ' '),
-          is_visible: newVisible,
-        },
-      ];
-    });
-    try {
-      await client.apiCall.invoke({
-        url: '/api/v1/sections/visibility/update',
-        method: 'POST',
-        data: { role_name: roleName, section_key: sectionKey, is_visible: newVisible },
-      });
-      toast.success(`${sectionKey.replace('_', ' ')} ${newVisible ? 'shown' : 'hidden'} for ${roleName}s`);
-    } catch {
-      void loadSections();
-      toast.error('Failed to update setting');
-    }
-  };
-
-  const sectionsForRole = useMemo(() => {
-    const build = (canonical: 'admin' | 'worker'): SectionSetting[] =>
-      SECTION_ORDER.map((section_key) => {
-        const candidates = sections.filter(
-          (s) =>
-            s.section_key === section_key &&
-            (canonical === 'admin' ? s.role_name === 'admin' : LEGACY_WORKER_ROLES.has(s.role_name))
-        );
-        const base =
-          candidates.find((s) => s.role_name === (canonical === 'admin' ? 'admin' : 'worker')) ??
-          candidates[0];
-        if (!base) {
-          return {
-            role_name: canonical,
-            section_key,
-            section_label: section_key.replace(/_/g, ' '),
-            is_visible: true,
-          };
-        }
-        return { ...base, role_name: canonical };
-      });
-    return {
-      admin: build('admin'),
-      worker: build('worker'),
-    };
-  }, [sections]);
+  useEffect(() => {
+    if (!isAdmin || !selectedProjectId) return;
+    void loadProjectScoped().catch(() => toast.error('Failed to load project data'));
+  }, [isAdmin, selectedProjectId, loadProjectScoped]);
 
   if (permLoading || loading) {
-    return (
-      <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
-      </div>
-    );
+    return <div className="min-h-dvh flex items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-[#1E3A5F] border-t-transparent rounded-full" /></div>;
   }
 
   if (!isAdmin) {
     return (
-      <div className="min-h-dvh bg-slate-50 dark:bg-background">
-        <div className="p-4 max-w-lg mx-auto">
-          <Card className="p-8 text-center">
-            <Shield className="h-12 w-12 text-red-400 mx-auto mb-3" />
-            <h2 className="text-lg font-bold text-slate-800 dark:text-foreground mb-2">Access Denied</h2>
-            <p className="text-muted-foreground text-sm">Only administrators can manage user roles.</p>
-            <Button variant="outline" className="mt-4" onClick={() => navigate('/admin/login')}>
-              Admin sign-in
-            </Button>
-          </Card>
-        </div>
+      <div className="min-h-dvh p-4">
+        <Card className="max-w-lg mx-auto p-8 text-center">
+          <Shield className="h-10 w-10 mx-auto mb-3 text-red-500" />
+          <h2 className="text-lg font-bold mb-1">Access Denied</h2>
+          <p className="text-sm text-muted-foreground">Only system admins can open admin settings.</p>
+          <Button className="mt-4" variant="outline" onClick={() => navigate('/admin/login')}>Admin sign-in</Button>
+        </Card>
       </div>
     );
   }
 
-  const adminCount = users.filter((u) => u.app_role === 'admin' || u.app_role === 'manager').length;
-  const workerCount = users.filter(
-    (u) =>
-      u.app_role === 'worker' ||
-      u.app_role === 'electrician' ||
-      u.app_role === 'apprentice'
-  ).length;
-
   const adminPinSession = sessionIsProvisionalAdmin ? readAdminSession() : null;
-  const adminSessionEndsLabel =
-    adminPinSession?.expiresAt != null
-      ? new Date(adminPinSession.expiresAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
-      : null;
+  const adminSessionEndsLabel = adminPinSession?.expiresAt != null
+    ? new Date(adminPinSession.expiresAt).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+    : null;
+
+  const addSystemAdmin = async () => {
+    if (!adminEmailToAdd.trim()) {
+      toast.error('Enter an email address');
+      return;
+    }
+    setAddingAdmin(true);
+    try {
+      await client.apiCall.invoke({ url: '/api/v1/admin/roles/system-admins', method: 'POST', data: { email: adminEmailToAdd.trim() } });
+      setAdminDialogOpen(false);
+      setAdminEmailToAdd('');
+      toast.success('System admin added');
+      await loadSystemAdmins();
+    } catch (e: unknown) {
+      const err = e as { data?: { detail?: string }; response?: { data?: { detail?: string } }; message?: string };
+      toast.error(err?.data?.detail || err?.response?.data?.detail || err?.message || 'Could not add admin');
+    } finally {
+      setAddingAdmin(false);
+    }
+  };
+
+  const removeSystemAdmin = async (userId: string) => {
+    try {
+      await client.apiCall.invoke({ url: `/api/v1/admin/roles/system-admins/${userId}`, method: 'DELETE', data: {} });
+      toast.success('System admin removed');
+      await loadSystemAdmins();
+    } catch (e: unknown) {
+      const err = e as { data?: { detail?: string }; response?: { data?: { detail?: string } }; message?: string };
+      toast.error(err?.data?.detail || err?.response?.data?.detail || err?.message || 'Could not remove admin');
+    }
+  };
+
+  const toggleFeature = async (feature: FeatureToggle) => {
+    if (!selectedProjectId) return;
+    const next = !feature.enabled;
+    setFeatures((prev) => prev.map((f) => (f.key === feature.key ? { ...f, enabled: next } : f)));
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/admin/panel/projects/${selectedProjectId}/features/${feature.key}`,
+        method: 'PUT',
+        data: { key: feature.key, enabled: next },
+      });
+    } catch {
+      toast.error('Failed to update feature');
+      void loadProjectScoped();
+    }
+  };
+
+  const openEditWorker = (worker: SiteWorkerCard) => {
+    setEditingWorker(worker);
+    setEditWorkerName(worker.name);
+    setEditWorkerPin('');
+    setWorkerDialogOpen(true);
+  };
+
+  const saveWorkerEdit = async () => {
+    if (!selectedProjectId || !editingWorker) return;
+    const payload: { name: string; pin?: string } = { name: editWorkerName.trim() };
+    if (!payload.name) {
+      toast.error('Worker name is required');
+      return;
+    }
+    if (editWorkerPin.trim().length >= 4) payload.pin = editWorkerPin.trim();
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/projects/${selectedProjectId}/workers/${editingWorker.id}`,
+        method: 'PATCH',
+        data: payload,
+      });
+      toast.success('Worker updated');
+      setWorkerDialogOpen(false);
+      setEditingWorker(null);
+      void loadProjectScoped();
+    } catch {
+      toast.error('Could not update worker');
+    }
+  };
+
+  const setWorkerActive = async (worker: SiteWorkerCard, active: boolean) => {
+    if (!selectedProjectId) return;
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/projects/${selectedProjectId}/workers/${worker.id}`,
+        method: 'PATCH',
+        data: { active },
+      });
+      toast.success(active ? 'Worker enabled' : 'Worker disabled');
+      void loadProjectScoped();
+    } catch {
+      toast.error('Could not update worker');
+    }
+  };
+
+  const triggerAdminReset = async (adminUser: SystemAdmin) => {
+    try {
+      const res = await client.apiCall.invoke({
+        url: `/api/v1/admin/roles/system-admins/${adminUser.user_id}/reset-password`,
+        method: 'POST',
+        data: { reason: 'admin-panel' },
+      });
+      toast.success((res?.data?.message as string | undefined) || 'Reset requested');
+    } catch {
+      toast.error('Could not trigger password reset');
+    }
+  };
 
   return (
     <div className="min-h-dvh bg-slate-50 dark:bg-background pb-8">
-      <div className="p-4 max-w-lg mx-auto space-y-4">
+      <div className="max-w-lg mx-auto p-4 space-y-4">
         {sessionIsProvisionalAdmin ? (
-          <Card className="border-amber-200/80 bg-amber-50/90 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-900 dark:text-amber-200">
-              Provisional admin (PIN)
-            </p>
-            <p className="mt-1 text-sm text-amber-950/90 dark:text-amber-100/90">
-              You are signed in with the temporary administrator password — not as a site worker. Replace with SSO when
-              ready.
-            </p>
-            {adminSessionEndsLabel ? (
-              <p className="mt-2 text-xs text-amber-900/80 dark:text-amber-200/80">
-                Session ends {adminSessionEndsLabel} (~{Math.round(ADMIN_SESSION_TTL_MS / 3600000)}h).
-              </p>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              className="mt-3 w-full border-amber-300 bg-white/80 text-amber-950 hover:bg-white dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-100"
-              onClick={() => runAdminLogout(navigate)}
-            >
-              Log out admin
-            </Button>
+          <Card className="border-amber-200 bg-amber-50 p-4">
+            <p className="text-xs font-semibold uppercase text-amber-900">Provisional admin (PIN)</p>
+            <p className="text-sm text-amber-900 mt-1">Temporary admin session. Replace with SSO when ready.</p>
+            {adminSessionEndsLabel ? <p className="text-xs text-amber-800 mt-1">Session ends {adminSessionEndsLabel} (~{Math.round(ADMIN_SESSION_TTL_MS / 3600000)}h)</p> : null}
+            <Button type="button" variant="outline" className="mt-3 w-full" onClick={() => runAdminLogout(navigate)}>Log out admin</Button>
           </Card>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            Administrator session: <strong className="text-foreground">account / SSO</strong> (not site worker PIN).
-          </p>
+          <p className="text-xs text-muted-foreground">Administrator session: account/SSO (not site worker PIN).</p>
         )}
 
-        <div className="flex bg-slate-200 dark:bg-slate-800 rounded-lg p-0.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`flex-1 rounded-md h-9 ${activeTab === 'users' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''}`}
-            onClick={() => setActiveTab('users')}
-          >
-            <Users className="h-4 w-4 mr-1.5" />
-            Users
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={`flex-1 rounded-md h-9 ${activeTab === 'sections' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''}`}
-            onClick={() => setActiveTab('sections')}
-          >
-            <Eye className="h-4 w-4 mr-1.5" />
-            Sections
-          </Button>
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">Project</p>
+          <div className="grid grid-cols-1 gap-2">
+            {projects.map((project) => (
+              <Button key={project.id} variant={selectedProjectId === project.id ? 'default' : 'outline'} className="h-11 justify-start rounded-xl" onClick={() => setSelectedProjectId(project.id)}>
+                <House className="h-4 w-4 mr-2" />
+                {project.name}
+              </Button>
+            ))}
+          </div>
         </div>
 
-        {activeTab === 'users' && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <Card className="p-3 text-center">
-                <Crown className="h-5 w-5 text-amber-500 mx-auto mb-1" />
-                <p className="text-2xl font-bold text-slate-800 dark:text-foreground">{adminCount}</p>
-                <p className="text-xs text-muted-foreground">Admins</p>
-              </Card>
-              <Card className="p-3 text-center">
-                <Wrench className="h-5 w-5 text-slate-500 mx-auto mb-1" />
-                <p className="text-2xl font-bold text-slate-800 dark:text-foreground">{workerCount}</p>
-                <p className="text-xs text-muted-foreground">Workers</p>
-              </Card>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant={tab === 'project' ? 'default' : 'outline'} className="h-10" onClick={() => setTab('project')}><LayoutDashboard className="h-4 w-4 mr-1.5" />Project</Button>
+          <Button variant={tab === 'workers' ? 'default' : 'outline'} className="h-10" onClick={() => setTab('workers')}><HardHat className="h-4 w-4 mr-1.5" />Site Workers</Button>
+          <Button variant={tab === 'features' ? 'default' : 'outline'} className="h-10" onClick={() => setTab('features')}><Layers className="h-4 w-4 mr-1.5" />Features</Button>
+          <Button variant={tab === 'admins' ? 'default' : 'outline'} className="h-10" onClick={() => setTab('admins')}><UserCog className="h-4 w-4 mr-1.5" />System Admins</Button>
+        </div>
+
+        {tab === 'project' && overview && (
+          <Card className="p-4">
+            <h2 className="text-lg font-bold">{overview.project_name}</h2>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              <div className="rounded-lg bg-slate-100 dark:bg-slate-800 p-3 text-center"><p className="text-xl font-bold">{overview.rooms}</p><p className="text-xs text-muted-foreground">Rooms</p></div>
+              <div className="rounded-lg bg-slate-100 dark:bg-slate-800 p-3 text-center"><p className="text-xl font-bold">{overview.active_workers}</p><p className="text-xs text-muted-foreground">Active workers</p></div>
+              <div className="rounded-lg bg-slate-100 dark:bg-slate-800 p-3 text-center"><p className="text-xl font-bold">{overview.floors}</p><p className="text-xs text-muted-foreground">Floors</p></div>
             </div>
-
-            <Card className="p-4">
-              <h3 className="font-semibold text-slate-800 dark:text-foreground mb-3 flex items-center gap-2">
-                <Users className="h-4 w-4 text-amber-500" />
-                Roles
-              </h3>
-              <div className="space-y-2">
-                {(['admin', 'worker'] as const).map((key) => {
-                  const cfg = ROLE_CONFIG[key];
-                  return (
-                    <div key={key} className="flex items-center gap-3 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                      <Badge className={`${cfg.bg} ${cfg.color} border-0 gap-1`}>
-                        {cfg.icon}
-                        {cfg.label}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">{cfg.description}</span>
-                    </div>
-                  );
-                })}
+            <div className="mt-4">
+              <p className="text-xs font-medium text-muted-foreground mb-2">Enabled features</p>
+              <div className="flex flex-wrap gap-2">
+                {overview.enabled_features.map((feature) => <Badge key={feature} className="bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">{FEATURE_LABELS[feature] ?? feature}</Badge>)}
               </div>
-            </Card>
+            </div>
+          </Card>
+        )}
 
-            <h2 className="text-lg font-bold text-slate-800 dark:text-foreground flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Users ({users.length})
-            </h2>
-
-            {users.length === 0 ? (
-              <Card className="p-8 text-center">
-                <Users className="h-12 w-12 text-slate-300 dark:text-slate-600 mx-auto mb-3" />
-                <p className="text-muted-foreground">No users found</p>
-                <p className="text-sm text-muted-foreground mt-1">Users will appear here after they log in</p>
+        {tab === 'workers' && (
+          <>
+            {siteWorkers.map((worker) => (
+              <Card key={worker.id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{worker.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Assigned: {worker.assigned_floor || '-'} {worker.assigned_room ? `• Room ${worker.assigned_room}` : ''}</p>
+                    <p className="text-xs text-muted-foreground">Phase: {worker.assigned_phase || '-'}</p>
+                    <p className="text-xs text-muted-foreground">Last active: {worker.last_active_at ? new Date(worker.last_active_at).toLocaleString() : 'No activity yet'}</p>
+                    {!worker.active ? <Badge className="mt-2 bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Disabled</Badge> : null}
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Button size="sm" variant="outline" className="h-10" onClick={() => openEditWorker(worker)}><Pencil className="h-4 w-4 mr-1.5" />Edit</Button>
+                    {worker.active ? (
+                      <Button size="sm" variant="outline" className="h-10 text-amber-700 border-amber-300" onClick={() => void setWorkerActive(worker, false)}><UserX className="h-4 w-4 mr-1.5" />Disable</Button>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-10 text-emerald-700 border-emerald-300" onClick={() => void setWorkerActive(worker, true)}><UserCheck className="h-4 w-4 mr-1.5" />Enable</Button>
+                    )}
+                  </div>
+                </div>
               </Card>
-            ) : (
-              <div className="space-y-2">
-                {users.map((user) => {
-                  const displayRole =
-                    user.app_role === 'manager'
-                      ? 'admin'
-                      : ['electrician', 'apprentice'].includes(user.app_role)
-                        ? 'worker'
-                        : user.app_role;
-                  const roleCfg = ROLE_CONFIG[displayRole] || ROLE_CONFIG.worker;
-                  const selectValue = displayRole === 'admin' ? 'admin' : 'worker';
-                  return (
-                    <Card key={user.user_id} className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-start gap-3 min-w-0 flex-1">
-                          <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                            <User className="h-5 w-5 text-slate-500 dark:text-slate-400" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-slate-800 dark:text-foreground truncate">
-                              {user.name || user.display_name || 'Unnamed User'}
-                            </p>
-                            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                            <Badge className={`${roleCfg.bg} ${roleCfg.color} border-0 gap-1 mt-1.5 text-[10px]`}>
-                              {roleCfg.icon}
-                              {roleCfg.label}
-                            </Badge>
-                          </div>
-                        </div>
-                        <Select
-                          value={selectValue}
-                          onValueChange={(val) => handleRoleChange(user.user_id, val)}
-                          disabled={updating === user.user_id}
-                        >
-                          <SelectTrigger className="w-[120px] h-9 shrink-0">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="admin">
-                              <span className="flex items-center gap-1.5">
-                                <Crown className="h-3 w-3 text-amber-500" />
-                                Admin
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="worker">
-                              <span className="flex items-center gap-1.5">
-                                <Wrench className="h-3 w-3 text-slate-500" />
-                                Worker
-                              </span>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
+            ))}
+            {siteWorkers.length === 0 ? <Card className="p-6 text-center text-sm text-muted-foreground">No site workers found for this project.</Card> : null}
           </>
         )}
 
-        {activeTab === 'sections' && (
-          <>
-            <Card className="p-4">
-              <h3 className="font-semibold text-slate-800 dark:text-foreground mb-2 flex items-center gap-2">
-                <Eye className="h-4 w-4 text-blue-500" />
-                Section visibility
-              </h3>
-              <p className="text-xs text-muted-foreground mb-4">
-                Control which sections appear on the room page for each role.
-              </p>
-            </Card>
-
-            {sectionsLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin h-6 w-6 border-3 border-[#1E3A5F] dark:border-blue-400 border-t-transparent rounded-full" />
+        {tab === 'features' && (
+          <Card className="p-4 space-y-3">
+            <h3 className="font-semibold">Enabled Features</h3>
+            {features.map((feature) => (
+              <div key={feature.key} className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <span className="text-sm font-medium">{FEATURE_LABELS[feature.key] ?? feature.key}</span>
+                <Switch checked={feature.enabled} onCheckedChange={() => void toggleFeature(feature)} />
               </div>
-            ) : (
-              (['admin', 'worker'] as const).map((roleName) => {
-                const roleCfg = ROLE_CONFIG[roleName];
-                const roleSections = sectionsForRole[roleName];
+            ))}
+          </Card>
+        )}
 
-                return (
-                  <Card key={roleName} className="p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Badge className={`${roleCfg.bg} ${roleCfg.color} border-0 gap-1`}>
-                        {roleCfg.icon}
-                        {roleCfg.label}
-                      </Badge>
-                    </div>
-                    <div className="space-y-2">
-                      {roleSections.map((section) => (
-                        <div
-                          key={`${section.role_name}-${section.section_key}`}
-                          className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/50"
-                        >
-                          <div className="flex items-center gap-2.5">
-                            {SECTION_ICONS[section.section_key] || <Eye className="h-4 w-4" />}
-                            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                              {section.section_label}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {section.is_visible ? (
-                              <Eye className="h-3.5 w-3.5 text-emerald-500" />
-                            ) : (
-                              <EyeOff className="h-3.5 w-3.5 text-slate-400" />
-                            )}
-                            <Switch
-                              checked={section.is_visible}
-                              onCheckedChange={() =>
-                                handleToggleSection(section.role_name, section.section_key, section.is_visible)
-                              }
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                );
-              })
-            )}
+        {tab === 'admins' && (
+          <>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">System Admins</h3>
+              <Button className="h-9" onClick={() => setAdminDialogOpen(true)}><Plus className="h-4 w-4 mr-1.5" />Add admin</Button>
+            </div>
+            {systemAdmins.map((adminUser) => (
+              <Card key={adminUser.user_id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold truncate">{adminUser.name || adminUser.display_name || adminUser.email}</p>
+                    <p className="text-xs text-muted-foreground truncate">{adminUser.email}</p>
+                    <Badge className="mt-2 bg-amber-100 text-amber-900 dark:bg-amber-950 dark:text-amber-200"><Crown className="h-3 w-3 mr-1" />System Admin</Badge>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Button type="button" size="sm" variant="outline" className="h-9" onClick={() => void triggerAdminReset(adminUser)}>Reset password</Button>
+                    <Button type="button" size="sm" variant="outline" className="h-9 text-red-600 border-red-300" disabled={systemAdmins.length <= 1} onClick={() => void removeSystemAdmin(adminUser.user_id)}>Remove</Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
           </>
         )}
       </div>
+
+      <Dialog open={adminDialogOpen} onOpenChange={setAdminDialogOpen}>
+        <DialogContent className="mx-4 max-w-sm">
+          <DialogForm onSubmit={(e) => { e.preventDefault(); void addSystemAdmin(); }}>
+            <DialogHeader><DialogTitle>Add system admin</DialogTitle></DialogHeader>
+            <Input placeholder="Email address" value={adminEmailToAdd} onChange={(e) => setAdminEmailToAdd(e.target.value)} className="h-12" autoComplete="email" />
+            <DialogFooter><Button type="submit" className="w-full" disabled={addingAdmin}>{addingAdmin ? 'Adding…' : 'Add admin'}</Button></DialogFooter>
+          </DialogForm>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={workerDialogOpen} onOpenChange={setWorkerDialogOpen}>
+        <DialogContent className="mx-4 max-w-sm">
+          <DialogForm onSubmit={(e) => { e.preventDefault(); void saveWorkerEdit(); }}>
+            <DialogHeader><DialogTitle>Edit site worker</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <Input placeholder="Worker name" value={editWorkerName} onChange={(e) => setEditWorkerName(e.target.value)} className="h-12" />
+              <Input type="password" inputMode="numeric" placeholder="New PIN (optional)" value={editWorkerPin} onChange={(e) => setEditWorkerPin(e.target.value)} className="h-12 text-center tracking-widest" autoComplete="new-password" />
+            </div>
+            <DialogFooter><Button type="submit" className="w-full">Save changes</Button></DialogFooter>
+          </DialogForm>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
