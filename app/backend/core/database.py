@@ -90,6 +90,51 @@ def _log_database_env_var_inventory(log: logging.Logger) -> None:
         log.info("Env key %s present in os.environ: %s", key, "yes" if _env_nonempty(key) else "no")
 
 
+def _postgres_async_ssl_required(parsed: Any) -> bool:
+    """Whether asyncpg should use TLS for this PostgreSQL URL (no secrets logged)."""
+    host = (parsed.host or "").lower()
+
+    db_ssl = (os.environ.get("DATABASE_SSL") or "").strip().lower()
+    if db_ssl in ("1", "true", "yes", "on", "require"):
+        return True
+
+    pgssl = (os.environ.get("PGSSLMODE") or "").strip().lower()
+    if pgssl in ("require", "verify-ca", "verify-full"):
+        return True
+
+    try:
+        q = dict(parsed.query)
+        sslmode = (q.get("sslmode") or "").strip().lower()
+        if sslmode in ("require", "verify-ca", "verify-full"):
+            return True
+    except Exception:
+        pass
+
+    # Render managed / external PostgreSQL hostnames require TLS.
+    if ".render.com" in host:
+        return True
+
+    return False
+
+
+def _asyncpg_connect_args_for_url(normalized_url: str) -> dict[str, Any]:
+    """connect_args for SQLAlchemy asyncpg; empty dict when SSL is not needed (e.g. local SQLite)."""
+    try:
+        parsed = make_url(normalized_url)
+    except Exception:
+        return {}
+
+    driver = (parsed.drivername or "").lower()
+    dialect = (driver.split("+", 1)[0] or "").lower()
+    if dialect not in ("postgresql", "postgres") or "asyncpg" not in driver:
+        return {}
+
+    if not _postgres_async_ssl_required(parsed):
+        return {}
+
+    return {"ssl": True}
+
+
 def _log_conflicting_database_urls(log: logging.Logger) -> None:
     """If multiple env keys hold different URLs, warn using sha256 prefixes only."""
     entries: list[tuple[str, str, str]] = []
@@ -352,6 +397,13 @@ class DatabaseManager:
                 engine_kwargs["pool_recycle"] = 3600  # Connection recycle time (1 hour)
                 engine_kwargs["pool_timeout"] = 30  # Connection acquisition timeout (30 seconds)
                 logger.info("Using QueuePool with connection pooling for non-Lambda environment")
+
+            connect_args = _asyncpg_connect_args_for_url(database_url)
+            if connect_args:
+                engine_kwargs["connect_args"] = connect_args
+                logger.info(
+                    "PostgreSQL asyncpg TLS is enabled (Render/external SSL or sslmode/DATABASE_SSL/PGSSLMODE)."
+                )
 
             self.engine = create_async_engine(database_url, **engine_kwargs)
             logger.info("Database engine created successfully")
