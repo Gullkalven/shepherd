@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Optional
 
 from core.database import get_db
@@ -13,7 +14,9 @@ from models.project_workers import Project_workers
 from models.projects import Projects
 from models.rooms import Rooms
 from models.section_settings import Section_settings
+from models.user_roles import User_roles
 from models.worker_tasks import WorkerTasks
+from dependencies.roles import ROLE_ADMIN, normalize_role
 
 router = APIRouter(prefix="/api/v1/admin/panel", tags=["admin_panel"])
 
@@ -32,6 +35,8 @@ class ProjectOverviewResponse(BaseModel):
     floors: int
     rooms: int
     active_workers: int
+    site_workers: int = 0
+    admin_count: int = 0
     enabled_features: List[str]
 
 
@@ -39,6 +44,7 @@ class SiteWorkerCardResponse(BaseModel):
     id: int
     name: str
     active: bool
+    pin_configured: bool = False
     assigned_floor: Optional[str] = None
     assigned_room: Optional[str] = None
     assigned_phase: Optional[str] = None
@@ -80,8 +86,20 @@ async def project_overview(
 
     floors_result = await db.execute(select(Floors).where(Floors.project_id == project_id))
     rooms_result = await db.execute(select(Rooms).where(Rooms.project_id == project_id))
-    workers_result = await db.execute(select(Project_workers).where(Project_workers.project_id == project_id))
+    workers_result = await db.execute(
+        select(Project_workers).where(
+            and_(
+                Project_workers.project_id == project_id,
+                Project_workers.role != ROLE_ADMIN,
+            )
+        )
+    )
     workers = workers_result.scalars().all()
+    admins_result = await db.execute(select(User_roles))
+    admin_count = sum(
+        1 for role_row in admins_result.scalars().all()
+        if normalize_role(role_row.app_role) == ROLE_ADMIN
+    )
     features = await _read_project_features(db, project_id)
     enabled = [k for k, v in features.items() if v]
 
@@ -91,6 +109,8 @@ async def project_overview(
         floors=len(floors_result.scalars().all()),
         rooms=len(rooms_result.scalars().all()),
         active_workers=sum(1 for w in workers if bool(w.active)),
+        site_workers=len(workers),
+        admin_count=admin_count,
         enabled_features=enabled,
     )
 
@@ -160,7 +180,12 @@ async def site_workers_with_context(
 
     workers_result = await db.execute(
         select(Project_workers)
-        .where(Project_workers.project_id == project_id)
+        .where(
+            and_(
+                Project_workers.project_id == project_id,
+                Project_workers.role != ROLE_ADMIN,
+            )
+        )
         .order_by(Project_workers.active.desc(), Project_workers.updated_at.desc(), Project_workers.id.desc())
     )
     workers = workers_result.scalars().all()
@@ -217,6 +242,7 @@ async def site_workers_with_context(
                 id=worker.id,
                 name=worker.name,
                 active=bool(worker.active),
+                pin_configured=bool(getattr(worker, "pin_hash", None)),
                 assigned_floor=assign.get("assigned_floor") or None,
                 assigned_room=assign.get("assigned_room") or None,
                 assigned_phase=assign.get("assigned_phase") or None,

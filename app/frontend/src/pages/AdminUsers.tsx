@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { client } from '@/lib/api';
 import { usePermissions } from '@/lib/permissions';
@@ -26,6 +26,8 @@ interface ProjectOverview {
   floors: number;
   rooms: number;
   active_workers: number;
+  site_workers?: number;
+  admin_count?: number;
   enabled_features: string[];
 }
 
@@ -38,6 +40,7 @@ interface SiteWorkerCard {
   id: number;
   name: string;
   active: boolean;
+  pin_configured?: boolean;
   assigned_floor?: string | null;
   assigned_room?: string | null;
   assigned_phase?: string | null;
@@ -72,6 +75,9 @@ export default function AdminUsers() {
   const [features, setFeatures] = useState<FeatureToggle[]>([]);
   const [siteWorkers, setSiteWorkers] = useState<SiteWorkerCard[]>([]);
   const [systemAdmins, setSystemAdmins] = useState<SystemAdmin[]>([]);
+  const [projectScopedLoading, setProjectScopedLoading] = useState(false);
+  const [projectScopedError, setProjectScopedError] = useState<string | null>(null);
+  const projectRequestSeq = useRef(0);
 
   const [adminDialogOpen, setAdminDialogOpen] = useState(false);
   const [adminEmailToAdd, setAdminEmailToAdd] = useState('');
@@ -103,16 +109,41 @@ export default function AdminUsers() {
       setOverview(null);
       setFeatures([]);
       setSiteWorkers([]);
+      setProjectScopedError(null);
       return;
     }
-    const [overviewRes, featuresRes, workersRes] = await Promise.all([
-      client.apiCall.invoke({ url: `/api/v1/admin/panel/projects/${selectedProjectId}/overview`, method: 'GET', data: {} }),
-      client.apiCall.invoke({ url: `/api/v1/admin/panel/projects/${selectedProjectId}/features`, method: 'GET', data: {} }),
-      client.apiCall.invoke({ url: `/api/v1/admin/panel/projects/${selectedProjectId}/site-workers`, method: 'GET', data: {} }),
-    ]);
-    setOverview((overviewRes?.data ?? null) as ProjectOverview | null);
-    setFeatures(Array.isArray(featuresRes?.data) ? (featuresRes.data as FeatureToggle[]) : []);
-    setSiteWorkers(Array.isArray(workersRes?.data) ? (workersRes.data as SiteWorkerCard[]) : []);
+    const requestId = ++projectRequestSeq.current;
+    setProjectScopedLoading(true);
+    setProjectScopedError(null);
+    setOverview(null);
+    setFeatures([]);
+    setSiteWorkers([]);
+    try {
+      const [overviewRes, featuresRes, workersRes] = await Promise.all([
+        client.apiCall.invoke({ url: `/api/v1/admin/panel/projects/${selectedProjectId}/overview`, method: 'GET', data: {} }),
+        client.apiCall.invoke({ url: `/api/v1/admin/panel/projects/${selectedProjectId}/features`, method: 'GET', data: {} }),
+        client.apiCall.invoke({ url: `/api/v1/admin/panel/projects/${selectedProjectId}/site-workers`, method: 'GET', data: {} }),
+      ]);
+      if (requestId !== projectRequestSeq.current) return;
+      setOverview((overviewRes?.data ?? null) as ProjectOverview | null);
+      setFeatures(Array.isArray(featuresRes?.data) ? (featuresRes.data as FeatureToggle[]) : []);
+      setSiteWorkers(Array.isArray(workersRes?.data) ? (workersRes.data as SiteWorkerCard[]) : []);
+    } catch (e: unknown) {
+      if (requestId !== projectRequestSeq.current) return;
+      const err = e as { response?: { status?: number }; message?: string };
+      const status = err?.response?.status;
+      if (status === 403) {
+        setProjectScopedError('You do not have access to this project.');
+      } else if (status === 404) {
+        setProjectScopedError('Project not found or no longer available.');
+      } else {
+        setProjectScopedError('Failed to load project data. Please try again.');
+      }
+      throw e;
+    } finally {
+      if (requestId !== projectRequestSeq.current) return;
+      setProjectScopedLoading(false);
+    }
   }, [selectedProjectId]);
 
   useEffect(() => {
@@ -127,7 +158,7 @@ export default function AdminUsers() {
 
   useEffect(() => {
     if (!isAdmin || !selectedProjectId) return;
-    void loadProjectScoped().catch(() => toast.error('Failed to load project data'));
+    void loadProjectScoped().catch(() => {});
   }, [isAdmin, selectedProjectId, loadProjectScoped]);
 
   if (permLoading || loading) {
@@ -290,7 +321,9 @@ export default function AdminUsers() {
           <Button variant={tab === 'admins' ? 'default' : 'outline'} className="h-10" onClick={() => setTab('admins')}><UserCog className="h-4 w-4 mr-1.5" />System Admins</Button>
         </div>
 
-        {tab === 'project' && overview && (
+        {tab === 'project' && projectScopedLoading && <Card className="p-6 text-center text-sm text-muted-foreground">Loading project overview…</Card>}
+        {tab === 'project' && projectScopedError && <Card className="p-6 text-center text-sm text-muted-foreground">{projectScopedError}</Card>}
+        {tab === 'project' && !projectScopedLoading && !projectScopedError && overview && (
           <Card className="p-4">
             <h2 className="text-lg font-bold">{overview.project_name}</h2>
             <div className="mt-3 grid grid-cols-3 gap-2">
@@ -298,6 +331,7 @@ export default function AdminUsers() {
               <div className="rounded-lg bg-slate-100 dark:bg-slate-800 p-3 text-center"><p className="text-xl font-bold">{overview.active_workers}</p><p className="text-xs text-muted-foreground">Active workers</p></div>
               <div className="rounded-lg bg-slate-100 dark:bg-slate-800 p-3 text-center"><p className="text-xl font-bold">{overview.floors}</p><p className="text-xs text-muted-foreground">Floors</p></div>
             </div>
+            <p className="mt-3 text-xs text-muted-foreground">{overview.site_workers ?? 0} Site Workers • {overview.admin_count ?? 0} Admins</p>
             <div className="mt-4">
               <p className="text-xs font-medium text-muted-foreground mb-2">Enabled features</p>
               <div className="flex flex-wrap gap-2">
@@ -309,7 +343,10 @@ export default function AdminUsers() {
 
         {tab === 'workers' && (
           <>
-            {siteWorkers.map((worker) => (
+            {projectScopedLoading ? <Card className="p-6 text-center text-sm text-muted-foreground">Loading site workers…</Card> : null}
+            {!projectScopedLoading && projectScopedError ? <Card className="p-6 text-center text-sm text-muted-foreground">{projectScopedError}</Card> : null}
+            {!projectScopedLoading && !projectScopedError && siteWorkers.length === 0 ? <Card className="p-6 text-center text-sm text-muted-foreground">0 Site Workers</Card> : null}
+            {!projectScopedLoading && !projectScopedError && siteWorkers.map((worker) => (
               <Card key={worker.id} className="p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -317,6 +354,7 @@ export default function AdminUsers() {
                     <p className="text-xs text-muted-foreground mt-1">Assigned: {worker.assigned_floor || '-'} {worker.assigned_room ? `• Room ${worker.assigned_room}` : ''}</p>
                     <p className="text-xs text-muted-foreground">Phase: {worker.assigned_phase || '-'}</p>
                     <p className="text-xs text-muted-foreground">Last active: {worker.last_active_at ? new Date(worker.last_active_at).toLocaleString() : 'No activity yet'}</p>
+                    <p className="text-xs text-muted-foreground">PIN: {worker.pin_configured ? 'Configured' : 'Not set'}</p>
                     {!worker.active ? <Badge className="mt-2 bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Disabled</Badge> : null}
                   </div>
                   <div className="flex flex-col gap-2">
@@ -330,7 +368,6 @@ export default function AdminUsers() {
                 </div>
               </Card>
             ))}
-            {siteWorkers.length === 0 ? <Card className="p-6 text-center text-sm text-muted-foreground">No site workers found for this project.</Card> : null}
           </>
         )}
 
