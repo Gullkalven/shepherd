@@ -1,9 +1,12 @@
 import asyncio
+import hashlib
 import logging
 import os
 import re
 import time
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Optional
 
 from asyncpg.exceptions import (
     DuplicateTableError,
@@ -17,6 +20,153 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 logger = logging.getLogger(__name__)
+
+# Canonical env vars that may supply a database URL (checked in order; first wins).
+DATABASE_ENV_KEYS: tuple[str, ...] = ("DATABASE_URL", "DB_URL", "POSTGRES_URL", "SQLALCHEMY_DATABASE_URL")
+
+@dataclass(frozen=True)
+class DatabaseUrlResolution:
+    """How the runtime chose the database URL (no secrets)."""
+
+    url: str
+    env_key_used: Optional[str]
+    from_os_environ: bool
+
+    def config_source_label(self) -> str:
+        """Short label for logs, e.g. ``environment DATABASE_URL`` or settings fallback."""
+        if self.env_key_used:
+            return f"environment {self.env_key_used}"
+        return "settings.database_url"
+
+
+def _sha256_prefix8(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:8]
+
+
+def _database_url_safe_fingerprint(raw_url: str) -> dict[str, Any]:
+    """Parse URL for non-secret diagnostics; never logs raw URL or password."""
+    digest = _sha256_prefix8(raw_url)
+    try:
+        parsed = make_url(raw_url)
+        driver = parsed.drivername or ""
+        dialect = (driver.split("+", 1)[0] or "unknown").lower()
+        pw = parsed.password
+        pw_len = len(pw) if pw is not None else 0
+        return {
+            "dialect": dialect,
+            "username": parsed.username or "",
+            "host": parsed.host or "",
+            "port": parsed.port,
+            "database": parsed.database or "",
+            "password_length": pw_len,
+            "url_sha256_prefix": digest,
+            "parse_ok": True,
+        }
+    except Exception:
+        return {
+            "dialect": "unknown",
+            "username": "",
+            "host": "",
+            "port": None,
+            "database": "",
+            "password_length": 0,
+            "url_sha256_prefix": digest,
+            "parse_ok": False,
+        }
+
+
+def _env_nonempty(key: str) -> bool:
+    raw = os.environ.get(key)
+    return raw is not None and bool(str(raw).strip())
+
+
+def _collect_env_database_url_presence() -> dict[str, bool]:
+    return {key: _env_nonempty(key) for key in DATABASE_ENV_KEYS}
+
+
+def _log_database_env_var_inventory(log: logging.Logger) -> None:
+    """Log which database-related env keys are set (never values)."""
+    for key in DATABASE_ENV_KEYS:
+        log.info("Env key %s present in os.environ: %s", key, "yes" if _env_nonempty(key) else "no")
+
+
+def _log_conflicting_database_urls(log: logging.Logger) -> None:
+    """If multiple env keys hold different URLs, warn using sha256 prefixes only."""
+    entries: list[tuple[str, str, str]] = []
+    for key in DATABASE_ENV_KEYS:
+        raw = (os.environ.get(key) or "").strip()
+        if not raw:
+            continue
+        entries.append((key, raw, _sha256_prefix8(raw)))
+    if len(entries) < 2:
+        return
+    distinct_hashes = {e[2] for e in entries}
+    if len(distinct_hashes) <= 1:
+        return
+    summary = ", ".join(f"{k} sha256[8]={h}" for k, _, h in sorted(entries))
+    log.warning(
+        "Multiple database URL env vars are set with different values (compare sha256[8] to your expected URL): %s",
+        summary,
+    )
+
+
+def resolve_database_url() -> DatabaseUrlResolution:
+    """Resolve DB URL: first nonempty env key in :data:`DATABASE_ENV_KEYS`, else ``settings.database_url``."""
+    for key in DATABASE_ENV_KEYS:
+        raw = (os.environ.get(key) or "").strip()
+        if raw:
+            return DatabaseUrlResolution(url=raw, env_key_used=key, from_os_environ=True)
+    return DatabaseUrlResolution(
+        url=(settings.database_url or "").strip(),
+        env_key_used=None,
+        from_os_environ=False,
+    )
+
+
+def log_safe_database_startup_diagnostics(log: logging.Logger, resolution: DatabaseUrlResolution) -> None:
+    """Startup diagnostics to verify which DB URL is used without leaking secrets."""
+    log.info("Database config source: %s", resolution.config_source_label())
+    log.info(
+        "os.environ DATABASE_URL key set (non-empty): %s",
+        "yes" if _env_nonempty("DATABASE_URL") else "no",
+    )
+    log.info(
+        "Runtime database URL originated from os.environ (listed keys): %s",
+        "yes" if resolution.from_os_environ else "no",
+    )
+
+    settings_raw = (settings.database_url or "").strip()
+    settings_fp = _database_url_safe_fingerprint(settings_raw) if settings_raw else None
+    runtime_fp = _database_url_safe_fingerprint(resolution.url)
+
+    log.info(
+        "Runtime database URL fingerprint: dialect=%s username=%s host=%s port=%s database=%s "
+        "password_length=%s url_sha256[8]=%s parse_ok=%s",
+        runtime_fp["dialect"],
+        runtime_fp["username"] or "(empty)",
+        runtime_fp["host"] or "(empty)",
+        runtime_fp["port"],
+        runtime_fp["database"] or "(empty)",
+        runtime_fp["password_length"],
+        runtime_fp["url_sha256_prefix"],
+        runtime_fp["parse_ok"],
+    )
+
+    if settings_fp:
+        match = settings_fp["url_sha256_prefix"] == runtime_fp["url_sha256_prefix"]
+        log.info(
+            "settings.database_url fingerprint: sha256[8]=%s (matches runtime fingerprint: %s)",
+            settings_fp["url_sha256_prefix"],
+            "yes" if match else "no",
+        )
+        if not match:
+            log.warning(
+                "settings.database_url differs from runtime URL (pydantic/env file vs winning env resolution). "
+                "Runtime uses the fingerprint above."
+            )
+
+    _log_database_env_var_inventory(log)
+    _log_conflicting_database_urls(log)
 
 
 class Base(DeclarativeBase):
@@ -82,10 +232,7 @@ class DatabaseManager:
 
     @staticmethod
     def _runtime_database_url() -> str:
-        env_database_url = (os.environ.get("DATABASE_URL") or "").strip()
-        if env_database_url:
-            return env_database_url
-        return (settings.database_url or "").strip()
+        return resolve_database_url().url
 
     @staticmethod
     def _describe_database_target(raw_url: str) -> str:
@@ -138,25 +285,31 @@ class DatabaseManager:
                 logger.info("Database already initialized")
                 return
 
-        database_url = self._runtime_database_url()
+        resolution = resolve_database_url()
+        log_safe_database_startup_diagnostics(logger, resolution)
+
+        database_url = resolution.url
         if not database_url:
-            logger.error("No database URL provided. DATABASE_URL environment variable must be set.")
-            raise ValueError("DATABASE_URL environment variable is required")
+            logger.error(
+                "No database URL provided. Set one of %s or configure settings.database_url.",
+                ", ".join(DATABASE_ENV_KEYS),
+            )
+            raise ValueError("Database URL is required")
 
         if self._is_production_environment():
             logger.info("Production mode detected at DB init.")
-            env_database_url = (os.environ.get("DATABASE_URL") or "").strip()
-            if not env_database_url:
+            if not resolution.from_os_environ:
                 raise RuntimeError(
-                    "DATABASE_URL is required in production; refusing to start with default/local database fallback."
+                    "Production requires a database URL from os.environ "
+                    f"({', '.join(DATABASE_ENV_KEYS)}); refusing settings.database_url fallback or stale default."
                 )
             try:
-                parsed_prod = make_url(env_database_url)
+                parsed_prod = make_url(database_url)
                 prod_driver = (parsed_prod.drivername or "").lower()
                 prod_dialect = (prod_driver.split("+", 1)[0] or "unknown").lower()
                 if prod_dialect == "sqlite":
                     raise RuntimeError(
-                        "SQLite is not allowed in production. Configure DATABASE_URL for a persistent database (e.g. PostgreSQL)."
+                        "SQLite is not allowed in production. Configure a PostgreSQL URL in the environment."
                     )
                 if prod_dialect not in {"postgresql", "postgres"}:
                     raise RuntimeError(
@@ -165,13 +318,12 @@ class DatabaseManager:
             except RuntimeError:
                 raise
             except Exception as exc:
-                raise RuntimeError(f"Invalid production DATABASE_URL: {exc}") from exc
+                raise RuntimeError(f"Invalid production database URL: {exc}") from exc
 
         try:
             logger.info("Normalizing database URL for async compatibility...")
             database_url = self._normalize_async_database_url(database_url)
-            logger.info("Database dialect: %s", self._database_dialect(database_url))
-            logger.info("Database target: %s", self._describe_database_target(database_url))
+            logger.info("Database dialect (after async normalization): %s", self._database_dialect(database_url))
 
             logger.info("Creating async database engine...")
             # Configure engine based on environment (Lambda vs non-Lambda)
@@ -583,9 +735,11 @@ db_manager = DatabaseManager()
 
 def get_database_runtime_diagnostics() -> dict:
     """Return sanitized runtime DB diagnostics for health endpoints."""
-    runtime_url = db_manager._runtime_database_url()
+    resolution = resolve_database_url()
+    runtime_url = resolution.url
     is_production = db_manager._is_production_environment()
-    env_database_url_set = bool((os.environ.get("DATABASE_URL") or "").strip())
+    env_keys_present = _collect_env_database_url_presence()
+    env_any_database_url = any(env_keys_present.values())
     demo_seed_reset_disabled = is_production
 
     dialect = "unknown"
@@ -593,6 +747,7 @@ def get_database_runtime_diagnostics() -> dict:
     database_name = None
     normalized_target = "unconfigured"
     warnings: list[str] = []
+    url_fp = _database_url_safe_fingerprint(runtime_url) if runtime_url else None
 
     if runtime_url:
         try:
@@ -605,11 +760,12 @@ def get_database_runtime_diagnostics() -> dict:
         except Exception:
             warnings.append("Database URL is present but could not be parsed safely.")
     else:
-        warnings.append("DATABASE_URL is not set; runtime is using settings fallback/default.")
+        warnings.append("No database URL resolved; configure environment or settings.database_url.")
 
-    if is_production and not env_database_url_set:
+    if is_production and not resolution.from_os_environ:
         warnings.append(
-            "Production warning: DATABASE_URL is missing. Service must use a persistent external database."
+            "Production warning: database URL is not from os.environ "
+            f"({', '.join(DATABASE_ENV_KEYS)}); using settings fallback is not allowed at startup."
         )
     if is_production and dialect == "sqlite":
         warnings.append(
@@ -624,7 +780,11 @@ def get_database_runtime_diagnostics() -> dict:
         "database_dialect": dialect,
         "database_host": host,
         "database_name": database_name,
-        "database_url_set": env_database_url_set,
+        "database_url_set": env_any_database_url,
+        "database_url_env_keys_present": env_keys_present,
+        "database_config_source": resolution.config_source_label(),
+        "database_url_from_os_environ": resolution.from_os_environ,
+        "database_url_sha256_prefix": url_fp["url_sha256_prefix"] if url_fp else None,
         "is_production": is_production,
         "demo_seed_reset_disabled": demo_seed_reset_disabled,
         "database_target": normalized_target,
