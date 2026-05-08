@@ -4,7 +4,6 @@ import { client } from '@/lib/api';
 import { useProjectList } from '@/contexts/ProjectListContext';
 import { usePermissions } from '@/lib/permissions';
 import DashboardStats from '@/components/DashboardStats';
-import ProjectWorkersPanel from '@/components/ProjectWorkersPanel';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -137,7 +136,7 @@ export default function ProjectDetail() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { allowedProjectIds, ready: projectListReady } = useProjectList();
-  const { canCreateFloor, canDeleteFloor, canEdit, isWorker, isAdmin } = usePermissions();
+  const { canCreateFloor, canDeleteFloor, canEdit, isWorker } = usePermissions();
   const [project, setProject] = useState<Project | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [allRooms, setAllRooms] = useState<Room[]>([]);
@@ -734,8 +733,7 @@ export default function ProjectDetail() {
           )}
         </div>
 
-        {/* Admin worker management (project-scoped PIN workers used in room phase assignment). */}
-        {isAdmin ? <ProjectWorkersPanel projectId={project.id} /> : null}
+        {/* Site worker management lives in Admin Settings → Site Workers. */}
 
         {/* Floors */}
         <div className="flex items-center justify-between">

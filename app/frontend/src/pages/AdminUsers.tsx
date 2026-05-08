@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogFooter, DialogForm, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
-import { Crown, HardHat, House, LayoutDashboard, Layers, Pencil, Plus, Shield, UserCheck, UserCog, UserX } from 'lucide-react';
+import { Crown, HardHat, House, LayoutDashboard, Layers, Pencil, Plus, Shield, Trash2, UserCheck, UserCog, UserX } from 'lucide-react';
 import { toast } from 'sonner';
 
 type AdminTab = 'project' | 'workers' | 'features' | 'admins';
@@ -88,6 +88,9 @@ export default function AdminUsers() {
   const [editingWorker, setEditingWorker] = useState<SiteWorkerCard | null>(null);
   const [editWorkerName, setEditWorkerName] = useState('');
   const [editWorkerPin, setEditWorkerPin] = useState('');
+
+  const [deletingWorker, setDeletingWorker] = useState<SiteWorkerCard | null>(null);
+  const [deleteWorkerBusy, setDeleteWorkerBusy] = useState(false);
 
   const loadProjects = useCallback(async () => {
     const res = await client.entities.projects.query({ sort: 'name', limit: 200 });
@@ -283,6 +286,50 @@ export default function AdminUsers() {
     }
   };
 
+  const confirmDeleteWorker = async () => {
+    if (!selectedProjectId || !deletingWorker) return;
+    const targetId = deletingWorker.id;
+    setDeleteWorkerBusy(true);
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/admin/panel/projects/${selectedProjectId}/site-workers/${targetId}`,
+        method: 'DELETE',
+        data: {},
+      });
+      // Optimistically drop from the list and decrement the visible counter
+      // so the card disappears immediately even before the refresh resolves.
+      setSiteWorkers((prev) => prev.filter((w) => w.id !== targetId));
+      setOverview((prev) =>
+        prev
+          ? {
+              ...prev,
+              site_workers: Math.max(0, (prev.site_workers ?? 0) - 1),
+              active_workers: deletingWorker.active
+                ? Math.max(0, prev.active_workers - 1)
+                : prev.active_workers,
+            }
+          : prev,
+      );
+      toast.success('Site worker deleted');
+      setDeletingWorker(null);
+      void loadProjectScoped();
+    } catch (e: unknown) {
+      const err = e as {
+        data?: { detail?: string };
+        response?: { data?: { detail?: string } };
+        message?: string;
+      };
+      const detail =
+        err?.data?.detail ||
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Could not delete site worker';
+      toast.error(detail);
+    } finally {
+      setDeleteWorkerBusy(false);
+    }
+  };
+
   const triggerAdminReset = async (adminUser: SystemAdmin) => {
     try {
       const res = await client.apiCall.invoke({
@@ -372,6 +419,16 @@ export default function AdminUsers() {
                     ) : (
                       <Button size="sm" variant="outline" className="h-10 text-emerald-700 border-emerald-300" onClick={() => void setWorkerActive(worker, true)}><UserCheck className="h-4 w-4 mr-1.5" />Enable</Button>
                     )}
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-10"
+                      onClick={() => setDeletingWorker(worker)}
+                      aria-label={`Delete site worker ${worker.name}`}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1.5" />
+                      Delete
+                    </Button>
                   </div>
                 </div>
               </Card>
@@ -435,6 +492,50 @@ export default function AdminUsers() {
               <Input type="password" inputMode="numeric" placeholder="New PIN (optional)" value={editWorkerPin} onChange={(e) => setEditWorkerPin(e.target.value)} className="h-12 text-center tracking-widest" autoComplete="new-password" />
             </div>
             <DialogFooter><Button type="submit" className="w-full">Save changes</Button></DialogFooter>
+          </DialogForm>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!deletingWorker}
+        onOpenChange={(open) => {
+          if (!open && !deleteWorkerBusy) setDeletingWorker(null);
+        }}
+      >
+        <DialogContent className="mx-4 max-w-sm">
+          <DialogForm
+            onSubmit={(e) => {
+              e.preventDefault();
+              void confirmDeleteWorker();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle>Delete this site worker? This cannot be undone.</DialogTitle>
+            </DialogHeader>
+            {deletingWorker ? (
+              <p className="text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{deletingWorker.name}</span> will be removed from this project.
+              </p>
+            ) : null}
+            <DialogFooter className="flex-col gap-2 sm:flex-col">
+              <Button
+                type="submit"
+                variant="destructive"
+                className="w-full"
+                disabled={deleteWorkerBusy}
+              >
+                {deleteWorkerBusy ? 'Deleting…' : 'Delete site worker'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={deleteWorkerBusy}
+                onClick={() => setDeletingWorker(null)}
+              >
+                Cancel
+              </Button>
+            </DialogFooter>
           </DialogForm>
         </DialogContent>
       </Dialog>
