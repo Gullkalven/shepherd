@@ -3,7 +3,7 @@ import os
 import time
 
 import models  # noqa: F401  # Ensure all ORM models are registered before create_all
-from core.database import db_manager
+from core.database import db_manager, log_early_database_url_diagnostics
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ async def check_database_health() -> bool:
 
 async def initialize_database():
     """Initialize database and create tables"""
+    log_early_database_url_diagnostics(logger)
     if "MGX_IGNORE_INIT_DB" in os.environ:
         logger.info("Ignore creating tables")
         return

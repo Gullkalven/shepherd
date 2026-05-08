@@ -13,6 +13,7 @@ from core.config import (
     settings,
     should_run_demo_seed_logic,
 )
+from core.database import log_early_database_url_diagnostics
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,6 +74,7 @@ def setup_logging():
 async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("=== Application startup initiated ===")
+    log_early_database_url_diagnostics(logger)
     logger.info("Startup environment mode: %s", "production" if is_production_environment() else "non-production")
 
     log_jwt_secret_env_status(logger)

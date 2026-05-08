@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 # Canonical env vars that may supply a database URL (checked in order; first wins).
 DATABASE_ENV_KEYS: tuple[str, ...] = ("DATABASE_URL", "DB_URL", "POSTGRES_URL", "SQLALCHEMY_DATABASE_URL")
 
+_early_database_url_diagnostics_logged = False
+
 @dataclass(frozen=True)
 class DatabaseUrlResolution:
     """How the runtime chose the database URL (no secrets)."""
@@ -84,12 +86,6 @@ def _collect_env_database_url_presence() -> dict[str, bool]:
     return {key: _env_nonempty(key) for key in DATABASE_ENV_KEYS}
 
 
-def _log_database_env_var_inventory(log: logging.Logger) -> None:
-    """Log which database-related env keys are set (never values)."""
-    for key in DATABASE_ENV_KEYS:
-        log.info("Env key %s present in os.environ: %s", key, "yes" if _env_nonempty(key) else "no")
-
-
 def _postgres_async_ssl_required(parsed: Any) -> bool:
     """Whether asyncpg should use TLS for this PostgreSQL URL (no secrets logged)."""
     host = (parsed.host or "").lower()
@@ -135,26 +131,6 @@ def _asyncpg_connect_args_for_url(normalized_url: str) -> dict[str, Any]:
     return {"ssl": True}
 
 
-def _log_conflicting_database_urls(log: logging.Logger) -> None:
-    """If multiple env keys hold different URLs, warn using sha256 prefixes only."""
-    entries: list[tuple[str, str, str]] = []
-    for key in DATABASE_ENV_KEYS:
-        raw = (os.environ.get(key) or "").strip()
-        if not raw:
-            continue
-        entries.append((key, raw, _sha256_prefix8(raw)))
-    if len(entries) < 2:
-        return
-    distinct_hashes = {e[2] for e in entries}
-    if len(distinct_hashes) <= 1:
-        return
-    summary = ", ".join(f"{k} sha256[8]={h}" for k, _, h in sorted(entries))
-    log.warning(
-        "Multiple database URL env vars are set with different values (compare sha256[8] to your expected URL): %s",
-        summary,
-    )
-
-
 def resolve_database_url() -> DatabaseUrlResolution:
     """Resolve DB URL: first nonempty env key in :data:`DATABASE_ENV_KEYS`, else ``settings.database_url``."""
     for key in DATABASE_ENV_KEYS:
@@ -168,50 +144,28 @@ def resolve_database_url() -> DatabaseUrlResolution:
     )
 
 
-def log_safe_database_startup_diagnostics(log: logging.Logger, resolution: DatabaseUrlResolution) -> None:
-    """Startup diagnostics to verify which DB URL is used without leaking secrets."""
-    log.info("Database config source: %s", resolution.config_source_label())
-    log.info(
-        "os.environ DATABASE_URL key set (non-empty): %s",
-        "yes" if _env_nonempty("DATABASE_URL") else "no",
-    )
-    log.info(
-        "Runtime database URL originated from os.environ (listed keys): %s",
-        "yes" if resolution.from_os_environ else "no",
-    )
+def log_early_database_url_diagnostics(log: logging.Logger) -> None:
+    """Log resolved database URL fingerprint before any engine, pool, or TCP/asyncpg connection.
 
-    settings_raw = (settings.database_url or "").strip()
-    settings_fp = _database_url_safe_fingerprint(settings_raw) if settings_raw else None
-    runtime_fp = _database_url_safe_fingerprint(resolution.url)
+    Safe to call at process startup; does not create engines or open connections.
+    Never logs password or full URL.
+    """
+    global _early_database_url_diagnostics_logged
+    if _early_database_url_diagnostics_logged:
+        return
+    _early_database_url_diagnostics_logged = True
 
-    log.info(
-        "Runtime database URL fingerprint: dialect=%s username=%s host=%s port=%s database=%s "
-        "password_length=%s url_sha256[8]=%s parse_ok=%s",
-        runtime_fp["dialect"],
-        runtime_fp["username"] or "(empty)",
-        runtime_fp["host"] or "(empty)",
-        runtime_fp["port"],
-        runtime_fp["database"] or "(empty)",
-        runtime_fp["password_length"],
-        runtime_fp["url_sha256_prefix"],
-        runtime_fp["parse_ok"],
-    )
+    resolution = resolve_database_url()
+    raw = resolution.url or ""
+    fp = _database_url_safe_fingerprint(raw)
 
-    if settings_fp:
-        match = settings_fp["url_sha256_prefix"] == runtime_fp["url_sha256_prefix"]
-        log.info(
-            "settings.database_url fingerprint: sha256[8]=%s (matches runtime fingerprint: %s)",
-            settings_fp["url_sha256_prefix"],
-            "yes" if match else "no",
-        )
-        if not match:
-            log.warning(
-                "settings.database_url differs from runtime URL (pydantic/env file vs winning env resolution). "
-                "Runtime uses the fingerprint above."
-            )
-
-    _log_database_env_var_inventory(log)
-    _log_conflicting_database_urls(log)
+    log.info("DATABASE_URL exists: %s", "yes" if _env_nonempty("DATABASE_URL") else "no")
+    log.info("source: %s", "os.environ" if resolution.from_os_environ else "settings.database_url")
+    log.info("username: %s", fp["username"] if fp["username"] else "(empty)")
+    log.info("host: %s", fp["host"] if fp["host"] else "(empty)")
+    log.info("database: %s", fp["database"] if fp["database"] else "(empty)")
+    log.info("password length: %s", fp["password_length"])
+    log.info("sha256 (first 8 chars): %s", fp["url_sha256_prefix"])
 
 
 class Base(DeclarativeBase):
@@ -331,7 +285,6 @@ class DatabaseManager:
                 return
 
         resolution = resolve_database_url()
-        log_safe_database_startup_diagnostics(logger, resolution)
 
         database_url = resolution.url
         if not database_url:
