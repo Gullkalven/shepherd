@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from core.config import should_run_demo_seed_logic
 from core.database import db_manager
 from sqlalchemy import Date, DateTime, MetaData, Table, func, select
 from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
@@ -18,6 +19,9 @@ MAX_CONCURRENT_LOADS = 5
 
 async def initialize_mock_data():
     """Populate tables with mock JSON data when they are empty."""
+    if not should_run_demo_seed_logic():
+        logger.info("Production mode detected: skipping demo seed/reset logic.")
+        return
     if "MGX_IGNORE_INIT_DATA" in os.environ:
         logger.info("Ignore initialize data")
         return

@@ -6,7 +6,13 @@ import traceback
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from core.config import get_jwt_signing_secret, log_jwt_secret_env_status, settings
+from core.config import (
+    get_jwt_signing_secret,
+    is_production_environment,
+    log_jwt_secret_env_status,
+    settings,
+    should_run_demo_seed_logic,
+)
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -67,19 +73,27 @@ def setup_logging():
 async def lifespan(app: FastAPI):
     logger = logging.getLogger(__name__)
     logger.info("=== Application startup initiated ===")
+    logger.info("Startup environment mode: %s", "production" if is_production_environment() else "non-production")
 
     log_jwt_secret_env_status(logger)
 
     # MODULE_STARTUP_START
     await initialize_database()
-    await initialize_mock_data()
+    if should_run_demo_seed_logic():
+        logger.info("Non-production mode detected: demo seed/reset logic is enabled.")
+        await initialize_mock_data()
+    else:
+        logger.info("Production mode detected: skipping demo seed/reset logic.")
     await initialize_admin_user()
     from core.database import db_manager
     from services.project_workers import ensure_dev_seed_worker
 
     if db_manager.async_session_maker:
         async with db_manager.async_session_maker() as _s:
-            await ensure_dev_seed_worker(_s)
+            if should_run_demo_seed_logic():
+                await ensure_dev_seed_worker(_s)
+            else:
+                logger.info("Production mode detected: skipping dev seed worker creation.")
             from services.provisional_admin_auth import ensure_seed_from_env
 
             await ensure_seed_from_env(_s)
@@ -277,7 +291,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 
     logger.error("Unhandled exception: %s: %s\n%s", error_type, error_message, traceback.format_exc())
 
-    is_dev = os.getenv("ENVIRONMENT", "prod").lower() == "dev"
+    is_dev = not is_production_environment()
 
     if is_dev:
         error_detail = f"{error_type}: {error_message}\n{traceback.format_exc()}"
@@ -299,6 +313,14 @@ def root():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+
+@app.get("/health/db")
+def health_db_check():
+    from core.database import get_database_runtime_diagnostics
+
+    diagnostics = get_database_runtime_diagnostics()
+    return {"status": "ok", "service": "database", "diagnostics": diagnostics}
 
 
 def run_in_debug_mode(app: FastAPI):

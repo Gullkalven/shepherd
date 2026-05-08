@@ -13,6 +13,22 @@ def _env_has_nonempty(key: str) -> bool:
     return raw is not None and bool(str(raw).strip())
 
 
+def _env_truthy(key: str) -> bool:
+    raw = os.environ.get(key)
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def is_production_environment() -> bool:
+    env = (os.environ.get("ENVIRONMENT") or "").strip().lower()
+    return env in {"production", "prod"} or _env_truthy("RENDER")
+
+
+def should_run_demo_seed_logic() -> bool:
+    return not is_production_environment()
+
+
 def log_jwt_secret_env_status(log: logging.Logger) -> None:
     """Log whether JWT-related env vars are present (never log values)."""
     log.info("JWT_SECRET_KEY configured: %s", "yes" if _env_has_nonempty("JWT_SECRET_KEY") else "no")

@@ -65,6 +65,17 @@ backend/
    curl http://localhost:8000/health
    ```
 
+## Database Safety (Production)
+
+- Local development may use SQLite (for example `sqlite+aiosqlite:///./construction.db`).
+- Production (`ENVIRONMENT=production` or `RENDER=true`) must use PostgreSQL via `DATABASE_URL`.
+- In production, startup fails loudly when:
+  - `DATABASE_URL` is missing, or
+  - `DATABASE_URL` uses SQLite, or
+  - `DATABASE_URL` uses a non-PostgreSQL dialect.
+- Startup logs include sanitized database details (`database dialect` and `database target`) without credentials.
+- Use `GET /health/db` to verify runtime DB config (dialect/host/database name/warnings) safely.
+
 ## 🔌 Module Injection Points
 
 This template includes predefined injection points for easy module integration. All injection points use the `MODULE_` prefix for easy identification:

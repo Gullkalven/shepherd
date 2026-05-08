@@ -73,6 +73,45 @@ class DatabaseManager:
         return normalized
 
     @staticmethod
+    def _is_production_environment() -> bool:
+        env = (os.environ.get("ENVIRONMENT") or "").strip().lower()
+        render = (os.environ.get("RENDER") or "").strip().lower() in {"1", "true", "yes", "on"}
+        return env in {"production", "prod"} or render
+
+    @staticmethod
+    def _runtime_database_url() -> str:
+        env_database_url = (os.environ.get("DATABASE_URL") or "").strip()
+        if env_database_url:
+            return env_database_url
+        return (settings.database_url or "").strip()
+
+    @staticmethod
+    def _describe_database_target(raw_url: str) -> str:
+        try:
+            parsed = make_url(raw_url)
+        except Exception:
+            return "unparseable database url"
+
+        driver = parsed.drivername or "unknown"
+        if driver.startswith("sqlite"):
+            database = parsed.database or "unknown"
+            return f"{driver}:///{database}"
+
+        host = parsed.host or "unknown-host"
+        port = str(parsed.port) if parsed.port else "-"
+        database = parsed.database or "unknown-db"
+        return f"{driver}://{host}:{port}/{database}"
+
+    @staticmethod
+    def _database_dialect(raw_url: str) -> str:
+        try:
+            parsed = make_url(raw_url)
+        except Exception:
+            return "unknown"
+        driver = parsed.drivername or ""
+        return (driver.split("+", 1)[0] or "unknown").lower()
+
+    @staticmethod
     def _check_db_exist(raw_url: str) -> bool:
         if "sqlite" not in raw_url:
             return True
@@ -87,19 +126,50 @@ class DatabaseManager:
     async def init_db(self):
         """Initialize database connection with thread safety"""
         logger.info("Starting database initialization...")
+        logger.info(
+            "Environment mode at DB init: %s",
+            "production" if self._is_production_environment() else "non-production",
+        )
 
         async with self._init_lock:
             if self.engine is not None:
                 logger.info("Database already initialized")
                 return
 
-        if not settings.database_url:
+        database_url = self._runtime_database_url()
+        if not database_url:
             logger.error("No database URL provided. DATABASE_URL environment variable must be set.")
             raise ValueError("DATABASE_URL environment variable is required")
 
+        if self._is_production_environment():
+            logger.info("Production mode detected at DB init.")
+            env_database_url = (os.environ.get("DATABASE_URL") or "").strip()
+            if not env_database_url:
+                raise RuntimeError(
+                    "DATABASE_URL is required in production; refusing to start with default/local database fallback."
+                )
+            try:
+                parsed_prod = make_url(env_database_url)
+                prod_driver = (parsed_prod.drivername or "").lower()
+                prod_dialect = (prod_driver.split("+", 1)[0] or "unknown").lower()
+                if prod_dialect == "sqlite":
+                    raise RuntimeError(
+                        "SQLite is not allowed in production. Configure DATABASE_URL for a persistent database (e.g. PostgreSQL)."
+                    )
+                if prod_dialect not in {"postgresql", "postgres"}:
+                    raise RuntimeError(
+                        f"Unsupported production database dialect '{prod_dialect}'. Production requires PostgreSQL."
+                    )
+            except RuntimeError:
+                raise
+            except Exception as exc:
+                raise RuntimeError(f"Invalid production DATABASE_URL: {exc}") from exc
+
         try:
             logger.info("Normalizing database URL for async compatibility...")
-            database_url = self._normalize_async_database_url(settings.database_url)
+            database_url = self._normalize_async_database_url(database_url)
+            logger.info("Database dialect: %s", self._database_dialect(database_url))
+            logger.info("Database target: %s", self._describe_database_target(database_url))
 
             logger.info("Creating async database engine...")
             # Configure engine based on environment (Lambda vs non-Lambda)
@@ -507,6 +577,57 @@ class DatabaseManager:
 
 
 db_manager = DatabaseManager()
+
+
+def get_database_runtime_diagnostics() -> dict:
+    """Return sanitized runtime DB diagnostics for health endpoints."""
+    runtime_url = db_manager._runtime_database_url()
+    is_production = db_manager._is_production_environment()
+    env_database_url_set = bool((os.environ.get("DATABASE_URL") or "").strip())
+    demo_seed_reset_disabled = is_production
+
+    dialect = "unknown"
+    host = None
+    database_name = None
+    normalized_target = "unconfigured"
+    warnings: list[str] = []
+
+    if runtime_url:
+        try:
+            parsed = make_url(runtime_url)
+            driver = parsed.drivername or ""
+            dialect = (driver.split("+", 1)[0] or "unknown").lower()
+            host = parsed.host or None
+            database_name = parsed.database or None
+            normalized_target = db_manager._describe_database_target(runtime_url)
+        except Exception:
+            warnings.append("Database URL is present but could not be parsed safely.")
+    else:
+        warnings.append("DATABASE_URL is not set; runtime is using settings fallback/default.")
+
+    if is_production and not env_database_url_set:
+        warnings.append(
+            "Production warning: DATABASE_URL is missing. Service must use a persistent external database."
+        )
+    if is_production and dialect == "sqlite":
+        warnings.append(
+            "Production warning: SQLite detected. This is unsafe for Render persistence; use PostgreSQL."
+        )
+    if is_production and dialect not in {"postgresql", "postgres", "unknown"}:
+        warnings.append(
+            "Production warning: Unsupported database dialect detected. Production requires PostgreSQL."
+        )
+
+    return {
+        "database_dialect": dialect,
+        "database_host": host,
+        "database_name": database_name,
+        "database_url_set": env_database_url_set,
+        "is_production": is_production,
+        "demo_seed_reset_disabled": demo_seed_reset_disabled,
+        "database_target": normalized_target,
+        "warnings": warnings,
+    }
 
 
 async def get_db() -> AsyncSession:

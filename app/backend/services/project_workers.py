@@ -7,6 +7,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from core.config import should_run_demo_seed_logic
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -227,6 +228,9 @@ async def _project_exists(db: AsyncSession, project_id: int) -> bool:
 
 async def ensure_dev_seed_worker(db: AsyncSession) -> None:
     """Optional demo worker (PIN 1234) on first project when enabled."""
+    if not should_run_demo_seed_logic():
+        logger.info("Production mode detected: skipping dev worker seed logic.")
+        return
     if os.environ.get("SHEPHERD_SEED_WORKER", "1").lower() in ("0", "false", "no"):
         return
     r = await db.execute(select(Project_workers).limit(1))

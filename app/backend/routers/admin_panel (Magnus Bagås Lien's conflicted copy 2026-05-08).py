@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -6,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from routers.admin_roles import require_admin
 from schemas.auth import UserResponse
+from services import project_workers as pw_svc
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +19,8 @@ from models.section_settings import Section_settings
 from models.user_roles import User_roles
 from models.worker_tasks import WorkerTasks
 from dependencies.roles import ROLE_ADMIN, normalize_role
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/admin/panel", tags=["admin_panel"])
 
@@ -266,3 +270,65 @@ async def site_workers_with_context(
             )
         )
     return cards
+
+
+@router.delete("/projects/{project_id}/site-workers/{worker_id}")
+@router.delete("/projects/{project_id}/site-workers/{worker_id}/")
+async def delete_site_worker(
+    project_id: int,
+    worker_id: int,
+    admin: UserResponse = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a site worker from the selected project.
+
+    Guards:
+    - Project must exist.
+    - Worker must belong to this project.
+    - Admin-role project workers cannot be removed through this flow; this
+      endpoint is for site workers only. System Admins live in `User_roles`
+      and are not affected by this endpoint.
+    """
+    project_result = await db.execute(select(Projects).where(Projects.id == project_id))
+    if project_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    worker_result = await db.execute(
+        select(Project_workers).where(
+            and_(
+                Project_workers.id == worker_id,
+                Project_workers.project_id == project_id,
+            )
+        )
+    )
+    worker = worker_result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Site worker not found")
+
+    if normalize_role(worker.role) == ROLE_ADMIN:
+        raise HTTPException(
+            status_code=400,
+            detail="Admin project workers cannot be deleted from the site worker list",
+        )
+
+    try:
+        deleted = await pw_svc.delete_worker(db, project_id=project_id, worker_id=worker_id)
+    except Exception:  # pragma: no cover - defensive
+        logger.exception(
+            "AdminPanel.delete_site_worker failed project_id=%s worker_id=%s admin_id=%s",
+            project_id,
+            worker_id,
+            getattr(admin, "id", None),
+        )
+        raise HTTPException(status_code=500, detail="Failed to delete site worker")
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Site worker not found")
+
+    logger.info(
+        "AdminPanel.delete_site_worker ok project_id=%s worker_id=%s admin_id=%s",
+        project_id,
+        worker_id,
+        getattr(admin, "id", None),
+    )
+    return {"ok": True, "project_id": project_id, "worker_id": worker_id}

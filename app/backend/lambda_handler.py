@@ -11,6 +11,7 @@ import traceback
 from typing import Any, Dict
 from urllib.parse import unquote
 
+from core.config import is_production_environment, should_run_demo_seed_logic
 from mangum import Mangum
 
 # Configure logging
@@ -81,6 +82,10 @@ async def initialize_services_once():
 
     if not services_initialized:
         try:
+            logger.info(
+                "Startup environment mode: %s",
+                "production" if is_production_environment() else "non-production",
+            )
             # Import all initialization functions (same as in main.py lifespan)
             # Add backend to sys.path for imports
             import sys
@@ -96,7 +101,11 @@ async def initialize_services_once():
 
             # MODULE_STARTUP_START
             await initialize_database()
-            await initialize_mock_data()
+            if should_run_demo_seed_logic():
+                logger.info("Non-production mode detected: demo seed/reset logic is enabled.")
+                await initialize_mock_data()
+            else:
+                logger.info("Production mode detected: skipping demo seed/reset logic.")
             await initialize_admin_user()
             # MODULE_STARTUP_END
 
@@ -265,7 +274,7 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             return result
 
     except Exception as e:
-        error_info = f"{e}\n{format_traceback()}" if os.getenv("ENVIRONMENT", "prod").lower() == "dev" else str(e)
+        error_info = f"{e}\n{format_traceback()}" if not is_production_environment() else str(e)
         logger.error(f"Lambda handler error: {error_info}")
         return {
             "statusCode": 500,
