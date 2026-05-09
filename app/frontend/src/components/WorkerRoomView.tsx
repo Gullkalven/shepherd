@@ -30,7 +30,7 @@ import {
   HEATING_CABLE_STAGES,
   HEATING_CABLE_DERIVED_STATUS_LABEL,
   buildHeatingCableGallerySections,
-  formatHeatingCablePerformedShort,
+  formatHeatingCableDateTimeReadable,
   getHeatingCableFocusTarget,
   heatingDocumentationProgress,
   heatingExtraStepRowVisible,
@@ -305,43 +305,10 @@ function HeatingStagePhotoPicker(props: {
   );
 }
 
-/** Compact "Performed: 2 May 23:06" with optional admin-only edit affordance. */
-function HeatingPerformedRow(props: {
-  storedDate: string | undefined;
-}) {
-  const display = formatHeatingCablePerformedShort(props.storedDate);
-
-  return (
-    <div className="min-w-0 max-w-full">
-      <div className="flex min-w-0 max-w-full flex-col gap-1 text-sm leading-snug sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1.5 sm:gap-y-1">
-        <span className="text-muted-foreground">Performed:</span>
-        <span className="min-w-0 max-w-full break-words font-semibold tabular-nums text-foreground">{display || '—'}</span>
-      </div>
-    </div>
-  );
-}
-
 function heatingStageCollapseSummary(stage: HeatingCableStage): string {
   const parts: string[] = [];
   if (stage.resistance_ohm?.trim()) parts.push(`${stage.resistance_ohm.trim()} Ω`);
   if (stage.insulation_mohm?.trim()) parts.push(`${stage.insulation_mohm.trim()} MΩ`);
-  const when = stage.date?.trim();
-  if (when) {
-    const raw = /^\d{4}-\d{2}-\d{2}$/.test(when) ? `${when}T12:00` : when.replace(' ', 'T');
-    const t = Date.parse(raw);
-    if (!Number.isNaN(t)) {
-      parts.push(
-        new Date(t).toLocaleString(undefined, {
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })
-      );
-    } else {
-      parts.push(when);
-    }
-  }
   if (stage.performed_by?.trim()) parts.push(stage.performed_by.trim());
   if (parts.length === 0) return 'No readings yet';
   return parts.join(' · ');
@@ -1222,14 +1189,6 @@ export function WorkerRoomView(p: Props) {
                           />
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                          Recorded as
-                        </p>
-                        <HeatingPerformedRow
-                          storedDate={row.date}
-                        />
-                      </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-muted-foreground">Note (optional)</span>
                         <Textarea
@@ -1264,9 +1223,11 @@ export function WorkerRoomView(p: Props) {
                             <span className="text-muted-foreground">Completed by: </span>
                             {row.completed_by_name?.trim() || row.completed_by?.trim() || 'Unknown'}
                           </p>
-                          <p>
+                          <p className="tabular-nums">
                             <span className="text-muted-foreground">Time: </span>
-                            {row.completed_at?.trim() ? formatVisitDateShort(row.completed_at) : 'unknown time'}
+                            {row.completed_at?.trim()
+                              ? formatHeatingCableDateTimeReadable(row.completed_at)
+                              : 'unknown time'}
                           </p>
                         </div>
                       ) : !canAccessStage ? (
@@ -1391,14 +1352,6 @@ export function WorkerRoomView(p: Props) {
                           />
                         </div>
                       </div>
-                      <div className="space-y-2">
-                        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                          Recorded as
-                        </p>
-                        <HeatingPerformedRow
-                          storedDate={step.date}
-                        />
-                      </div>
                       <div className="space-y-1">
                         <span className="text-[11px] text-muted-foreground">Note (optional)</span>
                         <Textarea
@@ -1437,30 +1390,31 @@ export function WorkerRoomView(p: Props) {
                 <div className="space-y-0.5">
                   <p className="text-sm font-semibold text-foreground">Heating cable photos</p>
                   <p className="text-[11px] text-muted-foreground leading-snug">
-                    Grouped by stage. Tap a thumbnail to view the full image.
+                    Tap a thumbnail for full size. Captions show the stage and uploader when available.
                   </p>
                 </div>
                 <div className="space-y-5">
                   {heatingGallerySections.map((sec) => (
-                    <div key={sec.stageId} className="space-y-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        {sec.label}
-                      </p>
-                      <div className="grid grid-cols-3 gap-2">
+                    <div key={sec.stageId} className="space-y-2" aria-label={sec.label}>
+                      <div className="grid grid-cols-3 gap-x-2 gap-y-3">
                         {sec.items.map((item) => (
-                          <button
-                            key={`${sec.stageId}-${item.objectKey}`}
-                            type="button"
-                            className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 ring-1 ring-border/40 dark:bg-slate-800"
-                            disabled={!item.displayUrl}
-                            onClick={() => item.displayUrl && p.onPhotoPreview(item.displayUrl)}
-                          >
-                            {item.displayUrl ? (
-                              <img src={item.displayUrl} alt="" className="h-full w-full object-cover" />
-                            ) : (
-                              <ImageIcon className="m-auto h-8 w-8 text-muted-foreground/35" aria-hidden />
-                            )}
-                          </button>
+                          <div key={`${sec.stageId}-${item.photoId ?? item.objectKey}`} className="min-w-0 space-y-1">
+                            <button
+                              type="button"
+                              className="relative aspect-square w-full overflow-hidden rounded-lg bg-slate-100 ring-1 ring-border/40 dark:bg-slate-800"
+                              disabled={!item.displayUrl}
+                              onClick={() => item.displayUrl && p.onPhotoPreview(item.displayUrl)}
+                            >
+                              {item.displayUrl ? (
+                                <img src={item.displayUrl} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                <ImageIcon className="m-auto h-8 w-8 text-muted-foreground/35" aria-hidden />
+                              )}
+                            </button>
+                            <p className="px-0.5 text-center text-[10px] leading-snug text-muted-foreground">
+                              {item.captionLine}
+                            </p>
+                          </div>
                         ))}
                       </div>
                     </div>

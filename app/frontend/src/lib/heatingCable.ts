@@ -79,7 +79,14 @@ function normalizeStage(raw: unknown): HeatingCableStage {
   const performedByRaw = row.performed_by ?? row.performedBy;
   const photosRaw = Array.isArray(row.photos) ? row.photos : [];
   const imagesRaw = Array.isArray(row.images) ? row.images : [];
-  const mergedImages = [...photosRaw, ...imagesRaw].filter((p) => typeof p === 'string').map((p) => String(p));
+  const mergedImages = Array.from(
+    new Set(
+      [...photosRaw, ...imagesRaw]
+        .filter((p) => typeof p === 'string')
+        .map((p) => String(p).trim())
+        .filter((p) => p.length > 0)
+    )
+  );
   return {
     id: typeof row.id === 'string' ? row.id : '',
     label: typeof row.label === 'string' ? row.label : '',
@@ -340,13 +347,43 @@ export function parseHeatingCableStageFromCaption(caption: string | null | undef
   if (caption == null || typeof caption !== 'string') return null;
   const s = caption.trim();
   if (s.startsWith(HEATING_CABLE_STAGE_CAPTION_PREFIX)) {
-    const rest = s.slice(HEATING_CABLE_STAGE_CAPTION_PREFIX.length);
-    const id = rest.split('|')[0]?.trim();
+    const rest = s.slice(HEATING_CABLE_STAGE_CAPTION_PREFIX.length).trim();
+    const id = rest.split(/\s*·\s*/)[0]?.split('|')[0]?.trim();
     return id || null;
   }
   const legacy = /^Heating cable module photo \(([^)]+)\)\s*$/.exec(s);
   if (legacy) return legacy[1].trim() || null;
   return null;
+}
+
+/** Reads “Uploaded by …” suffix from heating cable or general room photo captions. */
+export function parseUploadedByFromPhotoCaption(caption: string | null | undefined): string {
+  if (caption == null || typeof caption !== 'string') return '';
+  const marker = 'Uploaded by ';
+  const idx = caption.indexOf(marker);
+  if (idx < 0) return '';
+  const rest = caption.slice(idx + marker.length);
+  return rest.split(' · ')[0]?.trim() || rest.trim();
+}
+
+/** Collapse URL vs object-key variants to the server object_key when possible (dedupes gallery keys). */
+export function canonicalHeatingCablePhotoRef(
+  stored: string,
+  resolvedPhotos: Array<{ object_key: string; downloadUrl?: string | null }>
+): string {
+  const t = String(stored || '').trim();
+  if (!t) return '';
+  const hitKey = resolvedPhotos.find((p) => String(p.object_key || '').trim() === t);
+  if (hitKey) return String(hitKey.object_key).trim();
+  if (/^https?:\/\//i.test(t)) {
+    const byUrl = resolvedPhotos.find((p) => {
+      const u = String(p.downloadUrl || '').trim();
+      const k = String(p.object_key || '').trim();
+      return (u && u === t) || (k && (t.includes(k) || t.endsWith(k)));
+    });
+    if (byUrl?.object_key) return String(byUrl.object_key).trim();
+  }
+  return t;
 }
 
 /** Resolve stored heating photo reference (object key or absolute URL) to a display/download URL. */
@@ -366,6 +403,8 @@ export type HeatingCableGalleryItem = {
   objectKey: string;
   displayUrl: string;
   photoId?: number;
+  /** Single readable line under the thumbnail, e.g. “After cable laid · Uploaded by David”. */
+  captionLine: string;
 };
 
 export type HeatingCableGallerySection = {
@@ -415,7 +454,7 @@ export function buildHeatingCableGallerySections(
   };
 
   const addKey = (stageId: string, label: string, objectKey: string) => {
-    const k = objectKey.trim();
+    const k = canonicalHeatingCablePhotoRef(objectKey, resolvedPhotos);
     if (!k) return;
     touchStage(stageId, label);
     stageKeys.get(stageId)!.add(k);
@@ -444,9 +483,11 @@ export function buildHeatingCableGallerySections(
     addKey(st, label, p.object_key);
   }
 
-  const meta = new Map<string, { id: number; created: number }>();
+  const meta = new Map<string, { id: number; created: number; caption?: string | null }>();
   for (const p of resolvedPhotos) {
-    meta.set(p.object_key, { id: p.id, created: photoCreatedSortKey(p.created_at ?? null) });
+    const k = String(p.object_key || '').trim();
+    if (!k) continue;
+    meta.set(k, { id: p.id, created: photoCreatedSortKey(p.created_at ?? null), caption: p.caption });
   }
 
   const sortKeys = (keys: Iterable<string>) =>
@@ -463,11 +504,17 @@ export function buildHeatingCableGallerySections(
     const keys = stageKeys.get(stageId);
     if (!keys || keys.size === 0) return;
     emitted.add(stageId);
-    const items: HeatingCableGalleryItem[] = sortKeys(keys).map((objectKey) => ({
-      objectKey,
-      displayUrl: resolveHeatingCablePhotoDownloadUrl(objectKey, resolvedPhotos),
-      photoId: meta.get(objectKey)?.id,
-    }));
+    const items: HeatingCableGalleryItem[] = sortKeys(keys).map((objectKey) => {
+      const m = meta.get(objectKey);
+      const uploadedBy = parseUploadedByFromPhotoCaption(m?.caption ?? null);
+      const captionLine = uploadedBy ? `${label} · Uploaded by ${uploadedBy}` : label;
+      return {
+        objectKey,
+        displayUrl: resolveHeatingCablePhotoDownloadUrl(objectKey, resolvedPhotos),
+        photoId: m?.id,
+        captionLine,
+      };
+    });
     sections.push({ stageId, label, items });
   };
 
