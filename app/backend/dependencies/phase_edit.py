@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_PHASE_KEYS: List[str] = ["demontering", "varmekabel", "remontering", "sluttkontroll"]
 
 VALID_PHASE_STEP_STATUSES = frozenset({"not_started", "in_progress", "complete", "blocked"})
-HEATING_STEP_CONFIRM_TEXT = "I confirm this step is completed"
 HEATING_STEP_KEYS: List[str] = ["before_installation", "after_cable_laid", "after_screed_final"]
 
 PHASE_WORKER_LOCKED_DETAIL = (
@@ -310,7 +309,7 @@ async def ensure_worker_may_update_room_gated_content(
 def _heating_stage_has_required_values(stage_raw: Any, step_key: str) -> bool:
     if not isinstance(stage_raw, dict):
         return False
-    required = ("resistance_ohm", "insulation_mohm", "date")
+    required = ("resistance_ohm", "insulation_mohm")
     for k in required:
         v = stage_raw.get(k)
         if not isinstance(v, str) or not v.strip():
@@ -329,7 +328,18 @@ def _heating_stage_content_fingerprint(stage_raw: Any) -> Dict[str, Any]:
         return {}
     out: Dict[str, Any] = {}
     for k, v in stage_raw.items():
-        if k in {"step_status", "completed_by", "completed_by_name", "completed_at", "confirmation_text"}:
+        if k in {
+            "step_status",
+            "completed_by",
+            "completed_by_user_id",
+            "completed_by_name",
+            "completed_at",
+            "confirmed_by",
+            "confirmed_by_user_id",
+            "confirmed_by_name",
+            "confirmed_at",
+            "confirmation_text",
+        }:
             continue
         out[k] = v
     return out
@@ -401,12 +411,6 @@ def ensure_worker_heating_doc_update_allowed(old_raw: Any, new_raw: Any, user_id
                 )
 
         if new_locked and not old_locked:
-            confirm = str(new_stage.get("confirmation_text") or "").strip()
-            if confirm != HEATING_STEP_CONFIRM_TEXT:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Heating step '{step_key}' requires exact confirmation text before locking.",
-                )
             if not _heating_stage_has_required_values(new_stage, step_key):
                 raise HTTPException(
                     status_code=400,

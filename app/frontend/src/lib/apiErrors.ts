@@ -17,7 +17,20 @@ export function apiFailureMessage(err: unknown): string | undefined {
   const detail = data?.detail ?? data?.message;
   if (typeof detail === 'string' && detail.trim()) return detail.trim();
   if (Array.isArray(detail)) {
-    const s = detail.map((x) => String(x)).join(', ');
+    const s = detail
+      .map((x) => {
+        if (typeof x === 'string') return x;
+        if (x && typeof x === 'object') {
+          const row = x as { msg?: unknown; message?: unknown; loc?: unknown };
+          const msg = row.msg ?? row.message;
+          if (typeof msg === 'string' && msg.trim()) {
+            const loc = Array.isArray(row.loc) ? row.loc.join('.') : '';
+            return loc ? `${loc}: ${msg}` : msg;
+          }
+        }
+        return String(x);
+      })
+      .join(', ');
     if (s.trim()) return s;
   }
   const st = ax.response?.status;

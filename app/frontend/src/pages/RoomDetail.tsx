@@ -1986,14 +1986,22 @@ export default function RoomDetail() {
           payload: {},
         });
       }
-      const res = await confirmHeatingCableStep(room.id, stageKey);
-      const persisted = normalizeHeatingCableDoc(res?.heating_cable_doc);
-      skipHeatingDocSyncRef.current = true;
-      setHeatingCableDoc(persisted);
-      setRoom((prev) => (prev ? { ...prev, heating_cable_doc: persisted } : null));
-      setHeatingCableSyncedFp(heatingCablePersistFingerprint(persisted, displayName));
-      await refreshRoom();
-      toast.success('Step completed and locked');
+      setHeatingCableBlocking(true);
+      try {
+        const res = await confirmHeatingCableStep(room.id, stageKey);
+        const persisted = normalizeHeatingCableDoc(res?.heating_cable_doc);
+        skipHeatingDocSyncRef.current = true;
+        setHeatingCableDoc(persisted);
+        setRoom((prev) => (prev ? { ...prev, heating_cable_doc: persisted } : null));
+        setHeatingCableSyncedFp(heatingCablePersistFingerprint(persisted, displayName));
+        await refreshRoom();
+        toast.success('Step completed and locked');
+      } catch (err) {
+        devLogApiFailure('confirm heating cable step', err);
+        toast.error(apiFailureMessage(err) ?? 'Failed to confirm heating cable step');
+      } finally {
+        setHeatingCableBlocking(false);
+      }
     },
     [room, currentUserId, displayName, refreshRoom]
   );

@@ -29,7 +29,6 @@ import {
 import {
   HEATING_CABLE_STAGES,
   HEATING_CABLE_DERIVED_STATUS_LABEL,
-  HEATING_CONFIRM_TEXT,
   buildHeatingCableGallerySections,
   formatHeatingCablePerformedShort,
   getHeatingCableFocusTarget,
@@ -142,7 +141,7 @@ type Props = {
   ) => void;
   onHeatingStagePhotoChange: (stageId: string, file?: File) => void;
   onSaveHeatingCable: () => void;
-  onCompleteHeatingStage: (stageKey: HeatingCableStageKey) => void;
+  onCompleteHeatingStage: (stageKey: HeatingCableStageKey) => void | Promise<void>;
   onPhotoPreview: (url: string) => void;
 
   /** Session display name used elsewhere in worker flow. */
@@ -1588,7 +1587,7 @@ export function WorkerRoomView(p: Props) {
           <DialogHeader className="space-y-2 text-left">
             <DialogTitle className="text-xl leading-snug">Confirm step</DialogTitle>
             <DialogDescription className="text-left text-base leading-relaxed text-muted-foreground">
-              Are you sure you want to confirm this step? Signature text: "{HEATING_CONFIRM_TEXT}".
+              Are you sure you want to confirm this step? The server will stamp the current time and signed-in worker.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
@@ -1598,13 +1597,14 @@ export function WorkerRoomView(p: Props) {
             <Button
               type="button"
               className="w-full bg-emerald-600 text-white hover:bg-emerald-700 sm:w-auto"
+              disabled={p.heatingCableBlocking}
               onClick={() => {
                 if (!confirmStageKey) return;
-                p.onCompleteHeatingStage(confirmStageKey);
+                void p.onCompleteHeatingStage(confirmStageKey);
                 setConfirmStageKey(null);
               }}
             >
-              Confirm step
+              {p.heatingCableBlocking ? 'Confirming...' : 'Confirm step'}
             </Button>
           </DialogFooter>
         </DialogContent>

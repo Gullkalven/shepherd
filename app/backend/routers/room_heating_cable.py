@@ -21,9 +21,6 @@ entities_router = APIRouter(prefix="/api/v1/entities/rooms", tags=["room_heating
 admin_router = entities_router
 
 HEATING_STEP_KEYS: List[str] = ["before_installation", "after_cable_laid", "after_screed_final"]
-HEATING_CONFIRM_TEXT = "I confirm this step is completed"
-
-
 class HeatingCableDraftPatch(BaseModel):
     resistance: Optional[str] = None
     insulation: Optional[str] = None
@@ -136,7 +133,7 @@ async def _patch_heating_cable_step_impl(
 async def _confirm_heating_cable_step_impl(
     room_id: int,
     step_key: str,
-    body: HeatingCableConfirmBody,
+    body: Optional[HeatingCableConfirmBody] = None,
     current_user: UserResponse = Depends(get_current_user),
     _role: str = Depends(require_room_collaborator),
     app_role: str = Depends(get_current_app_role),
@@ -154,7 +151,7 @@ async def _confirm_heating_cable_step_impl(
         raise HTTPException(status_code=404, detail="Room not found")
 
     completed_by = str(current_user.id).strip()
-    requested_completed_by = str(body.completed_by or "").strip()
+    requested_completed_by = str(body.completed_by if body else "").strip()
     if requested_completed_by and requested_completed_by != completed_by:
         raise HTTPException(status_code=400, detail=f"Heating step '{step_key}' must store the current worker id as completed_by.")
 
@@ -172,15 +169,21 @@ async def _confirm_heating_cable_step_impl(
             raise HTTPException(status_code=400, detail="At least one photo is required for 'after_cable_laid'.")
 
     now_iso = _iso_utc_now()
+    actor_name = (getattr(current_user, "name", None) or "").strip()
+    actor_display = actor_name or completed_by
     # Worker flow is auto-stamped on confirm (no manual timestamp entry).
     stage["date"] = now_iso
-    stage["performed_by"] = (getattr(current_user, "name", None) or "").strip() or completed_by
+    stage["performed_at"] = now_iso
+    stage["performed_by"] = actor_display
     stage["step_status"] = "locked"
     stage["completed_by"] = completed_by
     stage["completed_by_user_id"] = completed_by
-    stage["completed_by_name"] = (getattr(current_user, "name", None) or "").strip()
+    stage["completed_by_name"] = actor_name
     stage["completed_at"] = now_iso
-    stage["confirmation_text"] = HEATING_CONFIRM_TEXT
+    stage["confirmed_by"] = completed_by
+    stage["confirmed_by_user_id"] = completed_by
+    stage["confirmed_by_name"] = actor_name
+    stage["confirmed_at"] = now_iso
     doc[step_key] = stage
     doc["updated_at"] = _iso_utc_now()
 
@@ -225,7 +228,7 @@ async def patch_heating_cable_step_entities(
 async def confirm_heating_cable_step(
     room_id: int,
     step_key: str,
-    body: HeatingCableConfirmBody,
+    body: Optional[HeatingCableConfirmBody] = None,
     current_user: UserResponse = Depends(get_current_user),
     _role: str = Depends(require_room_collaborator),
     app_role: str = Depends(get_current_app_role),
@@ -238,7 +241,7 @@ async def confirm_heating_cable_step(
 async def confirm_heating_cable_step_entities(
     room_id: int,
     step_key: str,
-    body: HeatingCableConfirmBody,
+    body: Optional[HeatingCableConfirmBody] = None,
     current_user: UserResponse = Depends(get_current_user),
     _role: str = Depends(require_room_collaborator),
     app_role: str = Depends(get_current_app_role),
