@@ -95,8 +95,9 @@ function parseUploadedByFromCaption(caption: string | null | undefined): string 
 }
 
 async function downscaleImageForPdf(url: string): Promise<string> {
-  const MAX_SIDE = 1600;
-  const JPEG_QUALITY = 0.78;
+  /** Large enough for full-width print export without softening details. */
+  const MAX_SIDE = 2400;
+  const JPEG_QUALITY = 0.82;
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const node = new Image();
@@ -509,6 +510,8 @@ export default function ProjectDetail() {
           const gallery = buildHeatingCableGallerySections(doc, photos);
           const floor = floorById.get(room.floor_id);
           const floorLabel = floor?.name || `Floor ${floor?.floor_number ?? room.floor_id}`;
+          const roomTitle = `Room ${escapeHtml(room.room_number)}`;
+          const roomLocationLabel = `${floorLabel} / Room ${room.room_number}`;
           const stageRows: Array<{ id: string; label: string; row: Record<string, unknown> }> = [
             ...HEATING_CABLE_STAGES.map((s) => ({
               id: s.key,
@@ -528,85 +531,125 @@ export default function ProjectDetail() {
               .filter((x) => x.visible)
               .map(({ id, label, row }) => ({ id, label, row }))),
           ];
+
+          const summaryRows = stageRows
+            .map((stage) => {
+              const completedBy =
+                stage.row.completed_by_name?.trim() ||
+                stage.row.completed_by?.trim() ||
+                stage.row.performed_by?.trim() ||
+                '-';
+              const registeredAt = formatHeatingCableDateTimeReadable(
+                stage.row.completed_at?.trim() || stage.row.date?.trim() || ''
+              );
+              const stagePhotos = gallery.find((g) => g.stageId === stage.id)?.items || [];
+              const fallbackPhotos = gallery.find((g) => g.label === stage.label)?.items || [];
+              const items = stagePhotos.length > 0 ? stagePhotos : fallbackPhotos;
+              const photoCount = items.filter((x) => x.displayUrl).length;
+              return `
+                <tr>
+                  <td>${escapeHtml(stage.label)}</td>
+                  <td>${escapeHtml(String(stage.row.resistance_ohm || '-'))}</td>
+                  <td>${escapeHtml(String(stage.row.insulation_mohm || '-'))}</td>
+                  <td>${escapeHtml(registeredAt || '-')}</td>
+                  <td>${escapeHtml(completedBy)}</td>
+                  <td>${photoCount}</td>
+                </tr>
+              `;
+            })
+            .join('');
+
+          const photoBlocks = stageRows
+            .flatMap((stage) => {
+              const stagePhotos = gallery.find((g) => g.stageId === stage.id)?.items || [];
+              const fallbackPhotos = gallery.find((g) => g.label === stage.label)?.items || [];
+              const items = stagePhotos.length > 0 ? stagePhotos : fallbackPhotos;
+              const docFieldPhotos = Array.isArray(stage.row.photos)
+                ? stage.row.photos.filter((x) => typeof x === 'string' && x.trim())
+                : [];
+              const sourceUsed =
+                stagePhotos.length > 0
+                  ? `gallery.stageId:${stage.id}`
+                  : fallbackPhotos.length > 0
+                    ? `gallery.label:${stage.label}`
+                    : docFieldPhotos.length > 0
+                      ? `heating_cable_doc.${stage.id}.photos`
+                      : 'none';
+              console.info('[HeatingPdfExport] stage photos', {
+                roomId: room.id,
+                stepKey: stage.id,
+                photoCount: items.length,
+                sourcePath: sourceUsed,
+              });
+              return items
+                .filter((x) => x.displayUrl)
+                .map((x) => {
+                  if (typeof x.photoId === 'number') {
+                    photoUrlTasks.push(
+                      downscaleImageForPdf(x.displayUrl).then((prepared) => {
+                        preparedPhotoUrlById.set(x.photoId!, prepared);
+                      })
+                    );
+                  }
+                  const meta = typeof x.photoId === 'number' ? photoById.get(x.photoId) : undefined;
+                  const uploadedBy =
+                    parseUploadedByFromCaption(meta?.caption ?? null) || meta?.user_id?.trim() || '';
+                  const uploadedAt = formatHeatingCableDateTimeReadable(meta?.created_at || '');
+                  const uploadParts = [
+                    uploadedBy ? `<span><strong>Uploaded by:</strong> ${escapeHtml(uploadedBy)}</span>` : '',
+                    uploadedAt ? `<span><strong>Recorded:</strong> ${escapeHtml(uploadedAt)}</span>` : '',
+                  ].filter(Boolean);
+                  const captionRoom = escapeHtml(roomLocationLabel);
+                  const captionStep = escapeHtml(stage.label);
+                  return `
+                    <figure class="photo-doc-card" data-photo-id="${x.photoId ?? ''}">
+                      <figcaption class="photo-doc-meta">
+                        <div class="photo-doc-meta-primary">
+                          <span class="photo-doc-room"><strong>Room:</strong> ${captionRoom}</span>
+                          <span class="photo-doc-step"><strong>Step:</strong> ${captionStep}</span>
+                        </div>
+                        ${
+                          uploadParts.length
+                            ? `<div class="photo-doc-meta-secondary">${uploadParts.join(' <span class="meta-sep">·</span> ')}</div>`
+                            : ''
+                        }
+                      </figcaption>
+                      <div class="photo-doc-img-wrap">
+                        <img src="${escapeHtml(x.displayUrl)}" alt="${captionStep} — ${captionRoom}" />
+                      </div>
+                    </figure>
+                  `;
+                });
+            })
+            .join('');
+
           return `
             <section class="room">
-              <h2>Room ${escapeHtml(room.room_number)}</h2>
+              <h2>${roomTitle}</h2>
               <p><strong>Project:</strong> ${escapeHtml(project.name)}</p>
-              <p><strong>Floor/Room:</strong> ${escapeHtml(floorLabel)} / ${escapeHtml(room.room_number)}</p>
-              ${stageRows
-                .map((stage) => {
-                  const completedBy =
-                    stage.row.completed_by_name?.trim() ||
-                    stage.row.completed_by?.trim() ||
-                    stage.row.performed_by?.trim() ||
-                    '-';
-                  const registeredAt = formatHeatingCableDateTimeReadable(
-                    stage.row.completed_at?.trim() || stage.row.date?.trim() || ''
-                  );
-                  const stagePhotos = gallery.find((g) => g.stageId === stage.id)?.items || [];
-                  const fallbackPhotos = gallery.find((g) => g.label === stage.label)?.items || [];
-                  const items = stagePhotos.length > 0 ? stagePhotos : fallbackPhotos;
-                  const docFieldPhotos = Array.isArray(stage.row.photos)
-                    ? stage.row.photos.filter((x) => typeof x === 'string' && x.trim())
-                    : [];
-                  const sourceUsed =
-                    stagePhotos.length > 0
-                      ? `gallery.stageId:${stage.id}`
-                      : fallbackPhotos.length > 0
-                        ? `gallery.label:${stage.label}`
-                        : docFieldPhotos.length > 0
-                          ? `heating_cable_doc.${stage.id}.photos`
-                          : 'none';
-                  console.info('[HeatingPdfExport] stage photos', {
-                    roomId: room.id,
-                    stepKey: stage.id,
-                    photoCount: items.length,
-                    sourcePath: sourceUsed,
-                  });
-                  const photoCards = items
-                    .filter((x) => x.displayUrl)
-                    .map((x) => {
-                      if (typeof x.photoId === 'number') {
-                        photoUrlTasks.push(
-                          downscaleImageForPdf(x.displayUrl).then((prepared) => {
-                            preparedPhotoUrlById.set(x.photoId!, prepared);
-                          })
-                        );
-                      }
-                      const meta = typeof x.photoId === 'number' ? photoById.get(x.photoId) : undefined;
-                      const uploadedBy =
-                        parseUploadedByFromCaption(meta?.caption ?? null) || meta?.user_id?.trim() || '';
-                      const uploadedAt = formatHeatingCableDateTimeReadable(meta?.created_at || '');
-                      const details = [
-                        uploadedBy ? `<span>Uploaded by: ${escapeHtml(uploadedBy)}</span>` : '',
-                        uploadedAt ? `<span>Recorded: ${escapeHtml(uploadedAt)}</span>` : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' · ');
-                      return `
-                        <figure class="photo-card" data-photo-id="${x.photoId ?? ''}">
-                          <img src="${escapeHtml(x.displayUrl)}" alt="${escapeHtml(stage.label)}" />
-                          ${details ? `<figcaption>${details}</figcaption>` : ''}
-                        </figure>
-                      `;
-                    })
-                    .join('');
-                  return `
-                    <div class="stage">
-                      <h3>${escapeHtml(stage.label)}</h3>
-                      <p><strong>Resistance:</strong> ${escapeHtml(stage.row.resistance_ohm || '-')}</p>
-                      <p><strong>Insulation:</strong> ${escapeHtml(stage.row.insulation_mohm || '-')}</p>
-                      <p><strong>Registered:</strong> ${escapeHtml(registeredAt || '-')}</p>
-                      <p><strong>Performed/Confirmed by:</strong> ${escapeHtml(completedBy)}</p>
-                      ${
-                        items.length > 0
-                          ? `<div class="photos">${photoCards}</div>`
-                          : '<p class="muted">No photos uploaded</p>'
-                      }
-                    </div>
-                  `;
-                })
-                .join('')}
+              <p><strong>Location:</strong> ${escapeHtml(roomLocationLabel)}</p>
+
+              <div class="measurements-block">
+                <h3>Measurements &amp; registration</h3>
+                <table class="summary-table">
+                  <thead>
+                    <tr>
+                      <th>Step</th>
+                      <th>Resistance (Ω)</th>
+                      <th>Insulation (MΩ)</th>
+                      <th>Registered</th>
+                      <th>Confirmed by</th>
+                      <th class="num">Photos</th>
+                    </tr>
+                  </thead>
+                  <tbody>${summaryRows}</tbody>
+                </table>
+              </div>
+
+              <div class="photo-documentation">
+                <h3>Photo documentation</h3>
+                ${photoBlocks || '<p class="muted">No photos uploaded for this room.</p>'}
+              </div>
             </section>
           `;
         })
@@ -621,14 +664,49 @@ export default function ProjectDetail() {
           <head>
             <title>Heating Cable Documentation - ${project.name}</title>
             <style>
-              body { font-family: Arial, sans-serif; padding: 20px; }
-              h1 { margin-bottom: 20px; }
-              .room { page-break-after: always; margin-bottom: 24px; }
-              .stage { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin: 10px 0; }
-              .photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
-              .photo-card { margin: 0; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; break-inside: avoid; page-break-inside: avoid; background: #fff; }
-              .photo-card img { display: block; width: 100%; max-height: 220px; object-fit: cover; }
-              .photo-card figcaption { padding: 6px 8px; font-size: 11px; color: #444; }
+              @page { margin: 14mm; }
+              body { font-family: Arial, Helvetica, sans-serif; padding: 16px 18px; font-size: 11pt; line-height: 1.35; color: #111; }
+              h1 { font-size: 18pt; margin: 0 0 16px; }
+              h2 { font-size: 14pt; margin: 20px 0 10px; }
+              h3 { font-size: 12pt; margin: 18px 0 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+              .room { margin-bottom: 28px; }
+              .room + .room { page-break-before: always; }
+              .measurements-block { margin-bottom: 22px; }
+              .summary-table { width: 100%; border-collapse: collapse; font-size: 10pt; margin-top: 6px; }
+              .summary-table th, .summary-table td { border: 1px solid #bbb; padding: 7px 9px; text-align: left; vertical-align: top; }
+              .summary-table th { background: #efefef; font-weight: bold; }
+              .summary-table td.num, .summary-table th.num { text-align: center; width: 4.5em; }
+              .summary-table thead { display: table-header-group; }
+              .summary-table tr { break-inside: avoid; page-break-inside: avoid; }
+              .photo-documentation { margin-top: 8px; }
+              .photo-doc-card {
+                margin: 0 0 22px;
+                border: 1px solid #999;
+                border-radius: 4px;
+                overflow: hidden;
+                background: #fff;
+                break-inside: avoid;
+                page-break-inside: avoid;
+              }
+              .photo-doc-meta { padding: 10px 12px; background: #f3f3f3; border-bottom: 1px solid #ccc; font-size: 10pt; }
+              .photo-doc-meta-primary { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; }
+              .photo-doc-room, .photo-doc-step { display: inline-block; min-width: 0; }
+              .photo-doc-meta-secondary { margin-top: 6px; font-size: 9.5pt; color: #333; }
+              .meta-sep { color: #888; padding: 0 2px; }
+              .photo-doc-img-wrap {
+                padding: 10px 12px 14px;
+                text-align: center;
+                background: #fafafa;
+              }
+              .photo-doc-img-wrap img {
+                display: inline-block;
+                max-width: 100%;
+                width: auto;
+                height: auto;
+                max-height: 5.1in;
+                object-fit: contain;
+                vertical-align: middle;
+              }
               .muted { color: #666; font-style: italic; }
             </style>
           </head>
