@@ -22,6 +22,7 @@ import NotFound from './pages/NotFound';
 import RequireAdminAccess from './components/RequireAdminAccess';
 import AppErrorBoundary from './components/AppErrorBoundary';
 import ProjectScopedLayout from './components/ProjectScopedLayout';
+import MobilePortraitGuard from './components/MobilePortraitGuard';
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -30,36 +31,38 @@ const App = () => (
         <I18nProvider>
           <TooltipProvider>
             <Toaster />
-            <BrowserRouter>
-              <DevPresentationSessionProvider>
-                <Routes>
-                  <Route path="/auth/callback" element={<AuthCallback />} />
-                  <Route path="/auth/error" element={<AuthError />} />
-                  <Route path="/" element={<AppShellLayout />}>
-                    <Route index element={<Index />} />
-                    <Route path="worker/login" element={<WorkerLoginPage />} />
-                    <Route path="worker/rooms" element={<WorkerRoomsPage />} />
-                    <Route path="worker/me" element={<Navigate to="/worker/settings" replace />} />
-                    <Route path="worker/settings" element={<WorkerMePage />} />
-                    <Route path="admin/login" element={<AdminLoginPage />} />
-                    <Route
-                      path="admin/users"
-                      element={
-                        <RequireAdminAccess>
-                          <AdminUsers />
-                        </RequireAdminAccess>
-                      }
-                    />
-                    <Route path="project/:projectId" element={<ProjectScopedLayout />}>
-                      <Route index element={<ProjectDetail />} />
-                      <Route path="floor/:floorId" element={<FloorDetail />} />
-                      <Route path="floor/:floorId/room/:roomId" element={<RoomDetail />} />
+            <MobilePortraitGuard>
+              <BrowserRouter>
+                <DevPresentationSessionProvider>
+                  <Routes>
+                    <Route path="/auth/callback" element={<AuthCallback />} />
+                    <Route path="/auth/error" element={<AuthError />} />
+                    <Route path="/" element={<AppShellLayout />}>
+                      <Route index element={<Index />} />
+                      <Route path="worker/login" element={<WorkerLoginPage />} />
+                      <Route path="worker/rooms" element={<WorkerRoomsPage />} />
+                      <Route path="worker/me" element={<Navigate to="/worker/settings" replace />} />
+                      <Route path="worker/settings" element={<WorkerMePage />} />
+                      <Route path="admin/login" element={<AdminLoginPage />} />
+                      <Route
+                        path="admin/users"
+                        element={
+                          <RequireAdminAccess>
+                            <AdminUsers />
+                          </RequireAdminAccess>
+                        }
+                      />
+                      <Route path="project/:projectId" element={<ProjectScopedLayout />}>
+                        <Route index element={<ProjectDetail />} />
+                        <Route path="floor/:floorId" element={<FloorDetail />} />
+                        <Route path="floor/:floorId/room/:roomId" element={<RoomDetail />} />
+                      </Route>
                     </Route>
-                  </Route>
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </DevPresentationSessionProvider>
-            </BrowserRouter>
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </DevPresentationSessionProvider>
+              </BrowserRouter>
+            </MobilePortraitGuard>
           </TooltipProvider>
         </I18nProvider>
       </ThemeProvider>
