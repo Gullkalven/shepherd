@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     oss_service_url: str = ""
     oss_api_key: str = ""
     public_backend_url: str = ""
+    local_storage_root: str = ""
     frontend_origin: str = "https://shepherd-frontend.onrender.com"
 
     #: Comma-separated extra browser origins for CORS (preview URLs, etc.). Merged in main.py with defaults.
@@ -91,7 +92,25 @@ class Settings(BaseSettings):
         explicit = (self.public_backend_url or "").strip()
         if explicit:
             return explicit.rstrip("/")
+        render_external = (os.environ.get("RENDER_EXTERNAL_URL") or "").strip()
+        if render_external:
+            return render_external.rstrip("/")
         return self.backend_url.rstrip("/")
+
+    @property
+    def upload_storage_root(self) -> str:
+        """Filesystem root for the local storage fallback.
+
+        Render's normal filesystem is ephemeral. Set LOCAL_STORAGE_ROOT to a
+        mounted disk path such as /var/data/shepherd/local_storage when using
+        fallback storage in production.
+        """
+        explicit = (self.local_storage_root or os.environ.get("UPLOAD_STORAGE_ROOT") or "").strip()
+        if explicit:
+            return explicit
+        if is_production_environment() and os.path.isdir("/var/data") and os.access("/var/data", os.W_OK):
+            return "/var/data/shepherd/local_storage"
+        return ""
 
     def __getattr__(self, name: str) -> Any:
         """

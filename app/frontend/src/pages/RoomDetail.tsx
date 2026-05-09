@@ -77,7 +77,9 @@ import { readWorkerSession } from '@/lib/workerSession';
 import { resolveWorkerActorLabel, LEGACY_WORKER_DISPLAY_NAME_KEY } from '@/lib/workerIdentity';
 import { useI18n } from '@/lib/i18n';
 import { WorkerRoomView } from '@/components/WorkerRoomView';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationNav';
+import { resolveDisplayImageUrl } from '@/lib/imageUrls';
 import {
   HEATING_CABLE_STAGES,
   HEATING_CABLE_DERIVED_STATUS_LABEL,
@@ -630,7 +632,7 @@ export default function RoomDetail() {
               bucket_name: 'room-photos',
               object_key: p.object_key,
             });
-            return { ...p, downloadUrl: dlRes?.data?.download_url || '' };
+            return { ...p, downloadUrl: resolveDisplayImageUrl(dlRes?.data?.download_url || '') };
           } catch {
             return { ...p, downloadUrl: '' };
           }
@@ -1496,17 +1498,19 @@ export default function RoomDetail() {
         formData.append('file', prepared, prepared.name);
         const authHeaders: Record<string, string> = {};
         if (token) authHeaders.Authorization = `Bearer ${token}`;
-        await fetch(uploadUrl, {
+        const uploadResponse = await fetch(uploadUrl, {
           method: 'POST',
           body: formData,
           headers: authHeaders,
         });
+        if (!uploadResponse.ok) throw new Error(`Upload failed (${uploadResponse.status})`);
       } else {
-        await fetch(uploadUrl, {
+        const uploadResponse = await fetch(uploadUrl, {
           method: 'PUT',
           body: prepared,
           headers: { 'Content-Type': prepared.type },
         });
+        if (!uploadResponse.ok) throw new Error(`Upload failed (${uploadResponse.status})`);
       }
 
       const actorLabel = resolveWorkerActorLabel(displayName);
@@ -1932,17 +1936,19 @@ export default function RoomDetail() {
       formData.append('file', prepared, prepared.name);
       const authHeaders: Record<string, string> = {};
       if (token) authHeaders.Authorization = `Bearer ${token}`;
-      await fetch(uploadUrl, {
+      const uploadResponse = await fetch(uploadUrl, {
         method: 'POST',
         body: formData,
         headers: authHeaders,
       });
+      if (!uploadResponse.ok) throw new Error(`Upload failed (${uploadResponse.status})`);
     } else {
-      await fetch(uploadUrl, {
+      const uploadResponse = await fetch(uploadUrl, {
         method: 'PUT',
         body: prepared,
         headers: { 'Content-Type': prepared.type },
       });
+      if (!uploadResponse.ok) throw new Error(`Upload failed (${uploadResponse.status})`);
     }
     const actorLabel = resolveWorkerActorLabel(displayName);
     const heatCap = heatingCableStageCaption(stageId);
@@ -3085,7 +3091,7 @@ export default function RoomDetail() {
                                         className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
                                         onClick={() => src && setShowPhotoPreview(src)}
                                       >
-                                        <img
+                                        <ImageWithFallback
                                           src={src}
                                           alt=""
                                           className="h-full w-full object-cover"
@@ -3173,7 +3179,7 @@ export default function RoomDetail() {
                                         className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
                                         onClick={() => src && setShowPhotoPreview(src)}
                                       >
-                                        <img src={src} alt="" className="h-full w-full object-cover" />
+                                        <ImageWithFallback src={src} alt="" className="h-full w-full object-cover" />
                                       </button>
                                     );})}
                                   </div>
@@ -3345,7 +3351,7 @@ export default function RoomDetail() {
                                         className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
                                         onClick={() => setShowPhotoPreview(src)}
                                       >
-                                        <img src={src} alt="" className="h-full w-full object-cover" />
+                                        <ImageWithFallback src={src} alt="" className="h-full w-full object-cover" />
                                       </button>
                                     );
                                   })}
@@ -3517,7 +3523,7 @@ export default function RoomDetail() {
                                         className="relative aspect-square overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800"
                                         onClick={() => setShowPhotoPreview(src)}
                                       >
-                                        <img src={src} alt="" className="h-full w-full object-cover" />
+                                        <ImageWithFallback src={src} alt="" className="h-full w-full object-cover" />
                                       </button>
                                     );
                                   })}
@@ -4070,7 +4076,7 @@ export default function RoomDetail() {
                                     className="relative group aspect-square rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-800"
                                   >
                                     {photo.downloadUrl ? (
-                                      <img
+                                      <ImageWithFallback
                                         src={photo.downloadUrl}
                                         alt={photo.filename}
                                         className="w-full h-full object-cover cursor-pointer"
@@ -4529,10 +4535,12 @@ export default function RoomDetail() {
           >
             <X className="h-6 w-6" />
           </button>
-          <img
+          <ImageWithFallback
             src={showPhotoPreview}
             alt="Preview"
             className="max-w-full max-h-full object-contain rounded-lg"
+            fallbackClassName="h-40 w-40 rounded-lg bg-white/10"
+            iconClassName="h-10 w-10 text-white/70"
           />
         </div>
       )}

@@ -56,6 +56,7 @@ import {
 import { WORKER_ROOM_DOCUMENTATION_ANCHOR } from '@/lib/workerLastRoom';
 import { cn } from '@/lib/utils';
 import type { ActivityDisplayRow } from '@/lib/roomActivity';
+import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 export type WorkerTask = {
   id: number;
@@ -1431,7 +1432,7 @@ export function WorkerRoomView(p: Props) {
                               onClick={() => item.displayUrl && p.onPhotoPreview(item.displayUrl)}
                             >
                               {item.displayUrl ? (
-                                <img src={item.displayUrl} alt="" className="h-full w-full object-cover" />
+                                <ImageWithFallback src={item.displayUrl} alt="" className="h-full w-full object-cover" />
                               ) : (
                                 <ImageIcon className="m-auto h-8 w-8 text-muted-foreground/35" aria-hidden />
                               )}
@@ -1623,7 +1624,7 @@ export function WorkerRoomView(p: Props) {
                   >
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-slate-100 dark:bg-slate-800">
                       {photo.downloadUrl ? (
-                        <img src={photo.downloadUrl} alt="" className="h-full w-full object-cover" />
+                        <ImageWithFallback src={photo.downloadUrl} alt="" className="h-full w-full object-cover" />
                       ) : (
                         <ImageIcon className="m-auto h-6 w-6 text-muted-foreground/40" />
                       )}
