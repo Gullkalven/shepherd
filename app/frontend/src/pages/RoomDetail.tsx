@@ -76,7 +76,7 @@ import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
 import { resolveWorkerActorLabel, LEGACY_WORKER_DISPLAY_NAME_KEY } from '@/lib/workerIdentity';
 import { useI18n } from '@/lib/i18n';
-import { WorkerRoomView, type WorkerTask } from '@/components/WorkerRoomView';
+import { WorkerRoomView } from '@/components/WorkerRoomView';
 import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationNav';
 import {
   HEATING_CABLE_STAGES,
@@ -467,8 +467,6 @@ export default function RoomDetail() {
   const location = useLocation();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  /** When set, next room photo upload gets a checklist caption (same entity as phase photos). Cleared on general phase upload. */
-  const phasePhotoTaskIdRef = useRef<number | null>(null);
   const {
     isAdmin,
     isWorker,
@@ -1481,9 +1479,6 @@ export default function RoomDetail() {
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !room) return;
-    const captionTaskId = phasePhotoTaskIdRef.current;
-    phasePhotoTaskIdRef.current = null;
-    const captionTask = captionTaskId != null ? tasks.find((t) => t.id === captionTaskId) : undefined;
     setUploading(true);
     try {
       const prepared = await compressImageForUpload(file);
@@ -1524,10 +1519,7 @@ export default function RoomDetail() {
       }
 
       const actorLabel = resolveWorkerActorLabel(displayName);
-      const baseCaption = captionTask ? `Checklist: ${captionTask.name}` : '';
-      const caption =
-        [baseCaption, actorLabel ? `Uploaded by ${actorLabel}` : ''].filter(Boolean).join(' · ') ||
-        '';
+      const caption = actorLabel ? `Uploaded by ${actorLabel}` : '';
 
       await client.entities.room_photos.create({
         data: {
@@ -2209,11 +2201,6 @@ export default function RoomDetail() {
   const canInteractChecklist = canCheckItem && !editsBlocked && !phaseReadOnly;
   const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
   const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
-  const handleWorkerTaskPhotoClick = (task: WorkerTask) => {
-    if (!canUploadPhoto || !canMutatePhaseMedia) return;
-    phasePhotoTaskIdRef.current = task.id;
-    fileInputRef.current?.click();
-  };
   const chipUiSel = computePhaseChipUi(
     selPhase,
     resolvedPhaseStatuses,
@@ -2356,10 +2343,8 @@ export default function RoomDetail() {
               hideGenericPhasePhotoUpload={heatingCablePhasePrimaryDocs}
               resolvedRoomPhotos={photos}
               onGeneralPhotoClick={() => {
-                phasePhotoTaskIdRef.current = null;
                 fileInputRef.current?.click();
               }}
-              onTaskPhotoClick={handleWorkerTaskPhotoClick}
               photosForPhase={photosForPhase}
               legacySavedWorkerName={legacySavedWorkerName || undefined}
               onClearSavedWorkerName={legacySavedWorkerName ? handleClearSavedName : undefined}

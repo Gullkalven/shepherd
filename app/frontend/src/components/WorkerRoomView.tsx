@@ -168,8 +168,6 @@ type Props = {
     created_at?: string | null;
   }>;
   onGeneralPhotoClick: () => void;
-  /** Optional: upload a phase photo with checklist context (caption); does not run when checking tasks off. */
-  onTaskPhotoClick?: (task: WorkerTask) => void;
   photosForPhase: WorkerPhoto[];
   legacySavedWorkerName?: string;
   onClearSavedWorkerName?: () => void;
@@ -902,8 +900,6 @@ export function WorkerRoomView(p: Props) {
               <Card className="p-6 text-center text-muted-foreground text-sm">No tasks for this phase.</Card>
             ) : (
               p.tasksForSelectedPhase.map((task) => {
-                const showTaskPhotoAction =
-                  Boolean(p.onTaskPhotoClick) && p.showPhotosSection && p.canUploadPhoto;
                 return (
                   <Card
                     key={task.id}
@@ -914,25 +910,16 @@ export function WorkerRoomView(p: Props) {
                         : 'border-border/60 bg-card shadow-sm hover:bg-muted/25'
                     )}
                   >
-                    <div
+                    <button
+                      type="button"
                       className={cn(
-                        'flex items-stretch',
-                        showTaskPhotoAction && 'min-h-[3.25rem] sm:min-h-[3rem]'
+                        'flex w-full items-start gap-3 text-left sm:gap-4',
+                        'min-h-[3.25rem] rounded-xl px-3 py-3 sm:min-h-[3rem] sm:px-4 sm:py-3',
+                        !p.canInteractChecklist && 'cursor-not-allowed opacity-60'
                       )}
+                      disabled={!p.canInteractChecklist}
+                      onClick={() => p.onTaskClick(task)}
                     >
-                      <button
-                        type="button"
-                        className={cn(
-                          'flex flex-1 items-start gap-3 text-left sm:gap-4',
-                          'px-3 py-3 sm:px-4 sm:py-3',
-                          showTaskPhotoAction
-                            ? 'rounded-none rounded-l-xl'
-                            : 'min-h-[3.25rem] rounded-xl sm:min-h-[3rem]',
-                          !p.canInteractChecklist && 'cursor-not-allowed opacity-60'
-                        )}
-                        disabled={!p.canInteractChecklist}
-                        onClick={() => p.onTaskClick(task)}
-                      >
                         <div className="mt-0.5 shrink-0">
                           {task.is_completed ? (
                             <CheckCircle2
@@ -988,22 +975,7 @@ export function WorkerRoomView(p: Props) {
                             </p>
                           ) : null}
                         </div>
-                      </button>
-                      {showTaskPhotoAction ? (
-                        <button
-                          type="button"
-                          className="flex w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-r-xl border-l border-border/40 bg-muted/10 px-1 transition-colors hover:bg-muted/25 disabled:pointer-events-none disabled:opacity-50 sm:w-14"
-                          aria-label={`Add photo for ${task.name}`}
-                          disabled={!p.canMutatePhaseMedia || p.uploadingPhoto}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            p.onTaskPhotoClick?.(task);
-                          }}
-                        >
-                          <Camera className="h-5 w-5 text-muted-foreground" aria-hidden />
-                        </button>
-                      ) : null}
-                    </div>
+                    </button>
                   </Card>
                 );
               })
