@@ -63,6 +63,7 @@ import {
   type RoomArea,
 } from '@/lib/roomAreas';
 import { buildActivityRows } from '@/lib/roomActivity';
+import { compressImageForUpload } from '@/lib/compressImageForUpload';
 import { cn } from '@/lib/utils';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
@@ -1472,7 +1473,8 @@ export default function RoomDetail() {
     const captionTask = captionTaskId != null ? tasks.find((t) => t.id === captionTaskId) : undefined;
     setUploading(true);
     try {
-      const safeFilename = file.name.replace(/[^A-Za-z0-9._-]/g, '-');
+      const prepared = await compressImageForUpload(file);
+      const safeFilename = prepared.name.replace(/[^A-Za-z0-9._-]/g, '-');
       const objectKey = `${Date.now()}-${safeFilename}`;
       const uploadRes = await client.storage.getUploadUrl({
         bucket_name: 'room-photos',
@@ -1492,7 +1494,7 @@ export default function RoomDetail() {
 
       if (isApiUploadTarget) {
         const formData = new FormData();
-        formData.append('file', file, file.name);
+        formData.append('file', prepared, prepared.name);
         const authHeaders: Record<string, string> = {};
         if (token) authHeaders.Authorization = `Bearer ${token}`;
         await fetch(uploadUrl, {
@@ -1503,8 +1505,8 @@ export default function RoomDetail() {
       } else {
         await fetch(uploadUrl, {
           method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type },
+          body: prepared,
+          headers: { 'Content-Type': prepared.type },
         });
       }
 
@@ -1518,7 +1520,7 @@ export default function RoomDetail() {
         data: {
           room_id: room.id,
           object_key: objectKey,
-          filename: file.name,
+          filename: prepared.name,
           caption,
           phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
           ...taskPhotoVisitAreaPayload(),
@@ -1849,7 +1851,8 @@ export default function RoomDetail() {
 
   const uploadHeatingModulePhoto = async (stageId: string, file: File) => {
     if (!room) return;
-    const safeFilename = file.name.replace(/[^A-Za-z0-9._-]/g, '-');
+    const prepared = await compressImageForUpload(file);
+    const safeFilename = prepared.name.replace(/[^A-Za-z0-9._-]/g, '-');
     const objectKey = `${Date.now()}-${safeFilename}`;
     const uploadRes = await client.storage.getUploadUrl({
       bucket_name: 'room-photos',
@@ -1868,7 +1871,7 @@ export default function RoomDetail() {
     })();
     if (isApiUploadTarget) {
       const formData = new FormData();
-      formData.append('file', file, file.name);
+      formData.append('file', prepared, prepared.name);
       const authHeaders: Record<string, string> = {};
       if (token) authHeaders.Authorization = `Bearer ${token}`;
       await fetch(uploadUrl, {
@@ -1879,8 +1882,8 @@ export default function RoomDetail() {
     } else {
       await fetch(uploadUrl, {
         method: 'PUT',
-        body: file,
-        headers: { 'Content-Type': file.type },
+        body: prepared,
+        headers: { 'Content-Type': prepared.type },
       });
     }
     const actorLabel = resolveWorkerActorLabel(displayName);
@@ -1892,7 +1895,7 @@ export default function RoomDetail() {
       data: {
         room_id: room.id,
         object_key: objectKey,
-        filename: file.name,
+        filename: prepared.name,
         caption: heatCaption,
         phase: normalizeRoomPhase(phaseTab, phaseWorkflow),
         ...taskPhotoVisitAreaPayload(),
