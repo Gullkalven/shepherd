@@ -309,7 +309,15 @@ function heatingStageCollapseSummary(stage: HeatingCableStage): string {
   const parts: string[] = [];
   if (stage.resistance_ohm?.trim()) parts.push(`${stage.resistance_ohm.trim()} Ω`);
   if (stage.insulation_mohm?.trim()) parts.push(`${stage.insulation_mohm.trim()} MΩ`);
-  if (stage.performed_by?.trim()) parts.push(stage.performed_by.trim());
+  const whenRaw = stage.date?.trim() || stage.completed_at?.trim() || '';
+  const when = whenRaw ? formatHeatingCableDateTimeReadable(whenRaw) : '';
+  if (when) parts.push(when);
+  const who =
+    stage.completed_by_name?.trim() ||
+    stage.completed_by?.trim() ||
+    stage.performed_by?.trim() ||
+    '';
+  if (who) parts.push(who);
   if (parts.length === 0) return 'No readings yet';
   return parts.join(' · ');
 }
