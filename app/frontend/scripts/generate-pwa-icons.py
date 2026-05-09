@@ -3,8 +3,10 @@
 Build UI + PWA assets from public/shepherd-logo-source.png
 
 Outputs:
-  shepherd-logo-mark.png   — RGBA, transparent outside yellow frame (in-app logo)
-  icon-*.png, favicon*, apple-touch-icon.png — square app / tab icons
+  shepherd-logo-mark.png    — RGBA in-app logo (transparent outside yellow frame)
+  icon-192/512, maskable    — solid black square PWA icons (chip + yellow border, large)
+  apple-touch-icon.png      — 180×180, black canvas, yellow visible, iOS safe-area padding
+  favicon*                  — same chip on black for tab readability
 
 Run from app/frontend:
   python3 scripts/generate-pwa-icons.py
@@ -22,9 +24,8 @@ from PIL import Image
 PUBLIC = Path(__file__).resolve().parent.parent / "public"
 SRC = PUBLIC / "shepherd-logo-source.png"
 
-# Theme matches manifest / index.html
-BG_PWA = (11, 22, 35)  # #0b1623
-BG_IOS = (0, 0, 0)
+# Home screen / tab icons: solid black so the yellow frame reads clearly (not #0b1623).
+BG_ICON = (0, 0, 0)
 
 
 def is_yellow_pixel(r: int, g: int, b: int, a: int) -> bool:
@@ -120,38 +121,6 @@ def transparent_outer_black(chip: Image.Image) -> Image.Image:
     return img
 
 
-def yellow_to_black(img: Image.Image) -> Image.Image:
-    """Flatten decorative yellow frame into black (for iOS home screen)."""
-    img = img.convert("RGBA").copy()
-    px = img.load()
-    for y in range(img.height):
-        for x in range(img.width):
-            r, g, b, a = px[x, y]
-            if is_yellow_pixel(r, g, b, a):
-                px[x, y] = (0, 0, 0, a)
-    return img
-
-
-def bbox_non_black(img: Image.Image, threshold: int = 18) -> tuple[int, int, int, int]:
-    px = img.load()
-    w, h = img.size
-    minx = miny = 10**9
-    maxx = maxy = -1
-    for y in range(h):
-        for x in range(w):
-            r, g, b, a = px[x, y]
-            if a < 40:
-                continue
-            if r > threshold or g > threshold or b > threshold:
-                minx = min(minx, x)
-                miny = min(miny, y)
-                maxx = max(maxx, x)
-                maxy = max(maxy, y)
-    if maxx < minx:
-        return 0, 0, w, h
-    return minx, miny, maxx + 1, maxy + 1
-
-
 def render_contain(
     img: Image.Image,
     side: int,
@@ -184,25 +153,23 @@ def main() -> int:
     mark = transparent_outer_black(chip)
     mark.save(PUBLIC / "shepherd-logo-mark.png", optimize=True)
 
-    # —— PWA (opaque chip on theme bg; safe area via maskable variant) ——
-    fill_standard = 0.97
-    render_contain(chip, 192, BG_PWA, fill_standard).convert("RGB").save(PUBLIC / "icon-192.png", optimize=True)
-    render_contain(chip, 512, BG_PWA, fill_standard).convert("RGB").save(PUBLIC / "icon-512.png", optimize=True)
-    render_contain(chip, 512, BG_PWA, 0.78).convert("RGB").save(PUBLIC / "icon-512-maskable.png", optimize=True)
+    # —— Square app icons: tight-cropped chip (no outer gutter), full yellow border, solid black ——
+    # Larger fill for 192/512 so the mark reads on home screen / launcher.
+    fill_launcher = 0.94
+    render_contain(chip, 192, BG_ICON, fill_launcher).convert("RGB").save(PUBLIC / "icon-192.png", optimize=True)
+    render_contain(chip, 512, BG_ICON, fill_launcher).convert("RGB").save(PUBLIC / "icon-512.png", optimize=True)
+    # Maskable: keep artwork inside ~80% circle/squircle for adaptive icons.
+    render_contain(chip, 512, BG_ICON, 0.76).convert("RGB").save(PUBLIC / "icon-512-maskable.png", optimize=True)
 
-    ios_chip = yellow_to_black(chip)
-    l, u, r, d = bbox_non_black(ios_chip)
-    ios_tight = ios_chip.crop((l, u, r, d))
-    render_contain(ios_tight, 180, BG_IOS, 0.92).convert("RGB").save(
-        PUBLIC / "apple-touch-icon.png", optimize=True
-    )
+    # Apple touch: extra inset so yellow stays inside iOS rounded mask (no double-frame artefact).
+    render_contain(chip, 180, BG_ICON, 0.82).convert("RGB").save(PUBLIC / "apple-touch-icon.png", optimize=True)
 
-    render_contain(chip, 32, BG_PWA, 0.95).convert("RGB").save(PUBLIC / "favicon-32.png", optimize=True)
-    render_contain(chip, 16, BG_PWA, 0.95).convert("RGB").save(PUBLIC / "favicon-16.png", optimize=True)
+    render_contain(chip, 32, BG_ICON, 0.94).convert("RGB").save(PUBLIC / "favicon-32.png", optimize=True)
+    render_contain(chip, 16, BG_ICON, 0.94).convert("RGB").save(PUBLIC / "favicon-16.png", optimize=True)
 
-    i16 = render_contain(chip, 16, BG_PWA, 0.95).convert("RGBA")
-    i32 = render_contain(chip, 32, BG_PWA, 0.95).convert("RGBA")
-    i48 = render_contain(chip, 48, BG_PWA, 0.95).convert("RGBA")
+    i16 = render_contain(chip, 16, BG_ICON, 0.94).convert("RGBA")
+    i32 = render_contain(chip, 32, BG_ICON, 0.94).convert("RGBA")
+    i48 = render_contain(chip, 48, BG_ICON, 0.94).convert("RGBA")
     i32.save(
         PUBLIC / "favicon.ico",
         format="ICO",
