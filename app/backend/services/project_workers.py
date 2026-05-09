@@ -40,6 +40,7 @@ async def create_worker(
     name: str,
     pin: str,
     role: str = "worker",
+    active: bool = True,
 ) -> Optional[Project_workers]:
     logger.info("ProjectWorkers.create_worker start project_id=%s role=%s", project_id, role)
     if not await _project_exists(db, project_id):
@@ -56,7 +57,7 @@ async def create_worker(
         name=nm,
         pin_hash=hash_pin(pin),
         role=role if role in ("worker", "admin") else "worker",
-        active=True,
+        active=bool(active),
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )

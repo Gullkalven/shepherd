@@ -1,11 +1,13 @@
+import logging
 from datetime import datetime
 from typing import Dict, List, Optional
 
 from core.database import get_db
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from routers.admin_roles import require_admin
 from schemas.auth import UserResponse
+from services import project_workers as pw_svc
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +21,7 @@ from models.worker_tasks import WorkerTasks
 from dependencies.roles import ROLE_ADMIN, normalize_role
 
 router = APIRouter(prefix="/api/v1/admin/panel", tags=["admin_panel"])
+logger = logging.getLogger(__name__)
 
 FEATURE_KEYS = ("checklists", "heating_cable", "photos", "comments", "visit_log")
 DEFAULT_FEATURES = {k: True for k in FEATURE_KEYS}
@@ -55,6 +58,13 @@ class SiteWorkerCardResponse(BaseModel):
     assigned_room: Optional[str] = None
     assigned_phase: Optional[str] = None
     last_active_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class SiteWorkerCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=255)
+    pin: str = Field(..., min_length=4, max_length=32)
+    active: Optional[bool] = True
 
 
 def _feature_scope(project_id: int) -> str:
@@ -263,6 +273,100 @@ async def site_workers_with_context(
                 assigned_room=assign.get("assigned_room") or None,
                 assigned_phase=assign.get("assigned_phase") or None,
                 last_active_at=last_active_dt.isoformat() if last_active_dt else None,
+                created_at=worker.created_at.isoformat() if worker.created_at else None,
             )
         )
     return cards
+
+
+@router.post("/projects/{project_id}/site-workers", response_model=SiteWorkerCardResponse)
+async def create_site_worker(
+    project_id: int,
+    body: SiteWorkerCreateRequest,
+    admin: UserResponse = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    project_result = await db.execute(select(Projects).where(Projects.id == project_id))
+    if project_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        worker = await pw_svc.create_worker(
+            db,
+            project_id=project_id,
+            name=body.name,
+            pin=body.pin,
+            role="worker",
+            active=bool(body.active) if body.active is not None else True,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        logger.exception(
+            "AdminPanel.create_site_worker failed project_id=%s admin_id=%s",
+            project_id,
+            getattr(admin, "id", None),
+        )
+        raise HTTPException(status_code=500, detail="Failed to create site worker")
+
+    if worker is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    return SiteWorkerCardResponse(
+        id=worker.id,
+        name=worker.name,
+        active=bool(worker.active),
+        pin_configured=bool(getattr(worker, "pin_hash", None)),
+        assigned_floor=None,
+        assigned_room=None,
+        assigned_phase=None,
+        last_active_at=worker.updated_at.isoformat() if worker.updated_at else None,
+        created_at=worker.created_at.isoformat() if worker.created_at else None,
+    )
+
+
+@router.delete("/projects/{project_id}/site-workers/{worker_id}")
+@router.delete("/projects/{project_id}/site-workers/{worker_id}/")
+async def delete_site_worker(
+    project_id: int,
+    worker_id: int,
+    admin: UserResponse = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    project_result = await db.execute(select(Projects).where(Projects.id == project_id))
+    if project_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    worker_result = await db.execute(
+        select(Project_workers).where(
+            and_(
+                Project_workers.id == worker_id,
+                Project_workers.project_id == project_id,
+            )
+        )
+    )
+    worker = worker_result.scalar_one_or_none()
+    if not worker:
+        raise HTTPException(status_code=404, detail="Site worker not found")
+
+    if normalize_role(worker.role) == ROLE_ADMIN:
+        raise HTTPException(
+            status_code=400,
+            detail="Admin project workers cannot be deleted from the site worker list",
+        )
+
+    try:
+        deleted = await pw_svc.delete_worker(db, project_id=project_id, worker_id=worker_id)
+    except Exception:
+        logger.exception(
+            "AdminPanel.delete_site_worker failed project_id=%s worker_id=%s admin_id=%s",
+            project_id,
+            worker_id,
+            getattr(admin, "id", None),
+        )
+        raise HTTPException(status_code=500, detail="Failed to delete site worker")
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Site worker not found")
+
+    return {"ok": True, "project_id": project_id, "worker_id": worker_id}

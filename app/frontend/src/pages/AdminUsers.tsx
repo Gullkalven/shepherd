@@ -88,6 +88,11 @@ export default function AdminUsers() {
   const [editingWorker, setEditingWorker] = useState<SiteWorkerCard | null>(null);
   const [editWorkerName, setEditWorkerName] = useState('');
   const [editWorkerPin, setEditWorkerPin] = useState('');
+  const [createWorkerOpen, setCreateWorkerOpen] = useState(false);
+  const [createWorkerName, setCreateWorkerName] = useState('');
+  const [createWorkerPin, setCreateWorkerPin] = useState('');
+  const [createWorkerActive, setCreateWorkerActive] = useState(true);
+  const [creatingWorker, setCreatingWorker] = useState(false);
 
   const [deletingWorker, setDeletingWorker] = useState<SiteWorkerCard | null>(null);
   const [deleteWorkerBusy, setDeleteWorkerBusy] = useState(false);
@@ -271,6 +276,52 @@ export default function AdminUsers() {
     }
   };
 
+  const createSiteWorker = async () => {
+    if (!selectedProjectId || creatingWorker) return;
+    const name = createWorkerName.trim();
+    const pin = createWorkerPin.trim();
+    if (!name) {
+      toast.error('Worker name is required');
+      return;
+    }
+    if (pin.length < 4) {
+      toast.error('PIN must be at least 4 characters');
+      return;
+    }
+    setCreatingWorker(true);
+    try {
+      await client.apiCall.invoke({
+        url: `/api/v1/admin/panel/projects/${selectedProjectId}/site-workers`,
+        method: 'POST',
+        data: {
+          name,
+          pin,
+          active: createWorkerActive,
+        },
+      });
+      toast.success('Site worker created');
+      setCreateWorkerOpen(false);
+      setCreateWorkerName('');
+      setCreateWorkerPin('');
+      setCreateWorkerActive(true);
+      await loadProjectScoped();
+    } catch (e: unknown) {
+      const err = e as {
+        data?: { detail?: string };
+        response?: { data?: { detail?: string } };
+        message?: string;
+      };
+      const detail =
+        err?.data?.detail ||
+        err?.response?.data?.detail ||
+        err?.message ||
+        'Could not create site worker';
+      toast.error(detail);
+    } finally {
+      setCreatingWorker(false);
+    }
+  };
+
   const setWorkerActive = async (worker: SiteWorkerCard, active: boolean) => {
     if (!selectedProjectId) return;
     try {
@@ -398,6 +449,21 @@ export default function AdminUsers() {
 
         {tab === 'workers' && (
           <>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold">Site Workers</h3>
+              <Button
+                className="h-9"
+                onClick={() => {
+                  setCreateWorkerName('');
+                  setCreateWorkerPin('');
+                  setCreateWorkerActive(true);
+                  setCreateWorkerOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
+                Add worker
+              </Button>
+            </div>
             {projectScopedLoading ? <Card className="p-6 text-center text-sm text-muted-foreground">Loading site workers…</Card> : null}
             {!projectScopedLoading && projectScopedError ? <Card className="p-6 text-center text-sm text-muted-foreground">{projectScopedError}</Card> : null}
             {!projectScopedLoading && !projectScopedError && siteWorkers.length === 0 ? <Card className="p-6 text-center text-sm text-muted-foreground">0 Site Workers</Card> : null}
@@ -492,6 +558,48 @@ export default function AdminUsers() {
               <Input type="password" inputMode="numeric" placeholder="New PIN (optional)" value={editWorkerPin} onChange={(e) => setEditWorkerPin(e.target.value)} className="h-12 text-center tracking-widest" autoComplete="new-password" />
             </div>
             <DialogFooter><Button type="submit" className="w-full">Save changes</Button></DialogFooter>
+          </DialogForm>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={createWorkerOpen}
+        onOpenChange={(open) => {
+          if (!creatingWorker) setCreateWorkerOpen(open);
+        }}
+      >
+        <DialogContent className="mx-4 max-w-sm">
+          <DialogForm onSubmit={(e) => { e.preventDefault(); void createSiteWorker(); }}>
+            <DialogHeader><DialogTitle>Add site worker</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              <Input
+                placeholder="Worker name"
+                value={createWorkerName}
+                onChange={(e) => setCreateWorkerName(e.target.value)}
+                className="h-12"
+                autoComplete="off"
+                disabled={creatingWorker}
+              />
+              <Input
+                type="password"
+                inputMode="numeric"
+                placeholder="PIN (4+ digits)"
+                value={createWorkerPin}
+                onChange={(e) => setCreateWorkerPin(e.target.value)}
+                className="h-12 text-center tracking-widest"
+                autoComplete="new-password"
+                disabled={creatingWorker}
+              />
+              <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
+                <span className="text-sm font-medium">Active on create</span>
+                <Switch checked={createWorkerActive} onCheckedChange={setCreateWorkerActive} disabled={creatingWorker} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="submit" className="w-full" disabled={creatingWorker}>
+                {creatingWorker ? 'Creating…' : 'Create worker'}
+              </Button>
+            </DialogFooter>
           </DialogForm>
         </DialogContent>
       </Dialog>
