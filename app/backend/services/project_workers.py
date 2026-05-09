@@ -49,6 +49,14 @@ async def create_worker(
     nm = (name or "").strip()
     if not nm:
         raise ValueError("name required")
+    existing_worker = await db.execute(
+        select(Project_workers).where(
+            Project_workers.project_id == project_id,
+            Project_workers.name == nm,
+        )
+    )
+    if existing_worker.scalar_one_or_none() is not None:
+        raise ValueError("A site worker with this name already exists in this project")
     pin = (pin or "").strip()
     if len(pin) < 4:
         raise ValueError("PIN must be at least 4 characters")

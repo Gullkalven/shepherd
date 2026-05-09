@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -51,9 +52,10 @@ class ProjectOverviewResponse(BaseModel):
 
 class SiteWorkerCardResponse(BaseModel):
     id: int
+    project_id: int
     name: str
     active: bool
-    pin_configured: bool = False
+    has_pin: bool = False
     assigned_floor: Optional[str] = None
     assigned_room: Optional[str] = None
     assigned_phase: Optional[str] = None
@@ -63,8 +65,15 @@ class SiteWorkerCardResponse(BaseModel):
 
 class SiteWorkerCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    pin: str = Field(..., min_length=4, max_length=32)
+    pin: str = Field(..., min_length=4, max_length=8)
     active: Optional[bool] = True
+def _validate_worker_pin(pin: str) -> str:
+    normalized = (pin or "").strip()
+    if not re.fullmatch(r"\d{4,8}", normalized):
+        raise HTTPException(status_code=400, detail="PIN must be 4-8 digits")
+    return normalized
+
+
 
 
 def _feature_scope(project_id: int) -> str:
@@ -266,9 +275,10 @@ async def site_workers_with_context(
         cards.append(
             SiteWorkerCardResponse(
                 id=worker.id,
+                project_id=worker.project_id,
                 name=worker.name,
                 active=bool(worker.active),
-                pin_configured=bool(getattr(worker, "pin_hash", None)),
+                has_pin=bool(getattr(worker, "pin_hash", None)),
                 assigned_floor=assign.get("assigned_floor") or None,
                 assigned_room=assign.get("assigned_room") or None,
                 assigned_phase=assign.get("assigned_phase") or None,
@@ -291,11 +301,12 @@ async def create_site_worker(
         raise HTTPException(status_code=404, detail="Project not found")
 
     try:
+        pin = _validate_worker_pin(body.pin)
         worker = await pw_svc.create_worker(
             db,
             project_id=project_id,
             name=body.name,
-            pin=body.pin,
+            pin=pin,
             role="worker",
             active=bool(body.active) if body.active is not None else True,
         )
@@ -314,9 +325,10 @@ async def create_site_worker(
 
     return SiteWorkerCardResponse(
         id=worker.id,
+        project_id=worker.project_id,
         name=worker.name,
         active=bool(worker.active),
-        pin_configured=bool(getattr(worker, "pin_hash", None)),
+        has_pin=bool(getattr(worker, "pin_hash", None)),
         assigned_floor=None,
         assigned_room=None,
         assigned_phase=None,

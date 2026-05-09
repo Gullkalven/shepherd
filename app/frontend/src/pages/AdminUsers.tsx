@@ -39,8 +39,10 @@ interface FeatureToggle {
 
 interface SiteWorkerCard {
   id: number;
+  project_id?: number;
   name: string;
   active: boolean;
+  has_pin?: boolean;
   pin_configured?: boolean;
   assigned_floor?: string | null;
   assigned_room?: string | null;
@@ -285,7 +287,11 @@ export default function AdminUsers() {
       return;
     }
     if (pin.length < 4) {
-      toast.error('PIN must be at least 4 characters');
+      toast.error('PIN must be 4-8 digits');
+      return;
+    }
+    if (!/^\d{4,8}$/.test(pin)) {
+      toast.error('PIN must be 4-8 digits');
       return;
     }
     setCreatingWorker(true);
@@ -475,7 +481,7 @@ export default function AdminUsers() {
                     <p className="text-xs text-muted-foreground mt-1">Assigned: {worker.assigned_floor || '-'} {worker.assigned_room ? `• Room ${worker.assigned_room}` : ''}</p>
                     <p className="text-xs text-muted-foreground">Phase: {worker.assigned_phase || '-'}</p>
                     <p className="text-xs text-muted-foreground">Last active: {worker.last_active_at ? new Date(worker.last_active_at).toLocaleString() : 'No activity yet'}</p>
-                    <p className="text-xs text-muted-foreground">PIN: {worker.pin_configured ? 'Configured' : 'Not set'}</p>
+                    <p className="text-xs text-muted-foreground">PIN: {worker.has_pin ?? worker.pin_configured ? 'Configured' : 'Not set'}</p>
                     {!worker.active ? <Badge className="mt-2 bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300">Disabled</Badge> : null}
                   </div>
                   <div className="flex flex-col gap-2">
@@ -583,7 +589,7 @@ export default function AdminUsers() {
               <Input
                 type="password"
                 inputMode="numeric"
-                placeholder="PIN (4+ digits)"
+                placeholder="PIN (4-8 digits)"
                 value={createWorkerPin}
                 onChange={(e) => setCreateWorkerPin(e.target.value)}
                 className="h-12 text-center tracking-widest"
