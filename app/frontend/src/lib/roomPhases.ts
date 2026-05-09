@@ -41,6 +41,15 @@ export function coercePhaseToolOverrides(raw: unknown): Record<string, PhaseTool
  * Effective tools for one phase: room overrides win, then workflow JSON, then legacy defaults.
  * Historical “Varmekabel” phases keep heating on via `isHeatingCablePhase` when no explicit flag exists.
  */
+/** True if project workflow + room overrides enable heating cable anywhere (admin overview / cards). */
+export function roomRequiresHeatingCableDocumentation(
+  room: { phase_tool_overrides?: unknown },
+  workflow: PhaseWorkflowEntry[] = DEFAULT_PHASE_WORKFLOW
+): boolean {
+  const toolOv = coercePhaseToolOverrides(room.phase_tool_overrides);
+  return workflow.some((e) => resolvePhaseTools(e, toolOv[e.key]).heating_cable);
+}
+
 export function resolvePhaseTools(
   entry: PhaseWorkflowEntry | undefined,
   roomOverride: PhaseToolOverride | null | undefined
