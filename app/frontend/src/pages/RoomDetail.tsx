@@ -1972,8 +1972,9 @@ export default function RoomDetail() {
         return;
       }
       const workerUserId = (currentUserId || '').trim();
-      if (!workerUserId) {
-        toast.error('Du må være logget inn som bruker for å bekrefte dette trinnet.');
+      const isAuthorisedActor = isAdmin || sessionIsPinWorker;
+      if (!workerUserId || !isAuthorisedActor) {
+        toast.error('You must be logged in as a Site Worker to confirm this step.');
         return;
       }
       if (import.meta.env.DEV) {
@@ -2003,7 +2004,7 @@ export default function RoomDetail() {
         setHeatingCableBlocking(false);
       }
     },
-    [room, currentUserId, displayName, refreshRoom]
+    [room, currentUserId, displayName, refreshRoom, isAdmin, sessionIsPinWorker]
   );
 
   const toggleHeatingCableLock = async () => {

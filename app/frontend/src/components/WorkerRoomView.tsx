@@ -354,7 +354,7 @@ export function WorkerRoomView(p: Props) {
     if (!canAccessStage) return 'Fullforrige trinn før du bekrefter dette.';
     if (!stage.resistance_ohm?.trim()) return 'Fyll inn motstand før bekreftelse.';
     if (!stage.insulation_mohm?.trim()) return 'Fyll inn isolasjon før bekreftelse.';
-    if (!p.currentWorkerUserId?.trim()) return 'Du må være logget inn som bruker for å bekrefte dette trinnet.';
+    if (!p.currentWorkerUserId?.trim()) return 'You must be logged in as a Site Worker to confirm this step.';
     if (stageKey === 'after_cable_laid') {
       const hasPhoto = Array.isArray(stage.photos) && stage.photos.some((x) => typeof x === 'string' && x.trim());
       if (!hasPhoto) return 'Legg til minst ett bilde før bekreftelse av dette trinnet.';

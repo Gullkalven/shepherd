@@ -1,16 +1,19 @@
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user
-from dependencies.roles import get_current_app_role, require_room_collaborator
+from dependencies.roles import ROLE_ADMIN, get_current_app_role, require_room_collaborator
 from dependencies.room_lock import ensure_room_mutable
 from dependencies.worker_scope import worker_project_scope
+from models.project_workers import Project_workers
 from schemas.auth import UserResponse
 from services.rooms import RoomsService
 
@@ -21,6 +24,8 @@ entities_router = APIRouter(prefix="/api/v1/entities/rooms", tags=["room_heating
 admin_router = entities_router
 
 HEATING_STEP_KEYS: List[str] = ["before_installation", "after_cable_laid", "after_screed_final"]
+
+
 class HeatingCableDraftPatch(BaseModel):
     resistance: Optional[str] = None
     insulation: Optional[str] = None
@@ -31,7 +36,18 @@ class HeatingCableDraftPatch(BaseModel):
 
 
 class HeatingCableConfirmBody(BaseModel):
-    completed_by: Optional[str] = None
+    """Confirm body is intentionally empty: actor identity is derived from the session."""
+
+    pass
+
+
+@dataclass
+class _ConfirmActor:
+    canonical_id: str
+    user_id: str
+    worker_id: Optional[int]
+    name: str
+    is_worker: bool
 
 
 def _iso_utc_now() -> str:
@@ -66,6 +82,67 @@ def _step_index(step_key: str) -> int:
     if step_key not in HEATING_STEP_KEYS:
         raise HTTPException(status_code=400, detail=f"Invalid heating step '{step_key}'")
     return HEATING_STEP_KEYS.index(step_key)
+
+
+async def _resolve_confirm_actor(
+    db: AsyncSession, current_user: UserResponse, app_role: str, room_project_id: Optional[int]
+) -> _ConfirmActor:
+    """Authoritative actor for confirming a heating step.
+
+    Workers must have a valid `Project_workers` row scoped to the room's project. Admins
+    are allowed to confirm too (e.g. correcting documentation) and are stamped with their
+    own user id.
+    """
+    user_id = (str(current_user.id) if current_user.id is not None else "").strip()
+
+    if getattr(current_user, "is_worker_session", False):
+        wid_raw = getattr(current_user, "worker_id", None)
+        try:
+            worker_id = int(wid_raw) if wid_raw is not None else None
+        except (TypeError, ValueError):
+            worker_id = None
+        if not worker_id:
+            raise HTTPException(
+                status_code=401,
+                detail="You must be logged in as a Site Worker to confirm this step.",
+            )
+        result = await db.execute(select(Project_workers).where(Project_workers.id == worker_id))
+        worker = result.scalar_one_or_none()
+        if not worker or not bool(worker.active):
+            raise HTTPException(
+                status_code=401,
+                detail="You must be logged in as a Site Worker to confirm this step.",
+            )
+        session_pid = getattr(current_user, "worker_project_id", None)
+        if session_pid is not None and int(worker.project_id) != int(session_pid):
+            raise HTTPException(status_code=403, detail="Site Worker does not belong to this project.")
+        if room_project_id is not None and int(worker.project_id) != int(room_project_id):
+            raise HTTPException(status_code=403, detail="Site Worker does not belong to this project.")
+        worker_name = (worker.name or getattr(current_user, "name", None) or "").strip()
+        return _ConfirmActor(
+            canonical_id=f"worker:{worker_id}",
+            user_id=user_id,
+            worker_id=worker_id,
+            name=worker_name,
+            is_worker=True,
+        )
+
+    if app_role == ROLE_ADMIN:
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Authentication required to confirm this step.")
+        admin_name = (getattr(current_user, "name", None) or "").strip()
+        return _ConfirmActor(
+            canonical_id=user_id,
+            user_id=user_id,
+            worker_id=None,
+            name=admin_name,
+            is_worker=False,
+        )
+
+    raise HTTPException(
+        status_code=401,
+        detail="You must be logged in as a Site Worker to confirm this step.",
+    )
 
 
 def _ensure_step_editable(doc: Dict[str, Any], step_key: str) -> None:
@@ -150,10 +227,9 @@ async def _confirm_heating_cable_step_impl(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    completed_by = str(current_user.id).strip()
-    requested_completed_by = str(body.completed_by if body else "").strip()
-    if requested_completed_by and requested_completed_by != completed_by:
-        raise HTTPException(status_code=400, detail=f"Heating step '{step_key}' must store the current worker id as completed_by.")
+    actor = await _resolve_confirm_actor(
+        db, current_user, app_role, getattr(room, "project_id", None)
+    )
 
     doc = _normalize_doc(getattr(room, "heating_cable_doc", None))
     _ensure_step_editable(doc, step_key)
@@ -169,20 +245,21 @@ async def _confirm_heating_cable_step_impl(
             raise HTTPException(status_code=400, detail="At least one photo is required for 'after_cable_laid'.")
 
     now_iso = _iso_utc_now()
-    actor_name = (getattr(current_user, "name", None) or "").strip()
-    actor_display = actor_name or completed_by
-    # Worker flow is auto-stamped on confirm (no manual timestamp entry).
+    actor_display_name = actor.name or actor.canonical_id
+    # Worker flow is auto-stamped on confirm; the server is the sole source of truth for who/when.
     stage["date"] = now_iso
     stage["performed_at"] = now_iso
-    stage["performed_by"] = actor_display
+    stage["performed_by"] = actor_display_name
     stage["step_status"] = "locked"
-    stage["completed_by"] = completed_by
-    stage["completed_by_user_id"] = completed_by
-    stage["completed_by_name"] = actor_name
+    stage["completed_by"] = actor.canonical_id
+    stage["completed_by_user_id"] = actor.user_id
+    stage["completed_by_worker_id"] = actor.worker_id
+    stage["completed_by_name"] = actor.name
     stage["completed_at"] = now_iso
-    stage["confirmed_by"] = completed_by
-    stage["confirmed_by_user_id"] = completed_by
-    stage["confirmed_by_name"] = actor_name
+    stage["confirmed_by"] = actor.canonical_id
+    stage["confirmed_by_user_id"] = actor.user_id
+    stage["confirmed_by_worker_id"] = actor.worker_id
+    stage["confirmed_by_name"] = actor.name
     stage["confirmed_at"] = now_iso
     doc[step_key] = stage
     doc["updated_at"] = _iso_utc_now()

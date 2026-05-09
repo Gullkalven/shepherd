@@ -332,10 +332,13 @@ def _heating_stage_content_fingerprint(stage_raw: Any) -> Dict[str, Any]:
             "step_status",
             "completed_by",
             "completed_by_user_id",
+            "completed_by_worker_id",
             "completed_by_name",
             "completed_at",
+            "performed_at",
             "confirmed_by",
             "confirmed_by_user_id",
+            "confirmed_by_worker_id",
             "confirmed_by_name",
             "confirmed_at",
             "confirmation_text",
@@ -417,10 +420,16 @@ def ensure_worker_heating_doc_update_allowed(old_raw: Any, new_raw: Any, user_id
                     detail=f"Heating step '{step_key}' must be fully documented before completion.",
                 )
             completed_by = str(new_stage.get("completed_by") or "").strip()
-            if completed_by != str(user_id).strip():
+            # The dedicated /heating-cable/{step}/confirm endpoint resolves the actor from the
+            # session and stamps either `worker:<id>` (Site Worker) or the admin user id; we
+            # only require the stamp is present here so generic PATCH paths cannot lock anonymously.
+            if not completed_by:
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Heating step '{step_key}' must store the current worker id as completed_by.",
+                    detail=(
+                        f"Heating step '{step_key}' cannot be locked without a confirming user. "
+                        "Use the heating cable confirm endpoint."
+                    ),
                 )
             completed_at = str(new_stage.get("completed_at") or "").strip()
             try:
