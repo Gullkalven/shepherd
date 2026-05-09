@@ -1,6 +1,12 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { client, confirmHeatingCableStep, patchHeatingCableStep, postWorkerPhaseHandoff } from '@/lib/api';
+import {
+  client,
+  confirmHeatingCableStep,
+  patchHeatingCableExtraSteps,
+  patchHeatingCableStep,
+  postWorkerPhaseHandoff,
+} from '@/lib/api';
 import {
   persistWorkerLastRoom,
   WORKER_ROOM_CHECKLIST_ANCHOR,
@@ -539,6 +545,8 @@ export default function RoomDetail() {
   /** True while a heating-cable photo is uploading/processing or admin lock toggles — inputs stay responsive during autosave. */
   const [heatingCableBlocking, setHeatingCableBlocking] = useState(false);
   const [heatingCableSaveUi, setHeatingCableSaveUi] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  /** Debounce timer active — show the same subtle feedback as an in-flight save. */
+  const [heatingCableAutosavePending, setHeatingCableAutosavePending] = useState(false);
   /** Last persisted heating doc fingerprint (`buildHeatingCablePayload` semantics). */
   const [heatingCableSyncedFp, setHeatingCableSyncedFp] = useState('');
   const heatingCableDocRef = useRef<HeatingCableDoc>({});
@@ -1707,14 +1715,51 @@ export default function RoomDetail() {
 
       try {
         const payloadDoc = normalizeMainStageOrderForWorker(buildHeatingCablePayload(source, displayName));
+        const finalLocked = payloadDoc.after_screed_final?.step_status === 'locked';
+
+        if (finalLocked && stepKey === 'after_screed_final') {
+          const extras = (payloadDoc.extra_steps ?? []) as Record<string, unknown>[];
+          if (import.meta.env.DEV) {
+            console.debug('[HeatingCable] save extra steps', {
+              roomId: room.id,
+              endpoint: `/api/v1/rooms/${room.id}/heating-cable/extra-steps`,
+              count: extras.length,
+            });
+          }
+          const res = await patchHeatingCableExtraSteps(room.id, extras);
+          const persisted = normalizeHeatingCableDoc(res?.heating_cable_doc);
+          skipHeatingDocSyncRef.current = true;
+          setHeatingCableDoc(persisted);
+          setRoom((prev) => (prev ? { ...prev, heating_cable_doc: persisted } : null));
+          setHeatingCableSyncedFp(heatingCablePersistFingerprint(persisted, displayName));
+          await refreshRoom();
+          setHeatingCableSaveUi('saved');
+          heatingSaveUiIdleTimerRef.current = setTimeout(() => {
+            setHeatingCableSaveUi('idle');
+            heatingSaveUiIdleTimerRef.current = null;
+          }, HEATING_SAVE_UI_IDLE_MS);
+          if (manualToast) toast.success('Heating cable documentation saved');
+          return true;
+        }
+
         const stage = payloadDoc[stepKey] || {};
-        const stepPayload = {
+        const stepPayload: {
+          resistance: string;
+          insulation: string;
+          performed_at: string;
+          note: string;
+          photos: string[];
+          extra_steps?: Record<string, unknown>[];
+        } = {
           resistance: stage.resistance_ohm || '',
           insulation: stage.insulation_mohm || '',
           performed_at: stage.date || '',
           note: stage.note || '',
           photos: Array.isArray(stage.photos) ? stage.photos : [],
         };
+        if (Array.isArray(payloadDoc.extra_steps)) {
+          stepPayload.extra_steps = payloadDoc.extra_steps as Record<string, unknown>[];
+        }
         if (import.meta.env.DEV) {
           console.debug('[HeatingCable] save', {
             activeStepKey: firstIncompleteMainHeatingStageKey(heatingCableDocRef.current),
@@ -1748,14 +1793,24 @@ export default function RoomDetail() {
         }
         if (manualToast) toast.error(reason ? `Failed to save: ${reason}` : 'Failed to save heating cable documentation');
         return false;
+      } finally {
+        setHeatingCableAutosavePending(false);
       }
     },
     [room, displayName, refreshRoom]
   );
 
+  const flushPendingHeatingAutosave = useCallback(() => {
+    if (!heatingAutosaveTimerRef.current) return;
+    clearTimeout(heatingAutosaveTimerRef.current);
+    heatingAutosaveTimerRef.current = null;
+    void persistHeatingCableDoc(heatingAutosaveStepRef.current);
+  }, [persistHeatingCableDoc]);
+
   const scheduleHeatingAutosave = useCallback((stepKey: HeatingCableStageKey) => {
     if (heatingAutosaveTimerRef.current) clearTimeout(heatingAutosaveTimerRef.current);
     heatingAutosaveStepRef.current = stepKey;
+    setHeatingCableAutosavePending(true);
     heatingAutosaveTimerRef.current = setTimeout(() => {
       heatingAutosaveTimerRef.current = null;
       void persistHeatingCableDoc(heatingAutosaveStepRef.current);
@@ -1767,10 +1822,25 @@ export default function RoomDetail() {
     if (heatingAutosaveTimerRef.current) {
       clearTimeout(heatingAutosaveTimerRef.current);
       heatingAutosaveTimerRef.current = null;
+      await persistHeatingCableDoc(heatingAutosaveStepRef.current, { manual: true });
+      return;
     }
     const target = firstIncompleteMainHeatingStageKey(heatingCableDocRef.current);
     await persistHeatingCableDoc(target, { manual: true });
   }, [room, persistHeatingCableDoc]);
+
+  useEffect(() => {
+    const onLeave = () => {
+      if (document.visibilityState === 'hidden') flushPendingHeatingAutosave();
+    };
+    const onPageHide = () => flushPendingHeatingAutosave();
+    document.addEventListener('visibilitychange', onLeave);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', onLeave);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [flushPendingHeatingAutosave]);
 
   const updateHeatingStageField = (
     stageKey: HeatingCableStageKey,
@@ -1903,13 +1973,11 @@ export default function RoomDetail() {
     });
     const nextDoc = mergeHeatingModulePhotoIntoDoc(heatingCableDocRef.current, stageId, objectKey);
     setHeatingCableDoc(nextDoc);
-    if (
-      stageId === 'before_installation' ||
-      stageId === 'after_cable_laid' ||
-      stageId === 'after_screed_final'
-    ) {
-      await persistHeatingCableDoc(stageId, { overrideDoc: nextDoc });
-    }
+    const persistKey: HeatingCableStageKey =
+      stageId === 'before_installation' || stageId === 'after_cable_laid' || stageId === 'after_screed_final'
+        ? stageId
+        : 'after_screed_final';
+    await persistHeatingCableDoc(persistKey, { overrideDoc: nextDoc });
     await loadData();
   };
 
@@ -2073,6 +2141,11 @@ export default function RoomDetail() {
         ? 'Save changes'
         : 'Save documentation',
     [heatingCableDoc]
+  );
+
+  const heatingCableSaveBusy = useMemo(
+    () => heatingCableAutosavePending || heatingCableSaveUi === 'saving',
+    [heatingCableAutosavePending, heatingCableSaveUi]
   );
 
   if (loading || permissionsLoading) {
@@ -2260,6 +2333,7 @@ export default function RoomDetail() {
               canEditHeatingCable={canEditHeatingCable}
               heatingCableBlocking={heatingCableBlocking}
               heatingCableSaveStatus={heatingCableSaveUi}
+              heatingCableAutosavePending={heatingCableAutosavePending}
               heatingCableDirty={heatingCableDirty}
               heatingCableManualSaveLabel={heatingCableManualSaveLabel}
               heatingLockedByAdmin={heatingLockedByAdmin}
@@ -3105,19 +3179,19 @@ export default function RoomDetail() {
                         <p
                           className={cn(
                             'mt-1 text-[11px] font-medium tabular-nums',
-                            heatingCableSaveUi === 'saving' && 'text-muted-foreground',
+                            heatingCableSaveBusy && 'text-muted-foreground',
                             heatingCableSaveUi === 'saved' && 'text-emerald-700 dark:text-emerald-400',
                             heatingCableSaveUi === 'error' && 'text-destructive',
-                            heatingCableSaveUi === 'idle' && 'text-muted-foreground/70'
+                            !heatingCableSaveBusy && heatingCableSaveUi === 'idle' && 'text-muted-foreground/70'
                           )}
                           aria-live="polite"
                         >
-                          {heatingCableSaveUi === 'saving'
-                            ? 'Saving…'
+                          {heatingCableSaveBusy
+                            ? 'Saving'
                             : heatingCableSaveUi === 'saved'
-                              ? 'Saved just now'
+                              ? 'Saved'
                               : heatingCableSaveUi === 'error'
-                                ? 'Failed to save'
+                                ? 'Failed'
                                 : !heatingCableDirty
                                   ? heatingDerived.status === 'complete'
                                     ? 'Documentation complete'
@@ -3444,22 +3518,19 @@ export default function RoomDetail() {
                         {canEditHeatingCable &&
                         !heatingLockedByAdmin &&
                         !phaseReadOnly &&
-                        (heatingCableDirty || heatingCableSaveUi === 'saving') ? (
+                        ((heatingCableDirty && !heatingCableSaveBusy) ||
+                          heatingCableSaveUi === 'error') ? (
                           <Button
                             type="button"
                             size="sm"
-                            variant="outline"
-                            className="h-9 sm:h-8 text-base sm:text-xs"
+                            variant="ghost"
+                            className="h-8 sm:h-7 text-[11px] text-muted-foreground hover:text-foreground px-2"
                             onClick={() => void saveHeatingCableDoc()}
                             disabled={
-                              !canEditHeatingCable ||
-                              heatingCableBlocking ||
-                              heatingCableSaveUi === 'saving'
+                              !canEditHeatingCable || heatingCableBlocking || heatingCableSaveBusy
                             }
                           >
-                            {heatingCableSaveUi === 'saving'
-                              ? 'Saving…'
-                              : heatingCableManualSaveLabel}
+                            {heatingCableSaveUi === 'error' ? 'Retry save' : heatingCableManualSaveLabel}
                           </Button>
                         ) : null}
                       </div>

@@ -123,6 +123,8 @@ type Props = {
   heatingCableBlocking: boolean;
   /** Subtle persist feedback for the heating cable module. */
   heatingCableSaveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  /** Debounce pending before the PATCH runs — same UX weight as `saving`. */
+  heatingCableAutosavePending?: boolean;
   /** True when local edits differ from last persisted payload (measurements, notes, photos, etc.). */
   heatingCableDirty: boolean;
   /** Label for the manual save button — contextual vs generic “Save now”. */
@@ -441,6 +443,9 @@ export function WorkerRoomView(p: Props) {
 
   const heatingCablePhasePrimary =
     p.showHeatingModule && isHeatingCablePhase(p.selectedPhaseKey, selectedLabel);
+  const heatingCableSaveBusy =
+    p.heatingCableSaveStatus === 'saving' || Boolean(p.heatingCableAutosavePending);
+
   const heatingGallerySections = useMemo(
     () =>
       p.showHeatingModule
@@ -1068,9 +1073,9 @@ export function WorkerRoomView(p: Props) {
                 const passiveComplete =
                   p.heatingDerived.status === 'complete' ? 'Documentation complete' : 'All changes saved';
                 let statusText: string | null = null;
-                if (p.heatingCableSaveStatus === 'saving') statusText = 'Saving…';
-                else if (p.heatingCableSaveStatus === 'error') statusText = 'Failed to save';
-                else if (p.heatingCableSaveStatus === 'saved') statusText = 'Saved just now';
+                if (heatingCableSaveBusy) statusText = 'Saving';
+                else if (p.heatingCableSaveStatus === 'error') statusText = 'Failed';
+                else if (p.heatingCableSaveStatus === 'saved') statusText = 'Saved';
                 else if (
                   !p.heatingCableDirty ||
                   !p.canEditHeatingCable ||
@@ -1084,10 +1089,10 @@ export function WorkerRoomView(p: Props) {
                   <span
                     className={cn(
                       'text-[11px] font-medium tabular-nums shrink-0 pt-0.5',
-                      p.heatingCableSaveStatus === 'saving' && 'text-muted-foreground',
+                      heatingCableSaveBusy && 'text-muted-foreground',
                       p.heatingCableSaveStatus === 'saved' && 'text-emerald-700 dark:text-emerald-400',
                       p.heatingCableSaveStatus === 'error' && 'text-destructive',
-                      p.heatingCableSaveStatus === 'idle' && 'text-muted-foreground/70'
+                      !heatingCableSaveBusy && p.heatingCableSaveStatus === 'idle' && 'text-muted-foreground/70'
                     )}
                     aria-live="polite"
                   >
@@ -1466,18 +1471,15 @@ export function WorkerRoomView(p: Props) {
             {p.canEditHeatingCable &&
             !p.heatingLockedByAdmin &&
             !p.phaseReadOnly &&
-            (p.heatingCableDirty || p.heatingCableSaveStatus === 'saving') ? (
+            ((p.heatingCableDirty && !heatingCableSaveBusy) || p.heatingCableSaveStatus === 'error') ? (
               <Button
                 type="button"
-                variant="outline"
-                className="w-full h-11 text-sm font-medium text-muted-foreground"
-                disabled={
-                  p.heatingCableBlocking ||
-                  p.heatingCableSaveStatus === 'saving'
-                }
+                variant="ghost"
+                className="w-full h-10 text-xs font-medium text-muted-foreground hover:text-foreground"
+                disabled={p.heatingCableBlocking || heatingCableSaveBusy}
                 onClick={() => p.onSaveHeatingCable()}
               >
-                {p.heatingCableSaveStatus === 'saving' ? 'Saving…' : p.heatingCableManualSaveLabel}
+                {p.heatingCableSaveStatus === 'error' ? 'Retry save' : p.heatingCableManualSaveLabel}
               </Button>
             ) : null}
           </div>

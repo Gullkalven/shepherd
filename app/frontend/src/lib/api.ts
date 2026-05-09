@@ -139,6 +139,8 @@ export async function patchHeatingCableStep(
     performed_at?: string;
     photos?: string[];
     note?: string;
+    /** When set, replaces extra measurement rows on the server copy of the document. */
+    extra_steps?: Record<string, unknown>[];
   }
 ): Promise<{ heating_cable_doc?: unknown }> {
   const base = getAPIBaseURL().replace(/\/$/, '');
@@ -152,6 +154,36 @@ export async function patchHeatingCableStep(
   }
   if (typeof globalThis.window?.location?.origin === 'string') headers['App-Host'] = globalThis.window.location.origin;
   const res = await fetch(url, { method: 'PATCH', headers, body: JSON.stringify(payload) });
+  const text = await res.text();
+  const body = parseJsonBody(text);
+  if (!res.ok) {
+    throw Object.assign(new Error(apiDetailMessage(body, `HTTP ${res.status}`)), {
+      response: { status: res.status, data: body },
+    });
+  }
+  return body as { heating_cable_doc?: unknown };
+}
+
+/** Persist optional measurement rows after the final main heating stage is locked. */
+export async function patchHeatingCableExtraSteps(
+  roomId: number,
+  extra_steps: Record<string, unknown>[]
+): Promise<{ heating_cable_doc?: unknown }> {
+  const base = getAPIBaseURL().replace(/\/$/, '');
+  const url = `${base}/api/v1/rooms/${roomId}/heating-cable/extra-steps`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token = globalThis.localStorage?.getItem('token');
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    /* ignore */
+  }
+  if (typeof globalThis.window?.location.origin === 'string') headers['App-Host'] = globalThis.window.location.origin;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ extra_steps }),
+  });
   const text = await res.text();
   const body = parseJsonBody(text);
   if (!res.ok) {

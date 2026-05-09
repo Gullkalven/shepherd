@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,12 +33,20 @@ class HeatingCableDraftPatch(BaseModel):
     recorded_at: Optional[str] = None
     photos: Optional[List[str]] = None
     note: Optional[str] = None
+    extra_steps: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="When set, replaces extra_steps on the stored heating cable document.",
+    )
 
 
 class HeatingCableConfirmBody(BaseModel):
     """Confirm body is intentionally empty: actor identity is derived from the session."""
 
     pass
+
+
+class HeatingCableExtraStepsPatch(BaseModel):
+    extra_steps: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 @dataclass
@@ -194,6 +202,8 @@ async def _patch_heating_cable_step_impl(
         stage["photos"] = list(dict.fromkeys(photos))
         stage["images"] = stage["photos"]
     doc[step_key] = stage
+    if body.extra_steps is not None:
+        doc["extra_steps"] = [_normalize_stage(x) for x in body.extra_steps if isinstance(x, dict)]
     doc["updated_at"] = _iso_utc_now()
 
     updated = await service.update(
@@ -205,6 +215,47 @@ async def _patch_heating_cable_step_impl(
     if not updated:
         raise HTTPException(status_code=404, detail="Room not found")
     return {"ok": True, "step_key": step_key, "heating_cable_doc": doc}
+
+
+async def _patch_heating_cable_extra_steps_impl(
+    room_id: int,
+    body: HeatingCableExtraStepsPatch,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Persist optional measurement rows after the final main stage is locked."""
+    logger.info("HEATING CABLE EXTRA STEPS PATCH room_id=%s", room_id)
+    await ensure_room_mutable(db, room_id, str(current_user.id), app_role, worker_project_scope(current_user))
+    service = RoomsService(db)
+    room = await service.get_by_id(
+        room_id,
+        user_id=str(current_user.id),
+        worker_project_id=worker_project_scope(current_user),
+    )
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    doc = _normalize_doc(getattr(room, "heating_cable_doc", None))
+    final = _normalize_stage(doc.get("after_screed_final"))
+    if final.get("step_status") != "locked":
+        raise HTTPException(
+            status_code=400,
+            detail="Extra heating cable steps are only available after the final main stage is completed.",
+        )
+    doc["extra_steps"] = [_normalize_stage(x) for x in body.extra_steps if isinstance(x, dict)]
+    doc["updated_at"] = _iso_utc_now()
+
+    updated = await service.update(
+        room_id,
+        {"heating_cable_doc": doc},
+        user_id=str(current_user.id),
+        worker_project_id=worker_project_scope(current_user),
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Room not found")
+    return {"ok": True, "heating_cable_doc": doc}
 
 
 async def _confirm_heating_cable_step_impl(
@@ -273,6 +324,30 @@ async def _confirm_heating_cable_step_impl(
     if not updated:
         raise HTTPException(status_code=404, detail="Room not found")
     return {"ok": True, "step_key": step_key, "heating_cable_doc": doc}
+
+
+@router.patch("/{room_id}/heating-cable/extra-steps")
+async def patch_heating_cable_extra_steps(
+    room_id: int,
+    body: HeatingCableExtraStepsPatch,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _patch_heating_cable_extra_steps_impl(room_id, body, current_user, _role, app_role, db)
+
+
+@entities_router.patch("/{room_id}/heating-cable/extra-steps")
+async def patch_heating_cable_extra_steps_entities(
+    room_id: int,
+    body: HeatingCableExtraStepsPatch,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _patch_heating_cable_extra_steps_impl(room_id, body, current_user, _role, app_role, db)
 
 
 @router.patch("/{room_id}/heating-cable/{step_key}")
