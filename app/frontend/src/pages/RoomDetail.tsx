@@ -3246,7 +3246,6 @@ export default function RoomDetail() {
                                   type="number"
                                   inputMode="decimal"
                                   step="any"
-                                  placeholder="e.g. 146"
                                   value={row.resistance_ohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
                                   aria-label="Resistance (Ω)"
@@ -3269,7 +3268,6 @@ export default function RoomDetail() {
                                   type="number"
                                   inputMode="decimal"
                                   step="any"
-                                  placeholder="e.g. 999"
                                   value={row.insulation_mohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
                                   aria-label="Insulation (MΩ)"
@@ -3424,7 +3422,6 @@ export default function RoomDetail() {
                                   type="number"
                                   inputMode="decimal"
                                   step="any"
-                                  placeholder="e.g. 146"
                                   value={step.resistance_ohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
                                   aria-label="Resistance (Ω)"
@@ -3445,7 +3442,6 @@ export default function RoomDetail() {
                                   type="number"
                                   inputMode="decimal"
                                   step="any"
-                                  placeholder="e.g. 999"
                                   value={step.insulation_mohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
                                   aria-label="Insulation (MΩ)"

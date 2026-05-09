@@ -1189,7 +1189,6 @@ export function WorkerRoomView(p: Props) {
                               type="number"
                               inputMode="decimal"
                               step="any"
-                              placeholder="e.g. 146"
                               value={row.resistance_ohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={stageReadOnly}
@@ -1210,7 +1209,6 @@ export function WorkerRoomView(p: Props) {
                               type="number"
                               inputMode="decimal"
                               step="any"
-                              placeholder="e.g. 999"
                               value={row.insulation_mohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={stageReadOnly}
@@ -1374,7 +1372,6 @@ export function WorkerRoomView(p: Props) {
                               type="number"
                               inputMode="decimal"
                               step="any"
-                              placeholder="e.g. 146"
                               value={step.resistance_ohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
@@ -1395,7 +1392,6 @@ export function WorkerRoomView(p: Props) {
                               type="number"
                               inputMode="decimal"
                               step="any"
-                              placeholder="e.g. 999"
                               value={step.insulation_mohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
