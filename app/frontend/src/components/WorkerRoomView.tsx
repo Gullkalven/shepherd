@@ -1722,26 +1722,34 @@ export function WorkerRoomView(p: Props) {
               <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
             </CollapsibleTrigger>
             <CollapsibleContent>
-              <div className="max-h-48 space-y-1.5 overflow-y-auto border-t border-border/25 px-3 pb-3 pt-2 text-xs">
+              <div className="max-h-48 space-y-2 overflow-y-auto border-t border-border/25 px-3 pb-3 pt-2 text-xs">
                 {p.activityEntries.length === 0 ? (
                   <p className="text-muted-foreground py-1">Nothing logged for this phase yet.</p>
                 ) : (
                   p.activityEntries.map((row, i) => (
                     <div
                       key={row.rowKey}
-                      className="flex gap-2 border-b border-border/25 pb-1.5 last:border-0"
+                      className="rounded-md border border-border/30 bg-muted/[0.06] px-2.5 py-2"
                     >
-                      <span className="w-14 shrink-0 whitespace-nowrap text-muted-foreground tabular-nums">
-                        <span className="inline-flex flex-col items-end gap-0.5 leading-tight">
-                          <span>{p.formatActivityWhen(row.t)}</span>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex min-w-0 flex-wrap items-start gap-x-2 gap-y-1">
                           {i === 0 ? (
-                            <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground/75">
+                            <Badge
+                              variant="secondary"
+                              className="h-5 shrink-0 px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wide"
+                            >
                               Latest
-                            </span>
+                            </Badge>
                           ) : null}
-                        </span>
-                      </span>
-                      <span className="min-w-0 leading-snug">{row.msg}</span>
+                          <span className="min-w-0 flex-1 leading-snug text-foreground">{row.msg}</span>
+                        </div>
+                        <time
+                          className="text-[10px] leading-snug text-muted-foreground tabular-nums"
+                          dateTime={new Date(row.t).toISOString()}
+                        >
+                          {p.formatActivityWhen(row.t)}
+                        </time>
+                      </div>
                     </div>
                   ))
                 )}
