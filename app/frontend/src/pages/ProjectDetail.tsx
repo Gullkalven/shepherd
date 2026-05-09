@@ -676,7 +676,12 @@ export default function ProjectDetail() {
 
             {showDashboard && (
               <Card className="p-4">
-                <DashboardStats rooms={allRooms} phaseWorkflow={phaseWorkflow} projectId={projectId ?? ''} />
+                <DashboardStats
+                  rooms={allRooms}
+                  floors={floors}
+                  phaseWorkflow={phaseWorkflow}
+                  projectId={projectId ?? ''}
+                />
                 <div className="mt-3">
                   <Button type="button" variant="outline" className="h-10" onClick={handleOpenHeatingExport}>
                     Export heating cable PDF
