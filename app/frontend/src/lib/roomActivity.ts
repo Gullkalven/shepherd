@@ -46,7 +46,7 @@ export function formatActivityMessage(e: ActivityLogEntry): string {
       return `${actor} removed checklist item "${q(item) || 'item'}"`;
     case 'photo_uploaded': {
       const fn = typeof meta.filename === 'string' ? meta.filename.trim() : '';
-      return fn ? `${actor} uploaded photo: ${fn}` : `${actor} uploaded a photo`;
+      return fn ? `${actor} uploaded photo (${fn})` : `${actor} uploaded photo`;
     }
     case 'legacy_photo': {
       const fn = typeof meta.filename === 'string' ? meta.filename.trim() : '';
@@ -72,6 +72,32 @@ export function formatActivityMessage(e: ActivityLogEntry): string {
     }
     case 'heating_cable_doc_saved':
       return `${actor} saved heating cable documentation`;
+    case 'heating_cable_step_completed': {
+      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      return sl ? `${actor} completed ${sl}` : `${actor} completed a heating cable step`;
+    }
+    case 'heating_cable_measurements_updated': {
+      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      const r = typeof meta.resistance_ohm === 'string' ? meta.resistance_ohm.trim() : '';
+      const ins = typeof meta.insulation_mohm === 'string' ? meta.insulation_mohm.trim() : '';
+      const parts: string[] = [];
+      if (r) parts.push(`${r} Ω`);
+      if (ins) parts.push(`${ins} MΩ`);
+      const detail = parts.join(' / ');
+      if (sl && detail) return `${actor} updated measurements for ${sl} · ${detail}`;
+      if (sl) return `${actor} updated measurements for ${sl}`;
+      return `${actor} updated heating cable measurements`;
+    }
+    case 'heating_cable_note_updated': {
+      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      return sl ? `${actor} updated note for ${sl}` : `${actor} updated a heating cable note`;
+    }
+    case 'heating_cable_stage_photos_updated': {
+      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      return sl ? `${actor} updated photos for ${sl}` : `${actor} updated heating cable photos`;
+    }
+    case 'heating_cable_extra_steps_updated':
+      return `${actor} updated extra heating cable measurements`;
     case 'status_changed': {
       const from = meta.from != null ? String(meta.from) : '—';
       const to = meta.to != null ? String(meta.to) : '—';

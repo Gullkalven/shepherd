@@ -1,7 +1,8 @@
+import json
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -10,11 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from dependencies.auth import get_current_user
+from dependencies.phase_edit import heating_documentation_phase_key, workflow_keys_for_room
 from dependencies.roles import ROLE_ADMIN, get_current_app_role, require_room_collaborator
 from dependencies.room_lock import ensure_room_mutable
 from dependencies.worker_scope import worker_project_scope
 from models.project_workers import Project_workers
 from schemas.auth import UserResponse
+from services.room_activity import actor_display, append_room_activity, phase_display_label
 from services.rooms import RoomsService
 
 logger = logging.getLogger(__name__)
@@ -24,6 +27,132 @@ entities_router = APIRouter(prefix="/api/v1/entities/rooms", tags=["room_heating
 admin_router = entities_router
 
 HEATING_STEP_KEYS: List[str] = ["before_installation", "after_cable_laid", "after_screed_final"]
+
+_HEATING_STAGE_LABELS: Dict[str, str] = {
+    "before_installation": "Before installation",
+    "after_cable_laid": "After cable laid",
+    "after_screed_final": "After screed / final",
+}
+
+
+async def _heating_activity_workflow_phase(db: AsyncSession, room: Any) -> Tuple[str, str]:
+    keys_wf = await workflow_keys_for_room(db, room)
+    hk = await heating_documentation_phase_key(db, room, keys_wf)
+    hlab = await phase_display_label(db, room, hk)
+    return hk, hlab
+
+
+def _sorted_photo_tuple(stage: Dict[str, Any]) -> Tuple[str, ...]:
+    photos = stage.get("photos")
+    if not isinstance(photos, list):
+        return tuple()
+    items = [str(x).strip() for x in photos if isinstance(x, str) and str(x).strip()]
+    return tuple(sorted(items))
+
+
+def _measurement_signature(stage: Dict[str, Any]) -> Tuple[str, str, str]:
+    return (
+        str(stage.get("resistance_ohm") or "").strip(),
+        str(stage.get("insulation_mohm") or "").strip(),
+        str(stage.get("date") or "").strip(),
+    )
+
+
+async def _append_heating_step_patch_activity(
+    db: AsyncSession,
+    room: Any,
+    room_id: int,
+    user_id: str,
+    step_key: str,
+    old_stage: Dict[str, Any],
+    new_stage: Dict[str, Any],
+    worker_project_id: Optional[int],
+    actor: str,
+    at_iso: str,
+) -> None:
+    hk, hlab = await _heating_activity_workflow_phase(db, room)
+    stage_label = _HEATING_STAGE_LABELS.get(step_key, step_key)
+    base_meta = {"stage_key": step_key, "stage_label": stage_label}
+
+    if _measurement_signature(old_stage) != _measurement_signature(new_stage):
+        await append_room_activity(
+            db,
+            room_id,
+            user_id,
+            kind="heating_cable_measurements_updated",
+            actor=actor,
+            phase_key=hk,
+            phase_label=hlab,
+            at_iso=at_iso,
+            meta={
+                **base_meta,
+                "resistance_ohm": str(new_stage.get("resistance_ohm") or "").strip(),
+                "insulation_mohm": str(new_stage.get("insulation_mohm") or "").strip(),
+            },
+            worker_project_id=worker_project_id,
+        )
+
+    old_note = str(old_stage.get("note") or "").strip()
+    new_note = str(new_stage.get("note") or "").strip()
+    if old_note != new_note:
+        await append_room_activity(
+            db,
+            room_id,
+            user_id,
+            kind="heating_cable_note_updated",
+            actor=actor,
+            phase_key=hk,
+            phase_label=hlab,
+            at_iso=at_iso,
+            meta={**base_meta},
+            worker_project_id=worker_project_id,
+        )
+
+    if _sorted_photo_tuple(old_stage) != _sorted_photo_tuple(new_stage):
+        photos = new_stage.get("photos")
+        n = len([x for x in photos if isinstance(x, str) and str(x).strip()]) if isinstance(photos, list) else 0
+        await append_room_activity(
+            db,
+            room_id,
+            user_id,
+            kind="heating_cable_stage_photos_updated",
+            actor=actor,
+            phase_key=hk,
+            phase_label=hlab,
+            at_iso=at_iso,
+            meta={**base_meta, "photo_count": n},
+            worker_project_id=worker_project_id,
+        )
+
+
+async def _append_heating_extra_steps_activity_if_changed(
+    db: AsyncSession,
+    room: Any,
+    room_id: int,
+    user_id: str,
+    old_doc: Dict[str, Any],
+    new_doc: Dict[str, Any],
+    worker_project_id: Optional[int],
+    actor: str,
+    at_iso: str,
+) -> None:
+    old_ex = old_doc.get("extra_steps")
+    new_ex = new_doc.get("extra_steps")
+    if json.dumps(old_ex, sort_keys=True, default=str) == json.dumps(new_ex, sort_keys=True, default=str):
+        return
+    hk, hlab = await _heating_activity_workflow_phase(db, room)
+    await append_room_activity(
+        db,
+        room_id,
+        user_id,
+        kind="heating_cable_extra_steps_updated",
+        actor=actor,
+        phase_key=hk,
+        phase_label=hlab,
+        at_iso=at_iso,
+        meta={},
+        worker_project_id=worker_project_id,
+    )
 
 
 class HeatingCableDraftPatch(BaseModel):
@@ -185,7 +314,10 @@ async def _patch_heating_cable_step_impl(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    doc = _normalize_doc(getattr(room, "heating_cable_doc", None))
+    doc_before = _normalize_doc(getattr(room, "heating_cable_doc", None))
+    old_stage = _normalize_stage(doc_before.get(step_key))
+
+    doc = dict(doc_before)
     _ensure_step_editable(doc, step_key)
     stage = _normalize_stage(doc.get(step_key))
     if body.resistance is not None:
@@ -206,14 +338,29 @@ async def _patch_heating_cable_step_impl(
         doc["extra_steps"] = [_normalize_stage(x) for x in body.extra_steps if isinstance(x, dict)]
     doc["updated_at"] = _iso_utc_now()
 
+    new_stage = _normalize_stage(doc.get(step_key))
+    at_iso = doc["updated_at"]
+    user_id = str(current_user.id)
+    actor = actor_display(current_user)
+    wpid = worker_project_scope(current_user)
+
     updated = await service.update(
         room_id,
         {"heating_cable_doc": doc},
-        user_id=str(current_user.id),
-        worker_project_id=worker_project_scope(current_user),
+        user_id=user_id,
+        worker_project_id=wpid,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Room not found")
+
+    await _append_heating_step_patch_activity(
+        db, room, room_id, user_id, step_key, old_stage, new_stage, wpid, actor, at_iso
+    )
+    if body.extra_steps is not None:
+        await _append_heating_extra_steps_activity_if_changed(
+            db, room, room_id, user_id, doc_before, doc, wpid, actor, at_iso
+        )
+
     return {"ok": True, "step_key": step_key, "heating_cable_doc": doc}
 
 
@@ -237,7 +384,8 @@ async def _patch_heating_cable_extra_steps_impl(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    doc = _normalize_doc(getattr(room, "heating_cable_doc", None))
+    doc_before = _normalize_doc(getattr(room, "heating_cable_doc", None))
+    doc = dict(doc_before)
     final = _normalize_stage(doc.get("after_screed_final"))
     if final.get("step_status") != "locked":
         raise HTTPException(
@@ -247,14 +395,24 @@ async def _patch_heating_cable_extra_steps_impl(
     doc["extra_steps"] = [_normalize_stage(x) for x in body.extra_steps if isinstance(x, dict)]
     doc["updated_at"] = _iso_utc_now()
 
+    at_iso = doc["updated_at"]
+    user_id = str(current_user.id)
+    actor = actor_display(current_user)
+    wpid = worker_project_scope(current_user)
+
     updated = await service.update(
         room_id,
         {"heating_cable_doc": doc},
-        user_id=str(current_user.id),
-        worker_project_id=worker_project_scope(current_user),
+        user_id=user_id,
+        worker_project_id=wpid,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Room not found")
+
+    await _append_heating_extra_steps_activity_if_changed(
+        db, room, room_id, user_id, doc_before, doc, wpid, actor, at_iso
+    )
+
     return {"ok": True, "heating_cable_doc": doc}
 
 
@@ -315,14 +473,33 @@ async def _confirm_heating_cable_step_impl(
     doc[step_key] = stage
     doc["updated_at"] = _iso_utc_now()
 
+    user_id = str(current_user.id)
+    wpid = worker_project_scope(current_user)
+
     updated = await service.update(
         room_id,
         {"heating_cable_doc": doc},
-        user_id=str(current_user.id),
-        worker_project_id=worker_project_scope(current_user),
+        user_id=user_id,
+        worker_project_id=wpid,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Room not found")
+
+    hk, hlab = await _heating_activity_workflow_phase(db, room)
+    stage_label = _HEATING_STAGE_LABELS.get(step_key, step_key)
+    await append_room_activity(
+        db,
+        room_id,
+        user_id,
+        kind="heating_cable_step_completed",
+        actor=actor_display_name,
+        phase_key=hk,
+        phase_label=hlab,
+        at_iso=now_iso,
+        meta={"stage_key": step_key, "stage_label": stage_label},
+        worker_project_id=wpid,
+    )
+
     return {"ok": True, "step_key": step_key, "heating_cable_doc": doc}
 
 

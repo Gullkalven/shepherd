@@ -399,9 +399,13 @@ function parseActivityTime(s: string | null | undefined): number {
 function formatActivityWhen(ts: number): string {
   if (!ts) return '—';
   try {
-    const iso = new Date(ts).toISOString();
-    const localLike = iso.replace('T', ' ').substring(0, 19);
-    return formatVisitDate(localLike);
+    return new Date(ts).toLocaleString(undefined, {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   } catch {
     return '—';
   }
