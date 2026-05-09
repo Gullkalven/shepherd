@@ -144,6 +144,7 @@ def _build_cors_allow_origins() -> list[str]:
     for o in (
         settings.frontend_origin,
         "https://shepherd-frontend.onrender.com",
+        "https://shepherd-dev-frontend.onrender.com",
         "http://localhost:3000",
         "http://localhost:5173",
         "http://127.0.0.1:3000",
@@ -259,6 +260,12 @@ def log_registered_admin_panel_routes(app: FastAPI) -> None:
 
 # Setup logging before router discovery
 setup_logging()
+_cors_origins_active = _build_cors_allow_origins()
+logging.getLogger(__name__).info(
+    "CORS active allow_origins (%d): %s",
+    len(_cors_origins_active),
+    _cors_origins_active,
+)
 include_routers_from_package(app, "routers")
 log_registered_admin_panel_routes(app)
 
