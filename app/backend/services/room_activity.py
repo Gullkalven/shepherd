@@ -369,9 +369,86 @@ async def append_room_patch_activity(
     if "workflow_deviations" in update_dict:
         import json
 
+        def _deviation_dicts(raw: Any) -> List[Dict[str, Any]]:
+            if not isinstance(raw, list):
+                return []
+            out: List[Dict[str, Any]] = []
+            for x in raw:
+                if isinstance(x, dict) and isinstance(x.get("id"), str):
+                    out.append(x)
+            return out
+
+        old_devs = _deviation_dicts(getattr(existing, "workflow_deviations", None))
+        new_devs = _deviation_dicts(update_dict.get("workflow_deviations"))
+        old_map = {str(d["id"]): d for d in old_devs}
+        new_map = {str(d["id"]): d for d in new_devs}
+        all_ids = set(old_map.keys()) | set(new_map.keys())
+
+        emit_generic = False
+        for iid in all_ids:
+            o = old_map.get(iid)
+            n = new_map.get(iid)
+            if (o is None) != (n is None):
+                emit_generic = True
+                break
+            if o is None or n is None:
+                continue
+            keys_cmp = set(o.keys()) | set(n.keys())
+            for k in keys_cmp:
+                if k in ("status", "resolved_at", "resolved_by"):
+                    continue
+                if o.get(k) != n.get(k):
+                    emit_generic = True
+                    break
+            if emit_generic:
+                break
+
+        if not emit_generic:
+            for iid in all_ids:
+                o = old_map.get(iid)
+                n = new_map.get(iid)
+                if not o or not n:
+                    continue
+                os_ = o.get("status")
+                ns_ = n.get("status")
+                if os_ == "resolved" and ns_ != "resolved":
+                    emit_generic = True
+                    break
+
+        for iid in all_ids:
+            o = old_map.get(iid)
+            n = new_map.get(iid)
+            if not o or not n:
+                continue
+            os_ = o.get("status")
+            ns_ = n.get("status")
+            if os_ == "resolved" or ns_ != "resolved":
+                continue
+            pk_raw = n.get("phase_key")
+            pk = pk_raw.strip() if isinstance(pk_raw, str) and pk_raw.strip() else rp
+            plab = await phase_display_label(db, existing, pk)
+            txt = n.get("text")
+            text_preview = (str(txt).strip()[:120]) if txt is not None else ""
+            aid_raw = n.get("area_id")
+            aid: Optional[str] = None
+            if isinstance(aid_raw, str) and aid_raw.strip():
+                aid = aid_raw.strip()
+            await append_room_activity(
+                db,
+                rid,
+                user_id,
+                kind="issue_resolved",
+                actor=actor,
+                phase_key=pk,
+                phase_label=plab,
+                area_id=aid,
+                meta={"issue_id": iid, "text_preview": text_preview},
+                worker_project_id=worker_project_id,
+            )
+
         old_w = json.dumps(getattr(existing, "workflow_deviations", None), sort_keys=True, default=str)
         new_w = json.dumps(update_dict.get("workflow_deviations"), sort_keys=True, default=str)
-        if old_w != new_w:
+        if old_w != new_w and emit_generic:
             await append_room_activity(
                 db,
                 rid,

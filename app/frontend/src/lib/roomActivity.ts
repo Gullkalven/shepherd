@@ -121,6 +121,8 @@ export function formatActivityMessage(e: ActivityLogEntry): string {
     }
     case 'workflow_deviations_updated':
       return `${actor} updated issues / deviations`;
+    case 'issue_resolved':
+      return `${actor} resolved issue`;
     case 'checklist_labels_updated':
       return `${actor} updated checklist section titles`;
     case 'phase_tool_overrides_updated':

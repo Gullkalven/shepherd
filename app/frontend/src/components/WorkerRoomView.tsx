@@ -77,6 +77,8 @@ export type WorkerDeviation = {
   text: string;
   status: 'open' | 'resolved';
   reported_by?: string;
+  resolved_at?: string;
+  resolved_by?: string;
 };
 
 type Props = {
@@ -176,6 +178,11 @@ type Props = {
   formatActivityWhen: (ts: number) => string;
 
   deviations: WorkerDeviation[];
+  /** Open issues only; resolved history is in `resolvedDeviations` when present. */
+  resolvedDeviations?: WorkerDeviation[];
+  onResolveDeviation?: (id: string) => void;
+  canResolveIssue?: boolean;
+  formatResolvedAt?: (iso: string) => string;
   newDeviationText: string;
   onNewDeviationChange: (v: string) => void;
   onAddDeviation: () => void;
@@ -553,10 +560,7 @@ export function WorkerRoomView(p: Props) {
     };
   }, [p.blockedReason, p.phaseCompleteEligible, p.phaseReadOnly, p.phaseExplicitWorkerLock, p.phaseTabLocked]);
 
-  const openDeviationsCount = useMemo(
-    () => p.deviations.filter((d) => d.status === 'open').length,
-    [p.deviations]
-  );
+  const openDeviationsCount = p.deviations.length;
 
   const heroStatPrimary = useMemo(() => {
     const checklistTotal = p.showChecklistSection ? p.tasksForSelectedPhase.length : 0;
@@ -1653,9 +1657,9 @@ export function WorkerRoomView(p: Props) {
               <span className="flex min-w-0 flex-1 items-center gap-2.5">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600/90" />
                 <span className="leading-snug">Report issue</span>
-                {p.deviations.length > 0 ? (
+                {openDeviationsCount > 0 ? (
                   <Badge variant="secondary" className="text-[10px]">
-                    {p.deviations.length}
+                    {openDeviationsCount}
                   </Badge>
                 ) : null}
               </span>
@@ -1668,25 +1672,66 @@ export function WorkerRoomView(p: Props) {
                     {p.deviations.map((d) => (
                       <li
                         key={d.id}
-                        className={cn(
-                          'rounded-md border px-2.5 py-2 text-sm',
-                          d.status === 'resolved'
-                            ? 'border-border/60 bg-muted/20'
-                            : 'border-amber-200/70 bg-amber-50/50 dark:bg-amber-950/25'
-                        )}
+                        className="rounded-md border border-amber-200/70 bg-amber-50/50 px-2.5 py-2 text-sm dark:border-amber-900/45 dark:bg-amber-950/25"
                       >
-                        <span className="block leading-snug">{d.text}</span>
-                        {d.reported_by?.trim() ? (
-                          <span className="mt-1 block text-[11px] text-muted-foreground">
-                            Reported by {d.reported_by.trim()}
-                          </span>
-                        ) : null}
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <span className="block leading-snug">{d.text}</span>
+                            {d.reported_by?.trim() ? (
+                              <span className="mt-1 block text-[11px] text-muted-foreground">
+                                Reported by {d.reported_by.trim()}
+                              </span>
+                            ) : null}
+                          </div>
+                          {p.canResolveIssue && p.onResolveDeviation ? (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="h-8 shrink-0 text-xs"
+                              disabled={p.savingDeviations}
+                              onClick={() => p.onResolveDeviation?.(d.id)}
+                            >
+                              Mark as resolved
+                            </Button>
+                          ) : null}
+                        </div>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-muted-foreground">No issues logged for this phase.</p>
+                  <p className="text-xs text-muted-foreground">No open issues for this phase.</p>
                 )}
+                {(p.resolvedDeviations?.length ?? 0) > 0 ? (
+                  <Collapsible defaultOpen={false} className="rounded-md border border-border/35 bg-muted/15">
+                    <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-muted/25">
+                      <span>Resolved ({p.resolvedDeviations?.length ?? 0})</span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <ul className="space-y-2 border-t border-border/30 px-2.5 pb-2.5 pt-2">
+                        {(p.resolvedDeviations ?? []).map((d) => (
+                          <li
+                            key={d.id}
+                            className="rounded-md border border-border/50 bg-muted/20 px-2.5 py-2 text-[13px] leading-snug text-muted-foreground"
+                          >
+                            <span className="text-foreground">{d.text}</span>
+                            {d.resolved_by?.trim() ? (
+                              <span className="mt-1 block text-[11px] text-muted-foreground">
+                                Resolved by {d.resolved_by.trim()}
+                                {d.resolved_at && p.formatResolvedAt
+                                  ? ` · ${p.formatResolvedAt(d.resolved_at)}`
+                                  : ''}
+                              </span>
+                            ) : d.resolved_at && p.formatResolvedAt ? (
+                              <span className="mt-1 block text-[11px]">{p.formatResolvedAt(d.resolved_at)}</span>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </CollapsibleContent>
+                  </Collapsible>
+                ) : null}
                 {p.canAddDeviation ? (
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch pt-1">
                     <Input

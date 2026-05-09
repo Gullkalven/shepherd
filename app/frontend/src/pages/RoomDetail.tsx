@@ -302,6 +302,8 @@ type WorkflowDeviation = {
   status: 'open' | 'resolved';
   created_at: string;
   resolved_at?: string;
+  /** Display name of user who marked the issue resolved */
+  resolved_by?: string;
   area_id?: string;
   reported_by?: string;
 };
@@ -374,11 +376,13 @@ function coerceWorkflowDeviations(raw: unknown): WorkflowDeviation[] {
     const status = o.status === 'resolved' ? 'resolved' : 'open';
     const created_at = typeof o.created_at === 'string' ? o.created_at : '';
     const resolved_at = typeof o.resolved_at === 'string' ? o.resolved_at : undefined;
+    const resolved_by =
+      typeof o.resolved_by === 'string' && o.resolved_by.trim() ? o.resolved_by.trim() : undefined;
     const area_id = typeof o.area_id === 'string' && o.area_id.trim() ? o.area_id.trim() : undefined;
     const reported_by =
       typeof o.reported_by === 'string' && o.reported_by.trim() ? o.reported_by.trim() : undefined;
     if (!id || !phase_key || !text || !created_at) continue;
-    out.push({ id, phase_key, text, status, created_at, resolved_at, area_id, reported_by });
+    out.push({ id, phase_key, text, status, created_at, resolved_at, resolved_by, area_id, reported_by });
   }
   return out;
 }
@@ -1278,19 +1282,6 @@ export default function RoomDetail() {
     setNewDeviationText('');
   };
 
-  const handleToggleDeviationResolved = async (id: string) => {
-    if (!canEdit || !room) return;
-    const stamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const next = deviations.map((d) => {
-      if (d.id !== id) return d;
-      if (d.status === 'resolved') {
-        return { ...d, status: 'open' as const, resolved_at: undefined };
-      }
-      return { ...d, status: 'resolved' as const, resolved_at: stamp };
-    });
-    await persistWorkflowDeviations(next, 'Deviation updated');
-  };
-
   const handleAssignPhaseWorker = async (phaseKey: string, workerId: number | null) => {
     if (!room || !canEdit) return;
     const key = normalizeRoomPhase(phaseKey, phaseWorkflow);
@@ -2125,6 +2116,15 @@ export default function RoomDetail() {
     });
   }, [deviations, phaseTab, phaseWorkflow, activeAreaId]);
 
+  const openDeviationsForPhase = useMemo(
+    () => deviationsForPhase.filter((d) => d.status === 'open'),
+    [deviationsForPhase]
+  );
+  const resolvedDeviationsForPhase = useMemo(
+    () => deviationsForPhase.filter((d) => d.status === 'resolved'),
+    [deviationsForPhase]
+  );
+
   const heatingCableDirty = useMemo(
     () =>
       heatingCableSyncedFp !== '' &&
@@ -2199,6 +2199,43 @@ export default function RoomDetail() {
   const totalForPhase = tasksForPhase.length;
   const completedTaskNamesForPhase = tasksForPhase.filter((t) => t.is_completed).map((t) => t.name);
   const canInteractChecklist = canCheckItem && !editsBlocked && !phaseReadOnly;
+  const canResolveIssue = (canEdit || canInteractChecklist) && !editsBlocked;
+
+  const handleMarkIssueResolved = async (id: string) => {
+    if (!room || !canResolveIssue) return;
+    const resolver = resolveWorkerActorLabel(displayName);
+    if (!resolver.trim()) {
+      toast.error('Set your name before resolving issues.');
+      return;
+    }
+    const stamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    const next = deviations.map((d) => {
+      if (d.id !== id) return d;
+      if (d.status === 'resolved') return d;
+      return {
+        ...d,
+        status: 'resolved' as const,
+        resolved_at: stamp,
+        resolved_by: resolver,
+      };
+    });
+    await persistWorkflowDeviations(next, 'Issue marked as resolved');
+  };
+
+  const handleReopenIssue = async (id: string) => {
+    if (!room || !canEdit || editsBlocked) return;
+    const next = deviations.map((d) => {
+      if (d.id !== id) return d;
+      return {
+        ...d,
+        status: 'open' as const,
+        resolved_at: undefined,
+        resolved_by: undefined,
+      };
+    });
+    await persistWorkflowDeviations(next, 'Issue reopened');
+  };
+
   const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
   const canMutatePhaseMedia = !editsBlocked && !phaseReadOnly;
   const chipUiSel = computePhaseChipUi(
@@ -2350,12 +2387,23 @@ export default function RoomDetail() {
               onClearSavedWorkerName={legacySavedWorkerName ? handleClearSavedName : undefined}
               activityEntries={activityEntries}
               formatActivityWhen={formatActivityWhen}
-              deviations={deviationsForPhase.map((d) => ({
+              deviations={openDeviationsForPhase.map((d) => ({
                 id: d.id,
                 text: d.text,
                 status: d.status,
                 reported_by: d.reported_by,
               }))}
+              resolvedDeviations={resolvedDeviationsForPhase.map((d) => ({
+                id: d.id,
+                text: d.text,
+                status: d.status,
+                reported_by: d.reported_by,
+                resolved_at: d.resolved_at,
+                resolved_by: d.resolved_by,
+              }))}
+              onResolveDeviation={(id) => void handleMarkIssueResolved(id)}
+              canResolveIssue={canResolveIssue}
+              formatResolvedAt={(s) => formatActivityWhen(parseTimestampMs(s))}
               newDeviationText={newDeviationText}
               onNewDeviationChange={setNewDeviationText}
               onAddDeviation={() => void handleAddDeviation()}
@@ -4106,7 +4154,13 @@ export default function RoomDetail() {
                       <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                         <AlertTriangle className="h-3.5 w-3.5 opacity-70 text-amber-600 dark:text-amber-500" />
                         Deviations / notes
-                        <span className="font-normal opacity-80">({deviationsForPhase.length})</span>
+                        <span className="font-normal opacity-80">
+                          ({openDeviationsForPhase.length} open
+                          {resolvedDeviationsForPhase.length > 0
+                            ? ` · ${resolvedDeviationsForPhase.length} resolved`
+                            : ''}
+                          )
+                        </span>
                       </span>
                       <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180" />
                     </CollapsibleTrigger>
@@ -4116,31 +4170,21 @@ export default function RoomDetail() {
                           Issues or missing work — not a chat. This phase only.
                         </p>
                         <div className="space-y-2">
-                          {deviationsForPhase.length === 0 ? (
-                            <p className="text-xs text-muted-foreground py-0.5">None for this phase.</p>
+                          {openDeviationsForPhase.length === 0 ? (
+                            <p className="text-xs text-muted-foreground py-0.5">No open issues for this phase.</p>
                           ) : (
-                            deviationsForPhase.map((d) => (
+                            openDeviationsForPhase.map((d) => (
                               <div
                                 key={d.id}
-                                className={cn(
-                                  'rounded-md border px-2.5 py-2 text-xs',
-                                  d.status === 'resolved'
-                                    ? 'border-border/60 bg-muted/20'
-                                    : 'border-amber-200/70 bg-amber-50/40 dark:border-amber-900/50 dark:bg-amber-950/20'
-                                )}
+                                className="rounded-md border border-amber-200/70 bg-amber-50/40 px-2.5 py-2 text-xs dark:border-amber-900/50 dark:bg-amber-950/20"
                               >
                                 <div className="flex flex-wrap items-start justify-between gap-2">
                                   <div className="min-w-0 flex-1">
                                     <Badge
                                       variant="secondary"
-                                      className={cn(
-                                        'text-[10px] mb-1 h-5',
-                                        d.status === 'resolved'
-                                          ? 'bg-muted'
-                                          : 'bg-amber-100/90 text-amber-950 dark:bg-amber-900/50 dark:text-amber-100'
-                                      )}
+                                      className="text-[10px] mb-1 h-5 bg-amber-100/90 text-amber-950 dark:bg-amber-900/50 dark:text-amber-100"
                                     >
-                                      {d.status === 'resolved' ? 'Resolved' : 'Open'}
+                                      Open
                                     </Badge>
                                     <p className="text-foreground leading-snug">{d.text}</p>
                                     {d.reported_by?.trim() ? (
@@ -4149,16 +4193,16 @@ export default function RoomDetail() {
                                       </p>
                                     ) : null}
                                   </div>
-                                  {canEdit && !editsBlocked ? (
+                                  {canResolveIssue ? (
                                     <Button
                                       type="button"
-                                      variant="ghost"
+                                      variant="secondary"
                                       size="sm"
                                       className="h-7 text-[11px] shrink-0"
                                       disabled={savingDeviations}
-                                      onClick={() => handleToggleDeviationResolved(d.id)}
+                                      onClick={() => void handleMarkIssueResolved(d.id)}
                                     >
-                                      {d.status === 'resolved' ? 'Reopen' : 'Resolve'}
+                                      Mark as resolved
                                     </Button>
                                   ) : null}
                                 </div>
@@ -4166,6 +4210,61 @@ export default function RoomDetail() {
                             ))
                           )}
                         </div>
+                        {resolvedDeviationsForPhase.length > 0 ? (
+                          <Collapsible defaultOpen={false} className="rounded-md border border-border/35 bg-muted/[0.04]">
+                            <CollapsibleTrigger className="group flex w-full items-center justify-between px-2.5 py-2 text-left hover:bg-muted/20 rounded-md">
+                              <span className="text-[11px] font-medium text-muted-foreground">
+                                Resolved ({resolvedDeviationsForPhase.length})
+                              </span>
+                              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180" />
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="space-y-2 border-t border-border/30 px-2.5 pb-2.5 pt-2">
+                                {resolvedDeviationsForPhase.map((d) => (
+                                  <div
+                                    key={d.id}
+                                    className="rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-xs"
+                                  >
+                                    <div className="flex flex-wrap items-start justify-between gap-2">
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-foreground leading-snug">{d.text}</p>
+                                        {d.reported_by?.trim() ? (
+                                          <p className="mt-1 text-[10px] text-muted-foreground">
+                                            Reported by {d.reported_by.trim()}
+                                          </p>
+                                        ) : null}
+                                        {d.resolved_by?.trim() ? (
+                                          <p className="mt-1 text-[10px] text-muted-foreground">
+                                            Resolved by {d.resolved_by.trim()}
+                                            {d.resolved_at
+                                              ? ` · ${formatActivityWhen(parseTimestampMs(d.resolved_at))}`
+                                              : ''}
+                                          </p>
+                                        ) : d.resolved_at ? (
+                                          <p className="mt-1 text-[10px] text-muted-foreground">
+                                            {formatActivityWhen(parseTimestampMs(d.resolved_at))}
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                      {canEdit && !editsBlocked ? (
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 text-[11px] shrink-0"
+                                          disabled={savingDeviations}
+                                          onClick={() => void handleReopenIssue(d.id)}
+                                        >
+                                          Reopen
+                                        </Button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        ) : null}
                         {canInteractChecklist && !editsBlocked ? (
                           <div className="flex flex-col gap-2 sm:flex-row">
                             <Input
