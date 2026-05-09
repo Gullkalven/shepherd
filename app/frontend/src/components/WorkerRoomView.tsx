@@ -31,10 +31,8 @@ import {
   HEATING_CABLE_DERIVED_STATUS_LABEL,
   HEATING_CONFIRM_TEXT,
   buildHeatingCableGallerySections,
-  formatHeatingCableDatetimeLocalNow,
   formatHeatingCablePerformedShort,
   getHeatingCableFocusTarget,
-  heatingCableDateForDatetimeLocalInput,
   heatingDocumentationProgress,
   heatingExtraStepRowVisible,
   heatingStageHasAnyData,
@@ -147,7 +145,7 @@ type Props = {
   onCompleteHeatingStage: (stageKey: HeatingCableStageKey) => void;
   onPhotoPreview: (url: string) => void;
 
-  /** Session display name — seeds empty "Performed by" / date on the active stage only. */
+  /** Session display name used elsewhere in worker flow. */
   heatingDefaultPerformedBy?: string;
   /** When this value changes (e.g. room id), one-time default seeding runs again for the new context. */
   heatingCableSeedResetKey?: string | number;
@@ -308,70 +306,16 @@ function HeatingStagePhotoPicker(props: {
 
 /** Compact "Performed: 2 May 23:06" with optional admin-only edit affordance. */
 function HeatingPerformedRow(props: {
-  fieldId: string;
   storedDate: string | undefined;
-  canEditTimestamp?: boolean;
-  disabled: boolean;
-  onCommit: (v: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
   const display = formatHeatingCablePerformedShort(props.storedDate);
-  const inputValue = heatingCableDateForDatetimeLocalInput(props.storedDate);
 
   return (
-    <div className="min-w-0 max-w-full space-y-2">
+    <div className="min-w-0 max-w-full">
       <div className="flex min-w-0 max-w-full flex-col gap-1 text-sm leading-snug sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1.5 sm:gap-y-1">
         <span className="text-muted-foreground">Performed:</span>
         <span className="min-w-0 max-w-full break-words font-semibold tabular-nums text-foreground">{display || '—'}</span>
-        {!props.disabled && props.canEditTimestamp ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 w-full justify-start px-2 text-xs font-medium sm:w-auto sm:justify-center"
-            onClick={() => setEditing((e) => !e)}
-          >
-            {editing ? 'Done' : 'Edit timestamp'}
-          </Button>
-        ) : null}
       </div>
-      {editing && props.canEditTimestamp ? (
-        <HeatingDatetimeField
-          id={`${props.fieldId}-when-edit`}
-          value={inputValue}
-          disabled={props.disabled}
-          onChange={props.onCommit}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-/** Wraps native `datetime-local` with spacing for a calendar affordance (still uses OS picker). */
-function HeatingDatetimeField(props: {
-  id?: string;
-  value: string;
-  disabled?: boolean;
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div className="relative min-w-0 w-full max-w-full">
-      <Calendar
-        className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden
-      />
-      <Input
-        id={props.id}
-        type="datetime-local"
-        step={60}
-        value={props.value}
-        disabled={props.disabled}
-        onChange={(e) => props.onChange(e.target.value)}
-        className={cn(
-          'h-11 min-w-0 w-full max-w-full pl-10 pr-10 text-base sm:text-sm [color-scheme:light] dark:[color-scheme:dark]',
-          '[&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-2 [&::-webkit-calendar-picker-indicator]:top-1/2 [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:-translate-y-1/2 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70'
-        )}
-      />
     </div>
   );
 }
@@ -411,7 +355,6 @@ export function WorkerRoomView(p: Props) {
     if (!canAccessStage) return 'Fullforrige trinn før du bekrefter dette.';
     if (!stage.resistance_ohm?.trim()) return 'Fyll inn motstand før bekreftelse.';
     if (!stage.insulation_mohm?.trim()) return 'Fyll inn isolasjon før bekreftelse.';
-    if (!stage.date?.trim()) return 'Velg utført dato/tid før bekreftelse.';
     if (!p.currentWorkerUserId?.trim()) return 'Du må være logget inn som bruker for å bekrefte dette trinnet.';
     if (stageKey === 'after_cable_laid') {
       const hasPhoto = Array.isArray(stage.photos) && stage.photos.some((x) => typeof x === 'string' && x.trim());
@@ -487,43 +430,6 @@ export function WorkerRoomView(p: Props) {
     setHeatingOpenOverrides((prev) => ({ ...prev, [id]: open }));
   };
 
-  const heatingSeedKeyRef = useRef<string | null>(null);
-  const heatingResetKeyRef = useRef<string | number | undefined>(p.heatingCableSeedResetKey);
-  useEffect(() => {
-    if (p.heatingCableSeedResetKey !== heatingResetKeyRef.current) {
-      heatingResetKeyRef.current = p.heatingCableSeedResetKey;
-      heatingSeedKeyRef.current = null;
-    }
-  }, [p.heatingCableSeedResetKey]);
-
-  useEffect(() => {
-    if (!p.canEditHeatingCable || !p.heatingDefaultPerformedBy?.trim()) return;
-    const ft = focusTarget;
-    if (!ft) return;
-    const sk = ft.kind === 'main' ? `main:${ft.key}` : `extra:${ft.index}`;
-    if (heatingSeedKeyRef.current === sk) return;
-    heatingSeedKeyRef.current = sk;
-
-    const def = p.heatingDefaultPerformedBy.trim();
-    const now = formatHeatingCableDatetimeLocalNow();
-
-    if (ft.kind === 'main') {
-      const row = p.heatingCableDoc[ft.key] || {};
-      if (!row.performed_by?.trim()) p.onHeatingFieldChange(ft.key, 'performed_by', def);
-      if (!row.date?.trim()) p.onHeatingFieldChange(ft.key, 'date', now);
-    } else {
-      const row = p.heatingCableDoc.extra_steps?.[ft.index];
-      if (!row?.performed_by?.trim()) p.onExtraHeatingFieldChange(ft.index, 'performed_by', def);
-      if (!row?.date?.trim()) p.onExtraHeatingFieldChange(ft.index, 'date', now);
-    }
-  }, [
-    p.canEditHeatingCable,
-    p.heatingDefaultPerformedBy,
-    focusTarget,
-    p.heatingCableDoc,
-    p.onHeatingFieldChange,
-    p.onExtraHeatingFieldChange,
-  ]);
 
   const focusStageLabel = useMemo(() => {
     if (!focusTarget) return null;
@@ -1238,14 +1144,6 @@ export function WorkerRoomView(p: Props) {
                   open={open}
                   onOpenChange={(o) => {
                     setHeatingStageOpen(sid, o);
-                    if (
-                      o &&
-                      p.canEditHeatingCable &&
-                      !p.heatingCableBlocking &&
-                      !(row.date?.trim())
-                    ) {
-                      p.onHeatingFieldChange(stage.key, 'date', formatHeatingCableDatetimeLocalNow());
-                    }
                   }}
                   className="rounded-xl border border-border/60 bg-muted/10 overflow-hidden"
                 >
@@ -1325,11 +1223,7 @@ export function WorkerRoomView(p: Props) {
                           Recorded as
                         </p>
                         <HeatingPerformedRow
-                          fieldId={`heat-${sid}`}
                           storedDate={row.date}
-                          canEditTimestamp={false}
-                          disabled={stageReadOnly}
-                          onCommit={(v) => p.onHeatingFieldChange(stage.key, 'date', v)}
                         />
                       </div>
                       <div className="space-y-1">
@@ -1417,9 +1311,6 @@ export function WorkerRoomView(p: Props) {
                   open={open}
                   onOpenChange={(o) => {
                     setHeatingStageOpen(panelId, o);
-                    if (o && p.canEditHeatingCable && !p.heatingCableBlocking && !(step.date?.trim())) {
-                      p.onExtraHeatingFieldChange(idx, 'date', formatHeatingCableDatetimeLocalNow());
-                    }
                   }}
                   className="rounded-xl border border-border/60 bg-muted/10 overflow-hidden"
                 >
@@ -1501,11 +1392,7 @@ export function WorkerRoomView(p: Props) {
                           Recorded as
                         </p>
                         <HeatingPerformedRow
-                          fieldId={`heat-extra-${photoKey}`}
                           storedDate={step.date}
-                          canEditTimestamp={false}
-                          disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
-                          onCommit={(v) => p.onExtraHeatingFieldChange(idx, 'date', v)}
                         />
                       </div>
                       <div className="space-y-1">

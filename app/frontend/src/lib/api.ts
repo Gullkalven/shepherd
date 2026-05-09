@@ -125,7 +125,7 @@ export async function patchHeatingCableStep(
 export async function confirmHeatingCableStep(
   roomId: number,
   stepKey: string,
-  payload: { completed_by: string }
+  payload: { completed_by?: string } = {}
 ): Promise<{ heating_cable_doc?: unknown }> {
   const base = getAPIBaseURL().replace(/\/$/, '');
   const url = `${base}/api/v1/rooms/${roomId}/heating-cable/${encodeURIComponent(stepKey)}/confirm`;

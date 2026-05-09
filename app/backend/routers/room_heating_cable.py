@@ -34,7 +34,7 @@ class HeatingCableDraftPatch(BaseModel):
 
 
 class HeatingCableConfirmBody(BaseModel):
-    completed_by: str
+    completed_by: Optional[str] = None
 
 
 def _iso_utc_now() -> str:
@@ -153,10 +153,9 @@ async def _confirm_heating_cable_step_impl(
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    completed_by = str(body.completed_by or "").strip()
-    if not completed_by:
-        raise HTTPException(status_code=400, detail="completed_by is required")
-    if completed_by != str(current_user.id).strip():
+    completed_by = str(current_user.id).strip()
+    requested_completed_by = str(body.completed_by or "").strip()
+    if requested_completed_by and requested_completed_by != completed_by:
         raise HTTPException(status_code=400, detail=f"Heating step '{step_key}' must store the current worker id as completed_by.")
 
     doc = _normalize_doc(getattr(room, "heating_cable_doc", None))
@@ -167,18 +166,20 @@ async def _confirm_heating_cable_step_impl(
         raise HTTPException(status_code=400, detail="Resistance is required before confirmation.")
     if not str(stage.get("insulation_mohm") or "").strip():
         raise HTTPException(status_code=400, detail="Insulation is required before confirmation.")
-    if not str(stage.get("date") or "").strip():
-        raise HTTPException(status_code=400, detail="Performed/recorded date-time is required before confirmation.")
     if step_key == "after_cable_laid":
         photos = stage.get("photos")
         if not isinstance(photos, list) or not any(isinstance(x, str) and x.strip() for x in photos):
             raise HTTPException(status_code=400, detail="At least one photo is required for 'after_cable_laid'.")
 
+    now_iso = _iso_utc_now()
+    # Worker flow is auto-stamped on confirm (no manual timestamp entry).
+    stage["date"] = now_iso
+    stage["performed_by"] = (getattr(current_user, "name", None) or "").strip() or completed_by
     stage["step_status"] = "locked"
     stage["completed_by"] = completed_by
     stage["completed_by_user_id"] = completed_by
     stage["completed_by_name"] = (getattr(current_user, "name", None) or "").strip()
-    stage["completed_at"] = _iso_utc_now()
+    stage["completed_at"] = now_iso
     stage["confirmation_text"] = HEATING_CONFIRM_TEXT
     doc[step_key] = stage
     doc["updated_at"] = _iso_utc_now()

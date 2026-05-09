@@ -1963,7 +1963,7 @@ export default function RoomDetail() {
         toast.error('This step is already locked.');
         return;
       }
-      if (!current.resistance_ohm?.trim() || !current.insulation_mohm?.trim() || !current.date?.trim()) {
+      if (!current.resistance_ohm?.trim() || !current.insulation_mohm?.trim()) {
         toast.error('Fill all required fields before completing this step.');
         return;
       }
@@ -1981,12 +1981,12 @@ export default function RoomDetail() {
           activeStepKey: firstIncompleteMainHeatingStageKey(heatingCableDocRef.current),
           stepBeingConfirmed: stageKey,
           endpoint: `/api/v1/rooms/${room.id}/heating-cable/${stageKey}/confirm`,
-          payloadKeys: ['completed_by'],
+          payloadKeys: [],
           after_cable_laid_present: false,
-          payload: { completed_by: workerUserId },
+          payload: {},
         });
       }
-      const res = await confirmHeatingCableStep(room.id, stageKey, { completed_by: workerUserId });
+      const res = await confirmHeatingCableStep(room.id, stageKey);
       const persisted = normalizeHeatingCableDoc(res?.heating_cable_doc);
       skipHeatingDocSyncRef.current = true;
       setHeatingCableDoc(persisted);

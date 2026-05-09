@@ -202,7 +202,7 @@ export function formatHeatingCablePerformedShort(stored: string | undefined): st
   const d = new Date(t);
   const pad = (n: number) => String(n).padStart(2, '0');
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${d.getDate()} ${months[d.getMonth()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()} at ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /** Readable local date + time for admin/docs, e.g. 03/05/2026, 12:00. */
