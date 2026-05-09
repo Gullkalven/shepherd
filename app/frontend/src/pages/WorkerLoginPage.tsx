@@ -98,7 +98,7 @@ export default function WorkerLoginPage() {
   const ttlHours = Math.round(WORKER_SESSION_TTL_MS / 3600000);
 
   return (
-    <div className="fixed inset-0 flex h-dvh min-h-dvh w-full flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-slate-100">
+    <div className="fixed inset-0 flex h-dvh min-h-[100dvh] w-full flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-slate-100">
       <Card className="max-h-full w-full max-w-md overflow-hidden border-border p-5 shadow-sm sm:p-6">
         <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">
           Site worker sign-in

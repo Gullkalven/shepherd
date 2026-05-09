@@ -121,7 +121,7 @@ export default function AdminLoginPage() {
   const ttlHours = Math.round(ADMIN_SESSION_TTL_MS / 3600000);
 
   return (
-    <div className="fixed inset-0 flex h-dvh min-h-dvh w-full flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-slate-100">
+    <div className="fixed inset-0 flex h-dvh min-h-[100dvh] w-full flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-slate-100">
       <Button
         type="button"
         variant="ghost"

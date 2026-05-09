@@ -1,0 +1,17 @@
+{
+  "name": "SHEP.HRD",
+  "short_name": "SHEP.HRD",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b1623",
+  "theme_color": "#0b1623",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
