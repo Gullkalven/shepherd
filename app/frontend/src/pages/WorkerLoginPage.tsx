@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
+import { ShepherdLogo } from '@/components/ShepherdLogo';
 
 type LoginResponse = {
   access_token: string;
@@ -99,6 +100,9 @@ export default function WorkerLoginPage() {
 
   return (
     <div className="fixed inset-0 flex h-dvh min-h-[100dvh] w-full flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-slate-100">
+      <div className="mb-5 flex justify-center">
+        <ShepherdLogo className="h-16 w-16 rounded-xl shadow-md" />
+      </div>
       <Card className="max-h-full w-full max-w-md overflow-hidden border-border p-5 shadow-sm sm:p-6">
         <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">
           Site worker sign-in

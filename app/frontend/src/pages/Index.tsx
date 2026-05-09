@@ -10,7 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogForm } from '@/components/ui/dialog';
-import { Plus, FolderOpen, Trash2, HardHat, Crown, Wrench, Pencil, Check, X } from 'lucide-react';
+import { Plus, FolderOpen, Trash2, Crown, Wrench, Pencil, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import {
@@ -23,6 +23,7 @@ import {
 } from '@/lib/devRole';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import WorkerTodayView from '@/components/WorkerTodayView';
+import { ShepherdLogo } from '@/components/ShepherdLogo';
 import { clearClientLogoutGate, getAuthMeEpoch } from '@/lib/appLogout';
 import { hasStoredAuthCredential, syncBearerTokenFromSessions } from '@/lib/authCredentials';
 import { consumeProjectNotFoundFlash } from '@/lib/projectNotFoundFlash';
@@ -260,9 +261,7 @@ function IndexContent({
     return (
       <div className="min-h-screen bg-gradient-to-br from-[#1E3A5F] to-[#0F2440] dark:from-slate-900 dark:to-slate-950 flex flex-col items-center justify-center p-6">
         <div className="text-center space-y-6 max-w-sm">
-          <div className="w-20 h-20 bg-amber-400 rounded-2xl flex items-center justify-center mx-auto shadow-lg">
-            <HardHat className="h-10 w-10 text-[#1E3A5F]" />
-          </div>
+          <ShepherdLogo className="mx-auto h-24 w-24 rounded-2xl shadow-lg" />
           <h1 className="text-4xl font-black tracking-[0.14em] uppercase text-white">
             {APP_NAME_PARTS.prefix}
             <span className="text-amber-300/90">{APP_NAME_PARTS.dot}</span>

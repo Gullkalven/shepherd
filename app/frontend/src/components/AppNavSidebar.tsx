@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { ChevronRight, HardHat, House, LogOut, Moon, Sun } from 'lucide-react';
+import { ChevronRight, House, LogOut, Moon, Sun } from 'lucide-react';
 import { client } from '@/lib/api';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import { useProjectList } from '@/contexts/ProjectListContext';
@@ -13,6 +13,7 @@ import { useI18n } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import DevRoleSwitcher from '@/components/DevRoleSwitcher';
+import { ShepherdLogo } from '@/components/ShepherdLogo';
 import { cn } from '@/lib/utils';
 import { parseProjectRouteParam, unwrapProjectBody } from '@/lib/projectEntity';
 import { persistStoredSelectedProjectId, readStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
@@ -72,7 +73,7 @@ function ShepherdLogoButton({ afterNav }: { afterNav: () => void }) {
       }}
       className={LOGO_BUTTON_CLASS}
     >
-      <HardHat className="h-5 w-5 shrink-0 text-amber-500" />
+      <ShepherdLogo className="h-5 w-5 shrink-0 rounded-[3px]" alt="" />
       <span className="text-sm font-black tracking-[0.12em] uppercase">
         {APP_NAME_PARTS.prefix}
         <span className="text-amber-600/90 dark:text-amber-400/90">{APP_NAME_PARTS.dot}</span>

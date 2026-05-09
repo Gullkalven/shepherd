@@ -1,9 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, HardHat, LogOut, Moon, Sun } from 'lucide-react';
+import { ChevronLeft, LogOut, Moon, Sun } from 'lucide-react';
 import { useTheme } from '@/lib/theme';
 import { APP_NAME_PARTS } from '@/lib/branding';
 import DevRoleSwitcher from '@/components/DevRoleSwitcher';
+import { ShepherdLogo } from '@/components/ShepherdLogo';
 
 interface BreadcrumbItem {
   label: string;
@@ -45,7 +46,7 @@ export default function Header({ breadcrumbs = [], onLogout }: HeaderProps) {
             </Button>
           )}
           <div className="flex min-w-0 items-center gap-2.5">
-            <HardHat className="h-5 w-5 text-amber-400 shrink-0" />
+            <ShepherdLogo className="h-5 w-5 shrink-0 rounded-[3px]" alt="" />
             <div className="flex items-center gap-1 text-sm truncate">
               {isRoot ? (
                 <span className="text-base font-black tracking-[0.14em] uppercase">

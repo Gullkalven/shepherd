@@ -14,6 +14,7 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import WorkerMobileBottomNav from '@/components/WorkerMobileBottomNav';
 import { ProjectListProvider } from '@/contexts/ProjectListContext';
+import { ShepherdLogo } from '@/components/ShepherdLogo';
 
 export type AppShellOutletContext = {
   onLogoutClearServer: () => void;
@@ -59,11 +60,14 @@ function MobileNavHeader({
         </SheetContent>
       </Sheet>
       {!compactWorkerHome && (
-        <span className="truncate text-sm font-black uppercase tracking-[0.12em]">
-          {APP_NAME_PARTS.prefix}
-          <span className="text-amber-600/90 dark:text-amber-400/90">{APP_NAME_PARTS.dot}</span>
-          {APP_NAME_PARTS.suffix}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <ShepherdLogo className="h-7 w-7 shrink-0 rounded-[3px]" alt="" />
+          <span className="truncate text-sm font-black uppercase tracking-[0.12em]">
+            {APP_NAME_PARTS.prefix}
+            <span className="text-amber-600/90 dark:text-amber-400/90">{APP_NAME_PARTS.dot}</span>
+            {APP_NAME_PARTS.suffix}
+          </span>
+        </div>
       )}
     </header>
   );
