@@ -19,6 +19,7 @@ export interface HeatingCableStage {
   completed_by?: string;
   completed_by_name?: string;
   completed_at?: string;
+  confirmed_at?: string;
   confirmation_text?: string;
   resistance_ohm?: string;
   insulation_mohm?: string;

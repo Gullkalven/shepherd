@@ -194,6 +194,32 @@ export async function patchHeatingCableExtraSteps(
   return body as { heating_cable_doc?: unknown };
 }
 
+/** Admin-only: remove lock from a main heating stage so it can be edited again (history retained). */
+export async function unlockHeatingCableStep(
+  roomId: number,
+  stepKey: string
+): Promise<{ heating_cable_doc?: unknown }> {
+  const base = getAPIBaseURL().replace(/\/$/, '');
+  const url = `${base}/api/v1/rooms/${roomId}/heating-cable/${encodeURIComponent(stepKey)}/unlock`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const token = globalThis.localStorage?.getItem('token');
+    if (token) headers.Authorization = `Bearer ${token}`;
+  } catch {
+    /* ignore */
+  }
+  if (typeof globalThis.window?.location.origin === 'string') headers['App-Host'] = globalThis.window.location.origin;
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify({}) });
+  const text = await res.text();
+  const body = parseJsonBody(text);
+  if (!res.ok) {
+    throw Object.assign(new Error(apiDetailMessage(body, `HTTP ${res.status}`)), {
+      response: { status: res.status, data: body },
+    });
+  }
+  return body as { heating_cable_doc?: unknown };
+}
+
 export async function confirmHeatingCableStep(
   roomId: number,
   stepKey: string,

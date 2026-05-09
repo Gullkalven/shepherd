@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_db
 from dependencies.auth import get_current_user
 from dependencies.phase_edit import heating_documentation_phase_key, workflow_keys_for_room
-from dependencies.roles import ROLE_ADMIN, get_current_app_role, require_room_collaborator
+from dependencies.roles import ROLE_ADMIN, get_current_app_role, require_admin_role, require_room_collaborator
 from dependencies.room_lock import ensure_room_mutable
 from dependencies.worker_scope import worker_project_scope
 from models.project_workers import Project_workers
@@ -69,28 +69,52 @@ async def _append_heating_step_patch_activity(
     worker_project_id: Optional[int],
     actor: str,
     at_iso: str,
+    *,
+    locked_admin_edit: bool = False,
 ) -> None:
     hk, hlab = await _heating_activity_workflow_phase(db, room)
     stage_label = _HEATING_STAGE_LABELS.get(step_key, step_key)
     base_meta = {"stage_key": step_key, "stage_label": stage_label}
 
     if _measurement_signature(old_stage) != _measurement_signature(new_stage):
-        await append_room_activity(
-            db,
-            room_id,
-            user_id,
-            kind="heating_cable_measurements_updated",
-            actor=actor,
-            phase_key=hk,
-            phase_label=hlab,
-            at_iso=at_iso,
-            meta={
-                **base_meta,
-                "resistance_ohm": str(new_stage.get("resistance_ohm") or "").strip(),
-                "insulation_mohm": str(new_stage.get("insulation_mohm") or "").strip(),
-            },
-            worker_project_id=worker_project_id,
-        )
+        if locked_admin_edit:
+            await append_room_activity(
+                db,
+                room_id,
+                user_id,
+                kind="heating_cable_admin_measurement_correction",
+                actor=actor,
+                phase_key=hk,
+                phase_label=hlab,
+                at_iso=at_iso,
+                meta={
+                    **base_meta,
+                    "prev_resistance_ohm": str(old_stage.get("resistance_ohm") or "").strip(),
+                    "prev_insulation_mohm": str(old_stage.get("insulation_mohm") or "").strip(),
+                    "prev_date": str(old_stage.get("date") or "").strip(),
+                    "resistance_ohm": str(new_stage.get("resistance_ohm") or "").strip(),
+                    "insulation_mohm": str(new_stage.get("insulation_mohm") or "").strip(),
+                    "date": str(new_stage.get("date") or "").strip(),
+                },
+                worker_project_id=worker_project_id,
+            )
+        else:
+            await append_room_activity(
+                db,
+                room_id,
+                user_id,
+                kind="heating_cable_measurements_updated",
+                actor=actor,
+                phase_key=hk,
+                phase_label=hlab,
+                at_iso=at_iso,
+                meta={
+                    **base_meta,
+                    "resistance_ohm": str(new_stage.get("resistance_ohm") or "").strip(),
+                    "insulation_mohm": str(new_stage.get("insulation_mohm") or "").strip(),
+                },
+                worker_project_id=worker_project_id,
+            )
 
     old_note = str(old_stage.get("note") or "").strip()
     new_note = str(new_stage.get("note") or "").strip()
@@ -318,7 +342,12 @@ async def _patch_heating_cable_step_impl(
     old_stage = _normalize_stage(doc_before.get(step_key))
 
     doc = dict(doc_before)
-    _ensure_step_editable(doc, step_key)
+    stage_was_locked = old_stage.get("step_status") == "locked"
+    locked_admin_edit = stage_was_locked and app_role == ROLE_ADMIN
+    if locked_admin_edit:
+        _step_index(step_key)
+    else:
+        _ensure_step_editable(doc, step_key)
     stage = _normalize_stage(doc.get(step_key))
     if body.resistance is not None:
         stage["resistance_ohm"] = str(body.resistance)
@@ -333,6 +362,9 @@ async def _patch_heating_cable_step_impl(
         photos = [str(x).strip() for x in body.photos if isinstance(x, str) and str(x).strip()]
         stage["photos"] = list(dict.fromkeys(photos))
         stage["images"] = stage["photos"]
+    if locked_admin_edit:
+        stage["step_status"] = "locked"
+
     doc[step_key] = stage
     if body.extra_steps is not None:
         doc["extra_steps"] = [_normalize_stage(x) for x in body.extra_steps if isinstance(x, dict)]
@@ -354,7 +386,17 @@ async def _patch_heating_cable_step_impl(
         raise HTTPException(status_code=404, detail="Room not found")
 
     await _append_heating_step_patch_activity(
-        db, room, room_id, user_id, step_key, old_stage, new_stage, wpid, actor, at_iso
+        db,
+        room,
+        room_id,
+        user_id,
+        step_key,
+        old_stage,
+        new_stage,
+        wpid,
+        actor,
+        at_iso,
+        locked_admin_edit=locked_admin_edit,
     )
     if body.extra_steps is not None:
         await _append_heating_extra_steps_activity_if_changed(
@@ -503,6 +545,69 @@ async def _confirm_heating_cable_step_impl(
     return {"ok": True, "step_key": step_key, "heating_cable_doc": doc}
 
 
+async def _unlock_heating_cable_step_impl(
+    room_id: int,
+    step_key: str,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    _admin: str = Depends(require_admin_role),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove step lock so workers can edit again; completion metadata stays on the stage for audit."""
+    await ensure_room_mutable(db, room_id, str(current_user.id), app_role, worker_project_scope(current_user))
+    service = RoomsService(db)
+    room = await service.get_by_id(
+        room_id,
+        user_id=str(current_user.id),
+        worker_project_id=worker_project_scope(current_user),
+    )
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    doc_before = _normalize_doc(getattr(room, "heating_cable_doc", None))
+    stage = _normalize_stage(doc_before.get(step_key))
+    if stage.get("step_status") != "locked":
+        raise HTTPException(status_code=400, detail=f"Heating step '{step_key}' is not locked.")
+
+    doc = dict(doc_before)
+    unlocked = dict(stage)
+    unlocked.pop("step_status", None)
+    doc[step_key] = _normalize_stage(unlocked)
+    doc["updated_at"] = _iso_utc_now()
+
+    now_iso = doc["updated_at"]
+    user_id = str(current_user.id)
+    actor = actor_display(current_user)
+    wpid = worker_project_scope(current_user)
+
+    updated = await service.update(
+        room_id,
+        {"heating_cable_doc": doc},
+        user_id=user_id,
+        worker_project_id=wpid,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    hk, hlab = await _heating_activity_workflow_phase(db, room)
+    stage_label = _HEATING_STAGE_LABELS.get(step_key, step_key)
+    await append_room_activity(
+        db,
+        room_id,
+        user_id,
+        kind="heating_cable_admin_step_unlocked",
+        actor=actor,
+        phase_key=hk,
+        phase_label=hlab,
+        at_iso=now_iso,
+        meta={"stage_key": step_key, "stage_label": stage_label},
+        worker_project_id=wpid,
+    )
+
+    return {"ok": True, "step_key": step_key, "heating_cable_doc": doc}
+
+
 @router.patch("/{room_id}/heating-cable/extra-steps")
 async def patch_heating_cable_extra_steps(
     room_id: int,
@@ -577,3 +682,29 @@ async def confirm_heating_cable_step_entities(
     db: AsyncSession = Depends(get_db),
 ):
     return await _confirm_heating_cable_step_impl(room_id, step_key, body, current_user, _role, app_role, db)
+
+
+@router.post("/{room_id}/heating-cable/{step_key}/unlock")
+async def unlock_heating_cable_step(
+    room_id: int,
+    step_key: str,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    _admin: str = Depends(require_admin_role),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _unlock_heating_cable_step_impl(room_id, step_key, current_user, _role, _admin, app_role, db)
+
+
+@entities_router.post("/{room_id}/heating-cable/{step_key}/unlock")
+async def unlock_heating_cable_step_entities(
+    room_id: int,
+    step_key: str,
+    current_user: UserResponse = Depends(get_current_user),
+    _role: str = Depends(require_room_collaborator),
+    _admin: str = Depends(require_admin_role),
+    app_role: str = Depends(get_current_app_role),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _unlock_heating_cable_step_impl(room_id, step_key, current_user, _role, _admin, app_role, db)

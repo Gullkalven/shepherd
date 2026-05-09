@@ -88,6 +88,27 @@ export function formatActivityMessage(e: ActivityLogEntry): string {
       if (sl) return `${actor} updated measurements for ${sl}`;
       return `${actor} updated heating cable measurements`;
     }
+    case 'heating_cable_admin_measurement_correction': {
+      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      const pr = typeof meta.prev_resistance_ohm === 'string' ? meta.prev_resistance_ohm.trim() : '';
+      const pi = typeof meta.prev_insulation_mohm === 'string' ? meta.prev_insulation_mohm.trim() : '';
+      const pd = typeof meta.prev_date === 'string' ? meta.prev_date.trim() : '';
+      const nr = typeof meta.resistance_ohm === 'string' ? meta.resistance_ohm.trim() : '';
+      const ni = typeof meta.insulation_mohm === 'string' ? meta.insulation_mohm.trim() : '';
+      const nd = typeof meta.date === 'string' ? meta.date.trim() : '';
+      const bits: string[] = [];
+      if (pr !== nr) bits.push(`Resistance ${pr || '—'} Ω → ${nr || '—'} Ω`);
+      if (pi !== ni) bits.push(`Insulation ${pi || '—'} MΩ → ${ni || '—'} MΩ`);
+      if (pd !== nd) bits.push(`Date ${pd || '—'} → ${nd || '—'}`);
+      const detail = bits.join(' · ');
+      if (sl && detail) return `${actor} corrected measurements for ${sl} · ${detail}`;
+      if (sl) return `${actor} corrected measurements for ${sl}`;
+      return `${actor} corrected heating cable measurements`;
+    }
+    case 'heating_cable_admin_step_unlocked': {
+      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      return sl ? `${actor} unlocked ${sl}` : `${actor} unlocked a heating cable step`;
+    }
     case 'heating_cable_note_updated': {
       const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
       return sl ? `${actor} updated note for ${sl}` : `${actor} updated a heating cable note`;

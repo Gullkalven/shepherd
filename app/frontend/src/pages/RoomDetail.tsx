@@ -6,6 +6,7 @@ import {
   patchHeatingCableExtraSteps,
   patchHeatingCableStep,
   postWorkerPhaseHandoff,
+  unlockHeatingCableStep,
 } from '@/lib/api';
 import {
   persistWorkerLastRoom,
@@ -87,6 +88,7 @@ import {
   normalizeHeatingCableDoc,
   deriveHeatingCableStatus,
   isHeatingCableStageComplete,
+  heatingStageIsLocked,
   formatHeatingCableDateTimeReadable,
   heatingStageHasAnyData,
   heatingCableStageCaption,
@@ -561,6 +563,8 @@ export default function RoomDetail() {
   const heatingCableDocRef = useRef<HeatingCableDoc>({});
   const heatingAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const heatingAutosaveStepRef = useRef<HeatingCableStageKey>('before_installation');
+  /** Which main stage was last edited — used when admin saves manually off the autosave timer. */
+  const lastHeatingEditMainStageRef = useRef<HeatingCableStageKey>('before_installation');
   const heatingSaveUiIdleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipHeatingDocSyncRef = useRef(false);
   const heatingPhotoInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -1817,9 +1821,11 @@ export default function RoomDetail() {
       await persistHeatingCableDoc(heatingAutosaveStepRef.current, { manual: true });
       return;
     }
-    const target = firstIncompleteMainHeatingStageKey(heatingCableDocRef.current);
+    const target = isAdmin
+      ? lastHeatingEditMainStageRef.current
+      : firstIncompleteMainHeatingStageKey(heatingCableDocRef.current);
     await persistHeatingCableDoc(target, { manual: true });
-  }, [room, persistHeatingCableDoc]);
+  }, [room, persistHeatingCableDoc, isAdmin]);
 
   useEffect(() => {
     const onLeave = () => {
@@ -1845,7 +1851,10 @@ export default function RoomDetail() {
         ? true
         : heatingCableDocRef.current[HEATING_CABLE_STAGES[idx - 1].key]?.step_status === 'locked';
     const curLocked = heatingCableDocRef.current[stageKey]?.step_status === 'locked';
-    if (!prevLocked || curLocked) return;
+    if (!isAdmin) {
+      if (!prevLocked || curLocked) return;
+    }
+    lastHeatingEditMainStageRef.current = stageKey;
     setHeatingCableDoc((prev) => {
       const row: HeatingCableStage = {
         ...(prev[stageKey] || {}),
@@ -1867,6 +1876,7 @@ export default function RoomDetail() {
   };
 
   const addExtraHeatingStep = () => {
+    lastHeatingEditMainStageRef.current = 'after_screed_final';
     setHeatingCableDoc((prev) => {
       const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
       extra.push({
@@ -1889,6 +1899,7 @@ export default function RoomDetail() {
     field: 'label' | 'resistance_ohm' | 'insulation_mohm' | 'date' | 'note',
     value: string
   ) => {
+    lastHeatingEditMainStageRef.current = 'after_screed_final';
     if (stepIndex >= 0) {
       const prevLocked = heatingCableDocRef.current.after_screed_final?.step_status === 'locked';
       if (!prevLocked) return;
@@ -1903,6 +1914,7 @@ export default function RoomDetail() {
   };
 
   const removeExtraHeatingStep = (stepIndex: number) => {
+    lastHeatingEditMainStageRef.current = 'after_screed_final';
     setHeatingCableDoc((prev) => {
       const extra = Array.isArray(prev.extra_steps) ? [...prev.extra_steps] : [];
       extra.splice(stepIndex, 1);
@@ -1990,7 +2002,10 @@ export default function RoomDetail() {
           ? true
           : heatingCableDocRef.current[HEATING_CABLE_STAGES[idx - 1].key]?.step_status === 'locked';
       const curLocked = heatingCableDocRef.current[stageId]?.step_status === 'locked';
-      if (!prevLocked || curLocked) return;
+      if (!isAdmin) {
+        if (!prevLocked || curLocked) return;
+      }
+      lastHeatingEditMainStageRef.current = stageId as HeatingCableStageKey;
     }
     setHeatingCableBlocking(true);
     try {
@@ -2070,6 +2085,29 @@ export default function RoomDetail() {
       }
     },
     [room, currentUserId, displayName, refreshRoom, isAdmin, sessionIsPinWorker]
+  );
+
+  const unlockHeatingCableStage = useCallback(
+    async (stageKey: HeatingCableStageKey) => {
+      if (!room || !isAdmin) return;
+      setHeatingCableBlocking(true);
+      try {
+        const res = await unlockHeatingCableStep(room.id, stageKey);
+        const persisted = normalizeHeatingCableDoc(res?.heating_cable_doc);
+        skipHeatingDocSyncRef.current = true;
+        setHeatingCableDoc(persisted);
+        setRoom((prev) => (prev ? { ...prev, heating_cable_doc: persisted } : null));
+        setHeatingCableSyncedFp(heatingCablePersistFingerprint(persisted, displayName));
+        await refreshRoom();
+        toast.success('Step unlocked. Workers can edit until it is confirmed again.');
+      } catch (err) {
+        devLogApiFailure('unlock heating cable step', err);
+        toast.error(apiFailureMessage(err) ?? 'Failed to unlock step');
+      } finally {
+        setHeatingCableBlocking(false);
+      }
+    },
+    [room, isAdmin, displayName, refreshRoom]
   );
 
   const toggleHeatingCableLock = async () => {
@@ -3258,7 +3296,21 @@ export default function RoomDetail() {
                         const stagePhotos = heatingStageGalleryById.get(stage.key) || [];
                         return (
                           <div key={stage.key} className="rounded-md border border-border/50 p-2 space-y-2">
-                            <p className="text-xs font-semibold text-foreground">{stage.label}</p>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs font-semibold text-foreground">{stage.label}</p>
+                              {canEdit && heatingStageIsLocked(row) ? (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px] shrink-0"
+                                  disabled={heatingCableBlocking}
+                                  onClick={() => void unlockHeatingCableStage(stage.key)}
+                                >
+                                  Unlock step
+                                </Button>
+                              ) : null}
+                            </div>
                             {(completedAt || completedBy) && (
                               <div className="space-y-1 text-[11px] leading-snug">
                                 {completedAt ? (

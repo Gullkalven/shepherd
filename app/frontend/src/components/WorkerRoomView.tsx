@@ -1083,17 +1083,23 @@ export function WorkerRoomView(p: Props) {
               const isFocus = focusStageId === sid;
               const open = heatingStageOpen(sid);
               const started = heatingStageHasAnyData(row);
+              const reopenedByAdmin =
+                !isLocked &&
+                complete &&
+                !!(row.completed_at?.trim() || row.confirmed_at?.trim());
               const badgeLabel = isLocked
                 ? 'Locked'
                 : !canAccessStage
                   ? 'Locked'
-                  : complete
-                    ? 'Complete'
-                    : isFocus
-                      ? 'Open'
-                      : started
-                        ? 'In progress'
-                        : 'Not started';
+                  : reopenedByAdmin
+                    ? 'Unlocked'
+                    : complete
+                      ? 'Complete'
+                      : isFocus
+                        ? 'Open'
+                        : started
+                          ? 'In progress'
+                          : 'Not started';
 
               return (
                 <Collapsible
