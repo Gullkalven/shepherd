@@ -33,9 +33,15 @@ export default function WorkerLoginPage() {
   }, [navigate]);
 
   useEffect(() => {
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    const previousThemeColor = themeColorMeta?.getAttribute('content');
     document.documentElement.classList.add('login-screen-lock');
+    themeColorMeta?.setAttribute('content', '#0b1623');
     return () => {
       document.documentElement.classList.remove('login-screen-lock');
+      if (previousThemeColor) {
+        themeColorMeta?.setAttribute('content', previousThemeColor);
+      }
     };
   }, []);
 
@@ -83,7 +89,7 @@ export default function WorkerLoginPage() {
 
   if (!bootReady) {
     return (
-      <div className="flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pt-[env(safe-area-inset-top)] dark:bg-background">
+      <div className="flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pt-[env(safe-area-inset-top)] text-slate-100">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1E3A5F] border-t-transparent dark:border-blue-400" />
       </div>
     );
@@ -92,7 +98,7 @@ export default function WorkerLoginPage() {
   const ttlHours = Math.round(WORKER_SESSION_TTL_MS / 3600000);
 
   return (
-    <div className="fixed inset-0 flex h-dvh min-h-dvh w-full flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] dark:bg-background">
+    <div className="fixed inset-0 flex h-dvh min-h-dvh w-full flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-slate-100">
       <Card className="max-h-full w-full max-w-md overflow-hidden border-border p-5 shadow-sm sm:p-6">
         <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">
           Site worker sign-in

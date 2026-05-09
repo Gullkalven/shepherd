@@ -306,10 +306,11 @@ function HeatingStagePhotoPicker(props: {
   );
 }
 
-/** Compact “Performed: 2 May 23:06 [Edit]” + optional datetime editor. */
-function HeatingPerformedCompactRow(props: {
+/** Compact "Performed: 2 May 23:06" with optional admin-only edit affordance. */
+function HeatingPerformedRow(props: {
   fieldId: string;
   storedDate: string | undefined;
+  canEditTimestamp?: boolean;
   disabled: boolean;
   onCommit: (v: string) => void;
 }) {
@@ -318,11 +319,11 @@ function HeatingPerformedCompactRow(props: {
   const inputValue = heatingCableDateForDatetimeLocalInput(props.storedDate);
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-col gap-1 text-sm leading-snug sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1.5 sm:gap-y-1">
+    <div className="min-w-0 max-w-full space-y-2">
+      <div className="flex min-w-0 max-w-full flex-col gap-1 text-sm leading-snug sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-1.5 sm:gap-y-1">
         <span className="text-muted-foreground">Performed:</span>
-        <span className="min-w-0 break-words font-semibold tabular-nums text-foreground">{display || '—'}</span>
-        {!props.disabled ? (
+        <span className="min-w-0 max-w-full break-words font-semibold tabular-nums text-foreground">{display || '—'}</span>
+        {!props.disabled && props.canEditTimestamp ? (
           <Button
             type="button"
             variant="ghost"
@@ -330,11 +331,11 @@ function HeatingPerformedCompactRow(props: {
             className="h-8 w-full justify-start px-2 text-xs font-medium sm:w-auto sm:justify-center"
             onClick={() => setEditing((e) => !e)}
           >
-            {editing ? 'Done' : 'Edit'}
+            {editing ? 'Done' : 'Edit timestamp'}
           </Button>
         ) : null}
       </div>
-      {editing ? (
+      {editing && props.canEditTimestamp ? (
         <HeatingDatetimeField
           id={`${props.fieldId}-when-edit`}
           value={inputValue}
@@ -354,7 +355,7 @@ function HeatingDatetimeField(props: {
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="relative">
+    <div className="relative min-w-0 w-full max-w-full">
       <Calendar
         className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden
@@ -367,7 +368,7 @@ function HeatingDatetimeField(props: {
         disabled={props.disabled}
         onChange={(e) => props.onChange(e.target.value)}
         className={cn(
-          'h-11 pl-10 text-base sm:text-sm [color-scheme:light] dark:[color-scheme:dark]',
+          'h-11 min-w-0 w-full max-w-full pl-10 pr-10 text-base sm:text-sm [color-scheme:light] dark:[color-scheme:dark]',
           '[&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-2 [&::-webkit-calendar-picker-indicator]:top-1/2 [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:-translate-y-1/2 [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70'
         )}
       />
@@ -1323,9 +1324,10 @@ export function WorkerRoomView(p: Props) {
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                           Recorded as
                         </p>
-                        <HeatingPerformedCompactRow
+                        <HeatingPerformedRow
                           fieldId={`heat-${sid}`}
                           storedDate={row.date}
+                          canEditTimestamp={false}
                           disabled={stageReadOnly}
                           onCommit={(v) => p.onHeatingFieldChange(stage.key, 'date', v)}
                         />
@@ -1498,9 +1500,10 @@ export function WorkerRoomView(p: Props) {
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                           Recorded as
                         </p>
-                        <HeatingPerformedCompactRow
+                        <HeatingPerformedRow
                           fieldId={`heat-extra-${photoKey}`}
                           storedDate={step.date}
+                          canEditTimestamp={false}
                           disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
                           onCommit={(v) => p.onExtraHeatingFieldChange(idx, 'date', v)}
                         />

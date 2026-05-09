@@ -44,9 +44,15 @@ export default function AdminLoginPage() {
   }, [bootReady, permLoading, isAdmin, sessionIsProvisionalAdmin, navigate]);
 
   useEffect(() => {
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    const previousThemeColor = themeColorMeta?.getAttribute('content');
     document.documentElement.classList.add('login-screen-lock');
+    themeColorMeta?.setAttribute('content', '#0b1623');
     return () => {
       document.documentElement.classList.remove('login-screen-lock');
+      if (previousThemeColor) {
+        themeColorMeta?.setAttribute('content', previousThemeColor);
+      }
     };
   }, []);
 
@@ -106,7 +112,7 @@ export default function AdminLoginPage() {
 
   if (!bootReady) {
     return (
-      <div className="flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pt-[env(safe-area-inset-top)] dark:bg-background">
+      <div className="flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pt-[env(safe-area-inset-top)] text-slate-100">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1E3A5F] border-t-transparent dark:border-blue-400" />
       </div>
     );
@@ -115,11 +121,11 @@ export default function AdminLoginPage() {
   const ttlHours = Math.round(ADMIN_SESSION_TTL_MS / 3600000);
 
   return (
-    <div className="fixed inset-0 flex h-dvh min-h-dvh w-full flex-col items-center justify-center overflow-hidden bg-slate-50 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] dark:bg-background">
+    <div className="fixed inset-0 flex h-dvh min-h-dvh w-full flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] text-slate-100">
       <Button
         type="button"
         variant="ghost"
-        className="absolute left-4 top-[max(0.5rem,env(safe-area-inset-top))] z-10 h-10 gap-1 text-foreground/80 hover:text-foreground"
+        className="absolute left-4 top-[max(0.5rem,env(safe-area-inset-top))] z-10 h-10 gap-1 text-slate-200/90 hover:text-white"
         onClick={handleBack}
       >
         <ChevronLeft className="h-4 w-4" aria-hidden />
