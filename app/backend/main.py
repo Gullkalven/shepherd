@@ -243,9 +243,24 @@ def include_routers_from_package(app: FastAPI, package_name: str = "routers") ->
         logger.debug("No routers discovered in package '%s'", package_name)
 
 
+def log_registered_admin_panel_routes(app: FastAPI) -> None:
+    """Log all mounted admin panel routes with methods for startup diagnostics."""
+    logger = logging.getLogger(__name__)
+    for route in app.routes:
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", None)
+        if not path or not methods:
+            continue
+        if not str(path).startswith("/api/v1/admin/panel"):
+            continue
+        methods_label = ",".join(sorted(m for m in methods if m not in {"HEAD", "OPTIONS"}))
+        logger.info("Admin panel route registered: %s %s", methods_label, path)
+
+
 # Setup logging before router discovery
 setup_logging()
 include_routers_from_package(app, "routers")
+log_registered_admin_panel_routes(app)
 
 
 @app.get("/api/config")
