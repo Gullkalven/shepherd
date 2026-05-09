@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
-Regenerate PWA / favicon / apple-touch-icon assets from public/shepherd-logo.png.
+Build UI + PWA assets from public/shepherd-logo-source.png
 
-Run from repo root or app/frontend:
+Outputs:
+  shepherd-logo-mark.png   — RGBA, transparent outside yellow frame (in-app logo)
+  icon-*.png, favicon*, apple-touch-icon.png — square app / tab icons
+
+Run from app/frontend:
   python3 scripts/generate-pwa-icons.py
 Requires: Pillow (pip install Pillow)
 """
@@ -10,12 +14,13 @@ Requires: Pillow (pip install Pillow)
 from __future__ import annotations
 
 import sys
+from collections import deque
 from pathlib import Path
 
 from PIL import Image
 
 PUBLIC = Path(__file__).resolve().parent.parent / "public"
-SRC = PUBLIC / "shepherd-logo.png"
+SRC = PUBLIC / "shepherd-logo-source.png"
 
 # Theme matches manifest / index.html
 BG_PWA = (11, 22, 35)  # #0b1623
@@ -43,9 +48,76 @@ def tight_crop_logo(img: Image.Image) -> Image.Image:
                 maxy = max(maxy, y)
     if maxx < minx:
         return img
-    # PIL crop box is (left, upper, right, lower) with exclusive right/lower.
-    # Do not pad outward — that would pull outer corner padding back in.
     return img.crop((minx, miny, maxx + 1, maxy + 1))
+
+
+def transparent_outer_black(chip: Image.Image) -> Image.Image:
+    """
+    Remove edge-connected dark background so the mark floats on any UI background.
+    Yellow and light pixels block traversal so interior artwork stays intact.
+    """
+    img = chip.convert("RGBA").copy()
+    w, h = img.size
+    px = img.load()
+
+    def blocks_barrier(r: int, g: int, b: int, a: int) -> bool:
+        if a < 40:
+            return False
+        if is_yellow_pixel(r, g, b, a):
+            return True
+        # Dog / hardhat highlights — do not cross into artwork
+        if r + g + b > 95:
+            return True
+        return False
+
+    def can_erase(r: int, g: int, b: int, a: int) -> bool:
+        if a < 40:
+            return False
+        if is_yellow_pixel(r, g, b, a):
+            return False
+        if r + g + b > 95:
+            return False
+        return True
+
+    seen = [[False] * w for _ in range(h)]
+    q: deque[tuple[int, int]] = deque()
+
+    def try_seed(x: int, y: int) -> None:
+        if not (0 <= x < w and 0 <= y < h) or seen[y][x]:
+            return
+        r, g, b, a = px[x, y]
+        if blocks_barrier(r, g, b, a):
+            return
+        if not can_erase(r, g, b, a):
+            return
+        seen[y][x] = True
+        q.append((x, y))
+
+    for x in range(w):
+        try_seed(x, 0)
+        try_seed(x, h - 1)
+    for y in range(h):
+        try_seed(0, y)
+        try_seed(w - 1, y)
+
+    while q:
+        x, y = q.popleft()
+        r, g, b, a = px[x, y]
+        if can_erase(r, g, b, a):
+            px[x, y] = (0, 0, 0, 0)
+        for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < w and 0 <= ny < h) or seen[ny][nx]:
+                continue
+            nr, ng, nb, na = px[nx, ny]
+            if blocks_barrier(nr, ng, nb, na):
+                continue
+            if not can_erase(nr, ng, nb, na):
+                continue
+            seen[ny][nx] = True
+            q.append((nx, ny))
+
+    return img
 
 
 def yellow_to_black(img: Image.Image) -> Image.Image:
@@ -102,21 +174,22 @@ def render_contain(
 
 def main() -> int:
     if not SRC.exists():
-        print(f"Missing {SRC}", file=sys.stderr)
+        print(f"Missing source asset {SRC}", file=sys.stderr)
         return 1
 
     base = Image.open(SRC)
     chip = tight_crop_logo(base)
 
-    # —— PWA (keep yellow frame; fills canvas after outer margin crop) ——
+    # —— In-app mark (transparent outside chip; no outer black rectangle) ——
+    mark = transparent_outer_black(chip)
+    mark.save(PUBLIC / "shepherd-logo-mark.png", optimize=True)
+
+    # —— PWA (opaque chip on theme bg; safe area via maskable variant) ——
     fill_standard = 0.97
     render_contain(chip, 192, BG_PWA, fill_standard).convert("RGB").save(PUBLIC / "icon-192.png", optimize=True)
     render_contain(chip, 512, BG_PWA, fill_standard).convert("RGB").save(PUBLIC / "icon-512.png", optimize=True)
-
-    # Maskable: leave breathing room for adaptive icons
     render_contain(chip, 512, BG_PWA, 0.78).convert("RGB").save(PUBLIC / "icon-512-maskable.png", optimize=True)
 
-    # —— Apple touch: black canvas, no yellow ring, tight on artwork ——
     ios_chip = yellow_to_black(chip)
     l, u, r, d = bbox_non_black(ios_chip)
     ios_tight = ios_chip.crop((l, u, r, d))
@@ -124,12 +197,9 @@ def main() -> int:
         PUBLIC / "apple-touch-icon.png", optimize=True
     )
 
-    # —— Favicons from colored chip (readable at tiny sizes) ——
-    fav = render_contain(chip, 32, BG_PWA, 0.95).convert("RGB")
-    fav.save(PUBLIC / "favicon-32.png", optimize=True)
+    render_contain(chip, 32, BG_PWA, 0.95).convert("RGB").save(PUBLIC / "favicon-32.png", optimize=True)
     render_contain(chip, 16, BG_PWA, 0.95).convert("RGB").save(PUBLIC / "favicon-16.png", optimize=True)
 
-    # Multi-size ICO (first image is primary)
     i16 = render_contain(chip, 16, BG_PWA, 0.95).convert("RGBA")
     i32 = render_contain(chip, 32, BG_PWA, 0.95).convert("RGBA")
     i48 = render_contain(chip, 48, BG_PWA, 0.95).convert("RGBA")
@@ -140,7 +210,7 @@ def main() -> int:
         append_images=[i16, i48],
     )
 
-    print("Wrote icons to", PUBLIC)
+    print("Wrote shepherd-logo-mark.png + PWA/favicon assets to", PUBLIC)
     return 0
 
 

@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 
-/** Public URL of the official Shepherd brand mark (dog with hardhat). */
-export const SHEPHERD_LOGO_URL = '/shepherd-logo.png';
+/** Transparent brand mark for in-app UI (login, nav). Not used for PWA/tab icons. */
+export const SHEPHERD_LOGO_URL = '/shepherd-logo-mark.png';
 
 type ShepherdLogoProps = {
   className?: string;
