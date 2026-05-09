@@ -3239,7 +3239,7 @@ export default function RoomDetail() {
                                   className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                                 >
                                   Resistance{' '}
-                                  <span className="font-normal text-muted-foreground">(Ω · Ohm)</span>
+                                  <span className="font-normal text-muted-foreground">(Ω)</span>
                                 </Label>
                                 <Input
                                   id={`hc-room-${stage.key}-r`}
@@ -3249,7 +3249,7 @@ export default function RoomDetail() {
                                   placeholder="e.g. 146"
                                   value={row.resistance_ohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
-                                  aria-label="Resistance in ohms (Ω)"
+                                  aria-label="Resistance (Ω)"
                                   onChange={(e) =>
                                     updateHeatingStageField(stage.key, 'resistance_ohm', e.target.value)
                                   }
@@ -3262,7 +3262,7 @@ export default function RoomDetail() {
                                   className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                                 >
                                   Insulation{' '}
-                                  <span className="font-normal text-muted-foreground">(MΩ · megohm)</span>
+                                  <span className="font-normal text-muted-foreground">(MΩ)</span>
                                 </Label>
                                 <Input
                                   id={`hc-room-${stage.key}-i`}
@@ -3272,7 +3272,7 @@ export default function RoomDetail() {
                                   placeholder="e.g. 999"
                                   value={row.insulation_mohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
-                                  aria-label="Insulation resistance in megohms (MΩ)"
+                                  aria-label="Insulation (MΩ)"
                                   onChange={(e) =>
                                     updateHeatingStageField(stage.key, 'insulation_mohm', e.target.value)
                                   }
@@ -3417,7 +3417,7 @@ export default function RoomDetail() {
                                   className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                                 >
                                   Resistance{' '}
-                                  <span className="font-normal text-muted-foreground">(Ω · Ohm)</span>
+                                  <span className="font-normal text-muted-foreground">(Ω)</span>
                                 </Label>
                                 <Input
                                   id={`hc-room-extra-${idx}-r`}
@@ -3427,7 +3427,7 @@ export default function RoomDetail() {
                                   placeholder="e.g. 146"
                                   value={step.resistance_ohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
-                                  aria-label="Resistance in ohms (Ω)"
+                                  aria-label="Resistance (Ω)"
                                   onChange={(e) => updateExtraHeatingStepField(idx, 'resistance_ohm', e.target.value)}
                                   className="h-9 sm:h-8 text-base sm:text-xs"
                                 />
@@ -3438,7 +3438,7 @@ export default function RoomDetail() {
                                   className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                                 >
                                   Insulation{' '}
-                                  <span className="font-normal text-muted-foreground">(MΩ · megohm)</span>
+                                  <span className="font-normal text-muted-foreground">(MΩ)</span>
                                 </Label>
                                 <Input
                                   id={`hc-room-extra-${idx}-i`}
@@ -3448,7 +3448,7 @@ export default function RoomDetail() {
                                   placeholder="e.g. 999"
                                   value={step.insulation_mohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
-                                  aria-label="Insulation resistance in megohms (MΩ)"
+                                  aria-label="Insulation (MΩ)"
                                   onChange={(e) => updateExtraHeatingStepField(idx, 'insulation_mohm', e.target.value)}
                                   className="h-9 sm:h-8 text-base sm:text-xs"
                                 />

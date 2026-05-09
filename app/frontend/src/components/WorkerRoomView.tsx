@@ -1182,7 +1182,7 @@ export function WorkerRoomView(p: Props) {
                               className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                             >
                               Resistance{' '}
-                              <span className="font-normal text-muted-foreground">(Ω · Ohm)</span>
+                              <span className="font-normal text-muted-foreground">(Ω)</span>
                             </Label>
                             <Input
                               id={`hc-worker-${stage.key}-r`}
@@ -1193,7 +1193,7 @@ export function WorkerRoomView(p: Props) {
                               value={row.resistance_ohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={stageReadOnly}
-                              aria-label="Resistance in ohms (Ω)"
+                              aria-label="Resistance (Ω)"
                               onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
                             />
                           </div>
@@ -1203,7 +1203,7 @@ export function WorkerRoomView(p: Props) {
                               className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                             >
                               Insulation{' '}
-                              <span className="font-normal text-muted-foreground">(MΩ · megohm)</span>
+                              <span className="font-normal text-muted-foreground">(MΩ)</span>
                             </Label>
                             <Input
                               id={`hc-worker-${stage.key}-i`}
@@ -1214,7 +1214,7 @@ export function WorkerRoomView(p: Props) {
                               value={row.insulation_mohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={stageReadOnly}
-                              aria-label="Insulation resistance in megohms (MΩ)"
+                              aria-label="Insulation (MΩ)"
                               onChange={(e) => p.onHeatingFieldChange(stage.key, 'insulation_mohm', e.target.value)}
                             />
                           </div>
@@ -1367,7 +1367,7 @@ export function WorkerRoomView(p: Props) {
                               className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                             >
                               Resistance{' '}
-                              <span className="font-normal text-muted-foreground">(Ω · Ohm)</span>
+                              <span className="font-normal text-muted-foreground">(Ω)</span>
                             </Label>
                             <Input
                               id={`hc-worker-extra-${idx}-r`}
@@ -1378,7 +1378,7 @@ export function WorkerRoomView(p: Props) {
                               value={step.resistance_ohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
-                              aria-label="Resistance in ohms (Ω)"
+                              aria-label="Resistance (Ω)"
                               onChange={(e) => p.onExtraHeatingFieldChange(idx, 'resistance_ohm', e.target.value)}
                             />
                           </div>
@@ -1388,7 +1388,7 @@ export function WorkerRoomView(p: Props) {
                               className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                             >
                               Insulation{' '}
-                              <span className="font-normal text-muted-foreground">(MΩ · megohm)</span>
+                              <span className="font-normal text-muted-foreground">(MΩ)</span>
                             </Label>
                             <Input
                               id={`hc-worker-extra-${idx}-i`}
@@ -1399,7 +1399,7 @@ export function WorkerRoomView(p: Props) {
                               value={step.insulation_mohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
-                              aria-label="Insulation resistance in megohms (MΩ)"
+                              aria-label="Insulation (MΩ)"
                               onChange={(e) => p.onExtraHeatingFieldChange(idx, 'insulation_mohm', e.target.value)}
                             />
                           </div>
