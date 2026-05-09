@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
@@ -1174,27 +1175,49 @@ export function WorkerRoomView(p: Props) {
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                           Measurements
                         </p>
-                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                          <Input
-                            type="number"
-                            inputMode="decimal"
-                            step="any"
-                            placeholder="Resistance (Ω)"
-                            value={row.resistance_ohm || ''}
-                            className="h-11 text-base sm:text-sm"
-                            disabled={stageReadOnly}
-                            onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
-                          />
-                          <Input
-                            type="number"
-                            inputMode="decimal"
-                            step="any"
-                            placeholder="Insulation (MΩ)"
-                            value={row.insulation_mohm || ''}
-                            className="h-11 text-base sm:text-sm"
-                            disabled={stageReadOnly}
-                            onChange={(e) => p.onHeatingFieldChange(stage.key, 'insulation_mohm', e.target.value)}
-                          />
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label
+                              htmlFor={`hc-worker-${stage.key}-r`}
+                              className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
+                            >
+                              Resistance{' '}
+                              <span className="font-normal text-muted-foreground">(Ω · Ohm)</span>
+                            </Label>
+                            <Input
+                              id={`hc-worker-${stage.key}-r`}
+                              type="number"
+                              inputMode="decimal"
+                              step="any"
+                              placeholder="e.g. 146"
+                              value={row.resistance_ohm || ''}
+                              className="h-11 text-base sm:text-sm"
+                              disabled={stageReadOnly}
+                              aria-label="Resistance in ohms (Ω)"
+                              onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label
+                              htmlFor={`hc-worker-${stage.key}-i`}
+                              className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
+                            >
+                              Insulation{' '}
+                              <span className="font-normal text-muted-foreground">(MΩ · megohm)</span>
+                            </Label>
+                            <Input
+                              id={`hc-worker-${stage.key}-i`}
+                              type="number"
+                              inputMode="decimal"
+                              step="any"
+                              placeholder="e.g. 999"
+                              value={row.insulation_mohm || ''}
+                              className="h-11 text-base sm:text-sm"
+                              disabled={stageReadOnly}
+                              aria-label="Insulation resistance in megohms (MΩ)"
+                              onChange={(e) => p.onHeatingFieldChange(stage.key, 'insulation_mohm', e.target.value)}
+                            />
+                          </div>
                         </div>
                       </div>
                       <div className="space-y-1">
@@ -1337,27 +1360,49 @@ export function WorkerRoomView(p: Props) {
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                           Measurements
                         </p>
-                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                          <Input
-                            type="number"
-                            inputMode="decimal"
-                            step="any"
-                            placeholder="Resistance (Ω)"
-                            value={step.resistance_ohm || ''}
-                            className="h-11 text-base sm:text-sm"
-                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
-                            onChange={(e) => p.onExtraHeatingFieldChange(idx, 'resistance_ohm', e.target.value)}
-                          />
-                          <Input
-                            type="number"
-                            inputMode="decimal"
-                            step="any"
-                            placeholder="Insulation (MΩ)"
-                            value={step.insulation_mohm || ''}
-                            className="h-11 text-base sm:text-sm"
-                            disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
-                            onChange={(e) => p.onExtraHeatingFieldChange(idx, 'insulation_mohm', e.target.value)}
-                          />
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label
+                              htmlFor={`hc-worker-extra-${idx}-r`}
+                              className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
+                            >
+                              Resistance{' '}
+                              <span className="font-normal text-muted-foreground">(Ω · Ohm)</span>
+                            </Label>
+                            <Input
+                              id={`hc-worker-extra-${idx}-r`}
+                              type="number"
+                              inputMode="decimal"
+                              step="any"
+                              placeholder="e.g. 146"
+                              value={step.resistance_ohm || ''}
+                              className="h-11 text-base sm:text-sm"
+                              disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
+                              aria-label="Resistance in ohms (Ω)"
+                              onChange={(e) => p.onExtraHeatingFieldChange(idx, 'resistance_ohm', e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label
+                              htmlFor={`hc-worker-extra-${idx}-i`}
+                              className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
+                            >
+                              Insulation{' '}
+                              <span className="font-normal text-muted-foreground">(MΩ · megohm)</span>
+                            </Label>
+                            <Input
+                              id={`hc-worker-extra-${idx}-i`}
+                              type="number"
+                              inputMode="decimal"
+                              step="any"
+                              placeholder="e.g. 999"
+                              value={step.insulation_mohm || ''}
+                              className="h-11 text-base sm:text-sm"
+                              disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
+                              aria-label="Insulation resistance in megohms (MΩ)"
+                              onChange={(e) => p.onExtraHeatingFieldChange(idx, 'insulation_mohm', e.target.value)}
+                            />
+                          </div>
                         </div>
                       </div>
                       <div className="space-y-1">

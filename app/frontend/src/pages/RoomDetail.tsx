@@ -20,6 +20,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   DropdownMenu,
@@ -3231,37 +3232,59 @@ export default function RoomDetail() {
                                 ) : null}
                               </div>
                             )}
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                              <Input
-                                type="number"
-                                inputMode="decimal"
-                                step="any"
-                                placeholder="Resistance (Ohm)"
-                                value={row.resistance_ohm || ''}
-                                disabled={!canEditHeatingCable || heatingCableBlocking}
-                                onChange={(e) =>
-                                  updateHeatingStageField(stage.key, 'resistance_ohm', e.target.value)
-                                }
-                                className="h-9 sm:h-8 text-base sm:text-xs"
-                              />
-                              <Input
-                                type="number"
-                                inputMode="decimal"
-                                step="any"
-                                placeholder="Insulation (MΩ)"
-                                value={row.insulation_mohm || ''}
-                                disabled={!canEditHeatingCable || heatingCableBlocking}
-                                onChange={(e) =>
-                                  updateHeatingStageField(stage.key, 'insulation_mohm', e.target.value)
-                                }
-                                className="h-9 sm:h-8 text-base sm:text-xs"
-                              />
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <Label
+                                  htmlFor={`hc-room-${stage.key}-r`}
+                                  className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
+                                >
+                                  Resistance{' '}
+                                  <span className="font-normal text-muted-foreground">(Ω · Ohm)</span>
+                                </Label>
+                                <Input
+                                  id={`hc-room-${stage.key}-r`}
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="any"
+                                  placeholder="e.g. 146"
+                                  value={row.resistance_ohm || ''}
+                                  disabled={!canEditHeatingCable || heatingCableBlocking}
+                                  aria-label="Resistance in ohms (Ω)"
+                                  onChange={(e) =>
+                                    updateHeatingStageField(stage.key, 'resistance_ohm', e.target.value)
+                                  }
+                                  className="h-9 sm:h-8 text-base sm:text-xs"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  htmlFor={`hc-room-${stage.key}-i`}
+                                  className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
+                                >
+                                  Insulation{' '}
+                                  <span className="font-normal text-muted-foreground">(MΩ · megohm)</span>
+                                </Label>
+                                <Input
+                                  id={`hc-room-${stage.key}-i`}
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="any"
+                                  placeholder="e.g. 999"
+                                  value={row.insulation_mohm || ''}
+                                  disabled={!canEditHeatingCable || heatingCableBlocking}
+                                  aria-label="Insulation resistance in megohms (MΩ)"
+                                  onChange={(e) =>
+                                    updateHeatingStageField(stage.key, 'insulation_mohm', e.target.value)
+                                  }
+                                  className="h-9 sm:h-8 text-base sm:text-xs"
+                                />
+                              </div>
                               <Input
                                 type="date"
                                 value={heatingCableDateForDateInput(row.date)}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateHeatingStageField(stage.key, 'date', e.target.value)}
-                                className="h-9 sm:h-8 text-base sm:text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs sm:col-span-2"
                               />
                             </div>
                             <Textarea
@@ -3387,33 +3410,55 @@ export default function RoomDetail() {
                                 ) : null}
                               </div>
                             )}
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                              <Input
-                                type="number"
-                                inputMode="decimal"
-                                step="any"
-                                placeholder="Resistance (Ohm)"
-                                value={step.resistance_ohm || ''}
-                                disabled={!canEditHeatingCable || heatingCableBlocking}
-                                onChange={(e) => updateExtraHeatingStepField(idx, 'resistance_ohm', e.target.value)}
-                                className="h-9 sm:h-8 text-base sm:text-xs"
-                              />
-                              <Input
-                                type="number"
-                                inputMode="decimal"
-                                step="any"
-                                placeholder="Insulation (MΩ)"
-                                value={step.insulation_mohm || ''}
-                                disabled={!canEditHeatingCable || heatingCableBlocking}
-                                onChange={(e) => updateExtraHeatingStepField(idx, 'insulation_mohm', e.target.value)}
-                                className="h-9 sm:h-8 text-base sm:text-xs"
-                              />
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <Label
+                                  htmlFor={`hc-room-extra-${idx}-r`}
+                                  className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
+                                >
+                                  Resistance{' '}
+                                  <span className="font-normal text-muted-foreground">(Ω · Ohm)</span>
+                                </Label>
+                                <Input
+                                  id={`hc-room-extra-${idx}-r`}
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="any"
+                                  placeholder="e.g. 146"
+                                  value={step.resistance_ohm || ''}
+                                  disabled={!canEditHeatingCable || heatingCableBlocking}
+                                  aria-label="Resistance in ohms (Ω)"
+                                  onChange={(e) => updateExtraHeatingStepField(idx, 'resistance_ohm', e.target.value)}
+                                  className="h-9 sm:h-8 text-base sm:text-xs"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label
+                                  htmlFor={`hc-room-extra-${idx}-i`}
+                                  className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
+                                >
+                                  Insulation{' '}
+                                  <span className="font-normal text-muted-foreground">(MΩ · megohm)</span>
+                                </Label>
+                                <Input
+                                  id={`hc-room-extra-${idx}-i`}
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="any"
+                                  placeholder="e.g. 999"
+                                  value={step.insulation_mohm || ''}
+                                  disabled={!canEditHeatingCable || heatingCableBlocking}
+                                  aria-label="Insulation resistance in megohms (MΩ)"
+                                  onChange={(e) => updateExtraHeatingStepField(idx, 'insulation_mohm', e.target.value)}
+                                  className="h-9 sm:h-8 text-base sm:text-xs"
+                                />
+                              </div>
                               <Input
                                 type="date"
                                 value={heatingCableDateForDateInput(step.date)}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'date', e.target.value)}
-                                className="h-9 sm:h-8 text-base sm:text-xs"
+                                className="h-9 sm:h-8 text-base sm:text-xs sm:col-span-2"
                               />
                             </div>
                             <Textarea
