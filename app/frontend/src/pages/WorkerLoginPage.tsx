@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { ShepherdLogo } from '@/components/ShepherdLogo';
+import { formatNb, useI18n } from '@/lib/i18n';
 
 type LoginResponse = {
   access_token: string;
@@ -16,6 +17,7 @@ type LoginResponse = {
 };
 
 export default function WorkerLoginPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const inferredProject = params.get('project');
@@ -49,11 +51,11 @@ export default function WorkerLoginPage() {
   const submit = async () => {
     const pid = Number(projectId.trim());
     if (!Number.isFinite(pid) || pid < 1) {
-      toast.error('Enter a valid project number.');
+      toast.error(t('toastInvalidProject'));
       return;
     }
     if (pin.trim().length < 4) {
-      toast.error('PIN must be at least 4 characters.');
+      toast.error(t('toastPinTooShort'));
       return;
     }
     setBusy(true);
@@ -67,7 +69,7 @@ export default function WorkerLoginPage() {
       const data = (await res.json().catch(() => null)) as LoginResponse & { detail?: string };
       if (!res.ok) {
         const msg = typeof data?.detail === 'string' ? data.detail : 'Could not sign in';
-        toast.error(msg === 'Wrong PIN or inactive worker' ? 'Wrong PIN. Try again.' : msg);
+        toast.error(msg === 'Wrong PIN or inactive worker' ? t('toastWrongPin') : msg);
         return;
       }
       persistWorkerSession({
@@ -79,10 +81,10 @@ export default function WorkerLoginPage() {
       });
       // Do not resume a last-opened room from a previous site/session (avoids wrong `/project/...` targets).
       clearWorkerLastRoom();
-      toast.success(`Signed in as ${data.worker.name}`);
+      toast.success(formatNb(t('toastSignedInAs'), { name: data.worker.name }));
       navigate('/worker/rooms', { replace: true });
     } catch {
-      toast.error('Network error');
+      toast.error(t('toastNetworkError'));
     } finally {
       setBusy(false);
     }
@@ -104,20 +106,17 @@ export default function WorkerLoginPage() {
         <ShepherdLogo className="h-16 w-16 rounded-xl shadow-md" />
       </div>
       <Card className="max-h-full w-full max-w-md overflow-hidden border-border p-5 shadow-sm sm:p-6">
-        <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">
-          Site worker sign-in
-        </h1>
+        <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">{t('workerLoginTitle')}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Enter the project number from your supervisor and your PIN. After sign-in, this device stays signed in for
-          about {ttlHours} hours — you will not need the PIN again until the session expires or you sign out.
+          {formatNb(t('workerLoginIntro'), { h: ttlHours })}
         </p>
 
         <label className="mt-6 block text-sm font-medium text-foreground">
-          Project number
+          {t('projectNumber')}
           <Input
             inputMode="numeric"
             className="mt-1.5 h-12 text-lg"
-            placeholder="From your supervisor"
+            placeholder={t('projectNumberPlaceholder')}
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
             autoComplete="off"
@@ -125,7 +124,7 @@ export default function WorkerLoginPage() {
         </label>
 
         <label className="mt-4 block text-sm font-medium text-foreground">
-          PIN
+          {t('pinLabel')}
           <Input
             type="password"
             inputMode="numeric"
@@ -143,11 +142,11 @@ export default function WorkerLoginPage() {
           disabled={busy}
           onClick={() => void submit()}
         >
-          {busy ? 'Signing in…' : 'Sign in'}
+          {busy ? t('signingIn') : t('signIn')}
         </Button>
 
         <Button type="button" variant="ghost" className="mt-3 w-full" onClick={() => navigate('/')}>
-          Back to home
+          {t('backToHome')}
         </Button>
       </Card>
     </div>

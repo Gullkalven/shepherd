@@ -77,7 +77,7 @@ import { cn } from '@/lib/utils';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
 import { resolveWorkerActorLabel, LEGACY_WORKER_DISPLAY_NAME_KEY } from '@/lib/workerIdentity';
-import { useI18n } from '@/lib/i18n';
+import { formatNb, useI18n } from '@/lib/i18n';
 import { WorkerRoomView } from '@/components/WorkerRoomView';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationNav';
@@ -102,13 +102,13 @@ import {
   type HeatingCableStageKey,
 } from '@/lib/heatingCable';
 
-const STATUS_OPTIONS = [
-  { value: 'not_started', label: 'Not Started', color: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400' },
-  { value: 'in_progress', label: 'In Progress', color: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400' },
-  { value: 'ready_for_inspection', label: 'Ready for Inspection', color: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400' },
-  { value: 'completed', label: 'Completed', color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400' },
-  { value: 'blocked', label: 'Blocked', color: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400' },
-];
+const ROOM_STATUS_COLORS: Record<string, string> = {
+  not_started: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+  in_progress: 'bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400',
+  ready_for_inspection: 'bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400',
+  completed: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400',
+  blocked: 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400',
+};
 
 const HEATING_AUTOSAVE_DEBOUNCE_MS = 900;
 const HEATING_SAVE_UI_IDLE_MS = 2600;
@@ -477,6 +477,21 @@ export default function RoomDetail() {
   const { t } = useI18n();
   const defaultChecklistTitle = t('checklist');
 
+  const statusOptions = useMemo(
+    () => [
+      { value: 'not_started', label: t('statusWorkflowNotStarted'), color: ROOM_STATUS_COLORS.not_started },
+      { value: 'in_progress', label: t('statusWorkflowInProgress'), color: ROOM_STATUS_COLORS.in_progress },
+      {
+        value: 'ready_for_inspection',
+        label: t('statusWorkflowInspection'),
+        color: ROOM_STATUS_COLORS.ready_for_inspection,
+      },
+      { value: 'completed', label: t('statusWorkflowCompleted'), color: ROOM_STATUS_COLORS.completed },
+      { value: 'blocked', label: t('statusWorkflowBlocked'), color: ROOM_STATUS_COLORS.blocked },
+    ],
+    [t]
+  );
+
   const [deviations, setDeviations] = useState<WorkflowDeviation[]>([]);
   const [newDeviationText, setNewDeviationText] = useState('');
   const [savingDeviations, setSavingDeviations] = useState(false);
@@ -634,12 +649,12 @@ export default function RoomDetail() {
         navigate('/', { replace: true });
         return;
       }
-      toast.error('Failed to load');
+      toast.error(t('toastFailedLoad'));
       setFloorRoomsOrdered([]);
     } finally {
       setLoading(false);
     }
-  }, [projectId, floorId, roomId, navigate]);
+  }, [projectId, floorId, roomId, navigate, t]);
 
   const refreshRoom = useCallback(async () => {
     if (!roomId) return;
@@ -939,9 +954,9 @@ export default function RoomDetail() {
         data: { is_locked: next },
       });
       setRoom({ ...room, is_locked: next });
-      toast.success(next ? 'Locked for workers' : 'Unlocked');
+      toast.success(next ? t('toastLockedForWorkers') : t('toastUnlocked'));
     } catch {
-      toast.error('Failed to update lock');
+      toast.error(t('toastFailedUpdateLock'));
     }
   };
 
@@ -957,9 +972,9 @@ export default function RoomDetail() {
         data: { status: newStatus, blocked_reason: '' },
       });
       setRoom({ ...room, status: newStatus, blocked_reason: '' });
-      toast.success('Status updated');
+      toast.success(t('toastStatusUpdated'));
     } catch {
-      toast.error('Failed to update status');
+      toast.error(t('toastFailedUpdateStatus'));
     }
   };
 
@@ -967,7 +982,7 @@ export default function RoomDetail() {
     if (!room) return;
     const reason = blockedReason.trim();
     if (!reason) {
-      toast.error('Blocked reason is required');
+      toast.error(t('toastBlockedReasonRequired'));
       return;
     }
     try {
@@ -977,9 +992,9 @@ export default function RoomDetail() {
       });
       setRoom({ ...room, status: 'blocked', blocked_reason: reason });
       setShowBlockDialog(false);
-      toast.success('Room marked as blocked');
+      toast.success(t('toastRoomBlocked'));
     } catch {
-      toast.error('Failed to block room');
+      toast.error(t('toastFailedBlockRoom'));
     }
   };
 
@@ -993,7 +1008,7 @@ export default function RoomDetail() {
     }
     if (permissionsLoading) return;
     if (sessionIsPinWorker) {
-      toast.error('Sign in as a site worker (PIN) to check items.');
+      toast.error(t('toastPinToCheck'));
       navigate('/worker/login', { replace: true });
       return;
     }
@@ -1041,12 +1056,14 @@ export default function RoomDetail() {
         )
       );
       await refreshRoom();
-      const verb = finalCompleted ? 'checked' : 'unchecked';
-      toast.success(`${workerName} ${verb} "${task.name}"`, {
-        id: `checklist-toggle-${task.id}`,
-      });
+      toast.success(
+        `${workerName} ${finalCompleted ? t('taskVerbChecked') : t('taskVerbUnchecked')} «${task.name}»`,
+        {
+          id: `checklist-toggle-${task.id}`,
+        }
+      );
     } catch {
-      toast.error('Failed to update task');
+      toast.error(t('toastFailedUpdateTask'));
     } finally {
       checklistToggleInFlightRef.current.delete(task.id);
     }
@@ -1066,7 +1083,7 @@ export default function RoomDetail() {
     localStorage.removeItem(LEGACY_WORKER_DISPLAY_NAME_KEY);
     setCheckWorkerName('');
     setWorkerFallbackRevision((r) => r + 1);
-    toast.success('Saved name cleared');
+    toast.success(t('toastSavedNameCleared'));
   };
 
   const handleAddTask = async () => {
@@ -1094,9 +1111,9 @@ export default function RoomDetail() {
       }
       await refreshRoom();
       setNewTaskName('');
-      toast.success('Item added');
+      toast.success(t('toastItemAdded'));
     } catch {
-      toast.error('Failed to add item');
+      toast.error(t('toastFailedAddItem'));
     } finally {
       setAddingTask(false);
     }
@@ -1145,9 +1162,9 @@ export default function RoomDetail() {
       await refreshRoom();
       setBulkTaskText('');
       setShowBulkAddTasks(false);
-      toast.success(`${newTasks.length} items added`);
+      toast.success(formatNb(t('toastBulkItemsAdded'), { n: newTasks.length }));
     } catch {
-      toast.error('Failed to add items');
+      toast.error(t('toastFailedAddItems'));
     } finally {
       setBulkAdding(false);
     }
@@ -1158,9 +1175,9 @@ export default function RoomDetail() {
       await client.entities.tasks.delete({ id: String(taskId) });
       setTasks((prev) => prev.filter((t) => t.id !== taskId));
       await refreshRoom();
-      toast.success('Item removed');
+      toast.success(t('toastItemRemoved'));
     } catch {
-      toast.error('Failed to remove item');
+      toast.error(t('toastFailedRemoveItem'));
     }
   };
 
@@ -1193,9 +1210,9 @@ export default function RoomDetail() {
         )
       );
       await refreshRoom();
-      toast.success('Item name updated');
+      toast.success(t('toastItemNameUpdated'));
     } catch {
-      toast.error('Failed to update item name');
+      toast.error(t('toastFailedUpdateItemName'));
     }
     setEditingTaskId(null);
   };
@@ -1218,7 +1235,7 @@ export default function RoomDetail() {
       await refreshRoom();
       if (successMessage) toast.success(successMessage);
     } catch {
-      toast.error('Failed to save deviations');
+      toast.error(t('toastFailedSaveDeviations'));
     } finally {
       setSavingDeviations(false);
     }
@@ -1237,10 +1254,10 @@ export default function RoomDetail() {
     const reporter = resolveWorkerActorLabel(displayName);
     if (!reporter.trim()) {
       if (sessionIsPinWorker) {
-        toast.error('Sign in as a site worker (PIN) to report issues.');
+        toast.error(t('toastPinToReport'));
         navigate('/worker/login', { replace: true });
       } else {
-        toast.error('Enter your name first — tap a checklist item once to set your name.');
+        toast.error(t('toastEnterNameFirst'));
       }
       return;
     }
@@ -1283,9 +1300,9 @@ export default function RoomDetail() {
         setRoom({ ...room, phase_assigned_worker_ids: next });
       }
       await refreshRoom();
-      toast.success(workerId == null ? 'Phase assignment cleared' : 'Worker assigned to phase');
+      toast.success(workerId == null ? t('toastPhaseAssignmentCleared') : t('toastWorkerAssignedPhase'));
     } catch {
-      toast.error('Failed to assign worker to phase');
+      toast.error(t('toastFailedAssignPhase'));
     } finally {
       setAssigningPhaseKey(null);
     }
@@ -1299,9 +1316,9 @@ export default function RoomDetail() {
     try {
       await saveAreasToServer(next, { phaseStatuses: linear });
       setPhaseTab(norm);
-      toast.success(`Main phase: ${phaseLabel(norm, phaseWorkflow)}`);
+      toast.success(`${t('toastMainPhase')} ${phaseLabel(norm, phaseWorkflow)}`);
     } catch {
-      toast.error('Failed to set main phase');
+      toast.error(t('toastFailedSetMainPhase'));
     }
   };
 
@@ -1313,9 +1330,9 @@ export default function RoomDetail() {
     try {
       await saveAreasToServer(next, { phaseStatuses: linear });
       setPhaseTab(norm);
-      toast.success(`Area phase: ${phaseLabel(norm, phaseWorkflow)}`);
+      toast.success(`${t('toastAreaPhase')} ${phaseLabel(norm, phaseWorkflow)}`);
     } catch {
-      toast.error('Failed to set area phase');
+      toast.error(t('toastFailedSetAreaPhase'));
     }
   };
 
@@ -1329,9 +1346,9 @@ export default function RoomDetail() {
         data: { phase_statuses: next as Record<string, string> },
       });
       await loadData();
-      toast.success('Phase status updated');
+      toast.success(t('toastPhaseStatusUpdated'));
     } catch {
-      toast.error('Failed to update phase status');
+      toast.error(t('toastFailedPhaseStatus'));
     }
   };
 
@@ -1368,9 +1385,9 @@ export default function RoomDetail() {
         nextOv,
         resolvedPhaseStatuses
       );
-      toast.success(after ? 'Phase locked for workers' : 'Phase open for workers');
+      toast.success(after ? t('toastPhaseLockedWorkers') : t('toastPhaseOpenWorkers'));
     } catch {
-      toast.error('Failed to update phase lock');
+      toast.error(t('toastFailedPhaseLock'));
     }
   };
 
@@ -1392,9 +1409,9 @@ export default function RoomDetail() {
       setNewAreaName('');
       setShowManageAreas(false);
       setActiveAreaId(nid);
-      toast.success('Area added');
+      toast.success(t('toastAreaAdded'));
     } catch {
-      toast.error('Failed to add area');
+      toast.error(t('toastFailedAddArea'));
     }
   };
 
@@ -1404,15 +1421,15 @@ export default function RoomDetail() {
     const next = areasList.map((a) => (a.id === id ? { ...a, name: n } : a));
     try {
       await saveAreasToServer(next);
-      toast.success('Area renamed');
+      toast.success(t('toastAreaRenamed'));
     } catch {
-      toast.error('Failed to rename area');
+      toast.error(t('toastFailedRenameArea'));
     }
   };
 
   const handleDeleteArea = async (delId: string) => {
     if (delId === primaryAreaId) {
-      toast.error('Cannot remove the primary area');
+      toast.error(t('toastCannotRemovePrimaryArea'));
       return;
     }
     if (!room) return;
@@ -1438,9 +1455,9 @@ export default function RoomDetail() {
       );
       await saveAreasToServer(next);
       if (activeAreaId === delId) setActiveAreaId(primaryAreaId);
-      toast.success('Area removed');
+      toast.success(t('toastAreaRemoved'));
     } catch {
-      toast.error('Failed to remove area');
+      toast.error(t('toastFailedRemoveArea'));
     }
   };
 
@@ -1501,10 +1518,10 @@ export default function RoomDetail() {
           ...taskPhotoVisitAreaPayload(),
         },
       });
-      toast.success('Photo uploaded');
+      toast.success(t('toastPhotoUploaded'));
       loadData();
     } catch {
-      toast.error('Failed to upload photo');
+      toast.error(t('toastFailedUploadPhoto'));
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1516,9 +1533,9 @@ export default function RoomDetail() {
       await client.entities.room_photos.delete({ id: String(photo.id) });
       setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
       await refreshRoom();
-      toast.success('Photo deleted');
+      toast.success(t('toastPhotoDeleted'));
     } catch {
-      toast.error('Failed to delete photo');
+      toast.error(t('toastFailedDeletePhoto'));
     }
   };
 
@@ -1527,10 +1544,10 @@ export default function RoomDetail() {
     setDeletingRoom(true);
     try {
       await client.entities.rooms.delete({ id: String(room.id) });
-      toast.success('Deleted');
+      toast.success(t('toastDeleted'));
       navigate(`/project/${projectId}/floor/${floorId}`);
     } catch {
-      toast.error('Failed to delete');
+      toast.error(t('toastFailedDelete'));
     } finally {
       setDeletingRoom(false);
       setShowDeleteRoomDialog(false);
@@ -1542,10 +1559,10 @@ export default function RoomDetail() {
     const workerName = resolveWorkerActorLabel(displayName);
     if (!workerName.trim()) {
       if (sessionIsPinWorker) {
-        toast.error('Sign in as a site worker (PIN) to record handoff.');
+        toast.error(t('toastPinToHandoff'));
         navigate('/worker/login', { replace: true });
       } else {
-        toast.error('Enter your name to record handoff.');
+        toast.error(t('toastNameToHandoff'));
         setShowCheckNameDialog(true);
       }
       return false;
@@ -1562,7 +1579,7 @@ export default function RoomDetail() {
         worker_name: workerName,
         ...areaPayload,
       });
-      toast.success('Phase handed off and locked for editing.');
+      toast.success(t('toastPhaseHandedOffOk'));
       await loadData();
       return true;
     } catch (e) {
@@ -1586,9 +1603,9 @@ export default function RoomDetail() {
       });
       setRoom({ ...room, deadline_at: iso });
       await refreshRoom();
-      toast.success(iso ? 'Deadline saved' : 'Deadline cleared');
+      toast.success(iso ? t('toastDeadlineSaved') : t('toastDeadlineCleared'));
     } catch {
-      toast.error('Failed to save deadline');
+      toast.error(t('toastFailedDeadline'));
     } finally {
       setSavingDeadline(false);
     }
@@ -1605,9 +1622,9 @@ export default function RoomDetail() {
       setDeadlineDraft('');
       setRoom({ ...room, deadline_at: null });
       await refreshRoom();
-      toast.success('Deadline cleared');
+      toast.success(t('toastDeadlineCleared'));
     } catch {
-      toast.error('Failed to clear deadline');
+      toast.error(t('toastFailedDeadline'));
     } finally {
       setSavingDeadline(false);
     }
@@ -1628,7 +1645,7 @@ export default function RoomDetail() {
         setRoom((prev) => (prev ? { ...prev, phase_tool_overrides: next } : null));
         await refreshRoom();
       } catch {
-        toast.error('Failed to save phase tools');
+        toast.error(t('toastFailedPhaseTools'));
       } finally {
         setPhaseToolsSaving(false);
       }
@@ -1659,9 +1676,9 @@ export default function RoomDetail() {
       });
       setRoom({ ...room, checklist_labels: next });
       await refreshRoom();
-      toast.success('Title updated');
+      toast.success(t('toastTitleUpdated'));
     } catch {
-      toast.error('Failed to save title');
+      toast.error(t('toastFailedTitle'));
     } finally {
       setSavingChecklistTitle(false);
       setEditingChecklistTitle(false);
@@ -1705,7 +1722,7 @@ export default function RoomDetail() {
             setHeatingCableSaveUi('idle');
             heatingSaveUiIdleTimerRef.current = null;
           }, HEATING_SAVE_UI_IDLE_MS);
-          if (manualToast) toast.success('Heating cable documentation saved');
+          if (manualToast) toast.success(t('toastHeatingSaved'));
           return true;
         }
 
@@ -1749,7 +1766,7 @@ export default function RoomDetail() {
           setHeatingCableSaveUi('idle');
           heatingSaveUiIdleTimerRef.current = null;
         }, HEATING_SAVE_UI_IDLE_MS);
-        if (manualToast) toast.success('Heating cable documentation saved');
+        if (manualToast) toast.success(t('toastHeatingSaved'));
         return true;
       } catch (err) {
         setHeatingCableSaveUi('error');
@@ -1758,7 +1775,8 @@ export default function RoomDetail() {
         if (reason) {
           console.error('[HeatingCable] Save failed:', reason);
         }
-        if (manualToast) toast.error(reason ? `Failed to save: ${reason}` : 'Failed to save heating cable documentation');
+        if (manualToast)
+          toast.error(reason ? `${t('toastFailedSavePrefix')}: ${reason}` : t('toastFailedSaveHeating'));
         return false;
       } finally {
         setHeatingCableAutosavePending(false);
@@ -1981,9 +1999,9 @@ export default function RoomDetail() {
     setHeatingCableBlocking(true);
     try {
       await uploadHeatingModulePhoto(stageId, file);
-      toast.success('Heating module photo uploaded');
+      toast.success(t('toastHeatingPhotoUploaded'));
     } catch {
-      toast.error('Failed to upload heating module photo');
+      toast.error(t('toastFailedHeatingPhoto'));
     } finally {
       setHeatingCableBlocking(false);
       const galleryKey = `${stageId}:gallery`;
@@ -2006,26 +2024,26 @@ export default function RoomDetail() {
           ? true
           : heatingCableDocRef.current[HEATING_CABLE_STAGES[idx - 1].key]?.step_status === 'locked';
       if (!prevLocked) {
-        toast.error('Complete the previous step first.');
+        toast.error(t('toastCompletePrevStep'));
         return;
       }
       const current = heatingCableDocRef.current[stageKey] || {};
       if (current.step_status === 'locked') {
-        toast.error('This step is already locked.');
+        toast.error(t('toastStepAlreadyLocked'));
         return;
       }
       if (!current.resistance_ohm?.trim() || !current.insulation_mohm?.trim()) {
-        toast.error('Fill all required fields before completing this step.');
+        toast.error(t('toastFillRequiredFields'));
         return;
       }
       if (stageKey === 'after_cable_laid' && !(Array.isArray(current.photos) && current.photos.some((x) => !!x?.trim()))) {
-        toast.error('Add at least one photo before completing "After cable laid".');
+        toast.error(t('toastPhotoRequiredAfterCable'));
         return;
       }
       const workerUserId = (currentUserId || '').trim();
       const isAuthorisedActor = isAdmin || sessionIsPinWorker;
       if (!workerUserId || !isAuthorisedActor) {
-        toast.error('You must be logged in as a Site Worker to confirm this step.');
+        toast.error(t('toastMustBeWorkerConfirm'));
         return;
       }
       if (import.meta.env.DEV) {
@@ -2047,10 +2065,10 @@ export default function RoomDetail() {
         setRoom((prev) => (prev ? { ...prev, heating_cable_doc: persisted } : null));
         setHeatingCableSyncedFp(heatingCablePersistFingerprint(persisted, displayName));
         await refreshRoom();
-        toast.success('Step completed and locked');
+        toast.success(t('toastStepCompletedLocked'));
       } catch (err) {
         devLogApiFailure('confirm heating cable step', err);
-        toast.error(apiFailureMessage(err) ?? 'Failed to confirm heating cable step');
+        toast.error(apiFailureMessage(err) ?? t('toastFailedConfirmHeatingStep'));
       } finally {
         setHeatingCableBlocking(false);
       }
@@ -2070,10 +2088,10 @@ export default function RoomDetail() {
         setRoom((prev) => (prev ? { ...prev, heating_cable_doc: persisted } : null));
         setHeatingCableSyncedFp(heatingCablePersistFingerprint(persisted, displayName));
         await refreshRoom();
-        toast.success('Step unlocked. Workers can edit until it is confirmed again.');
+        toast.success(t('toastStepUnlocked'));
       } catch (err) {
         devLogApiFailure('unlock heating cable step', err);
-        toast.error(apiFailureMessage(err) ?? 'Failed to unlock step');
+        toast.error(apiFailureMessage(err) ?? t('toastFailedUnlockStep'));
       } finally {
         setHeatingCableBlocking(false);
       }
@@ -2098,9 +2116,11 @@ export default function RoomDetail() {
       setHeatingCableDoc(payload);
       setHeatingCableSyncedFp(heatingCablePersistFingerprint(payload, displayName));
       setRoom({ ...room, heating_cable_doc: payload });
-      toast.success(payload.locked_by_admin ? 'Heating cable section locked' : 'Heating cable section unlocked');
+      toast.success(
+        payload.locked_by_admin ? t('toastHeatingSectionLocked') : t('toastHeatingSectionUnlocked')
+      );
     } catch {
-      toast.error('Failed to update heating cable lock');
+      toast.error(t('toastFailedHeatingLock'));
     } finally {
       setHeatingCableBlocking(false);
     }
@@ -2179,7 +2199,7 @@ export default function RoomDetail() {
   const normalizedRoomStatus =
     typeof room.status === 'string' && room.status.trim() !== '' ? room.status.trim() : 'not_started';
   const currentStatus =
-    STATUS_OPTIONS.find((s) => s.value === normalizedRoomStatus) || STATUS_OPTIONS[0];
+    statusOptions.find((s) => s.value === normalizedRoomStatus) || statusOptions[0];
   const uniqueWorkers = [...new Set(visits.map((v) => v.worker_name))];
   const editsBlocked = Boolean(room.is_locked) && !canEdit;
   const boardPhaseNorm = normalizeRoomPhase(areasList[0]?.phase ?? room.phase, phaseWorkflow);
@@ -2220,7 +2240,7 @@ export default function RoomDetail() {
     if (!room || !canResolveIssue) return;
     const resolver = resolveWorkerActorLabel(displayName);
     if (!resolver.trim()) {
-      toast.error('Set your name before resolving issues.');
+      toast.error(t('toastNameBeforeResolve'));
       return;
     }
     const stamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
@@ -2290,8 +2310,8 @@ export default function RoomDetail() {
     floor?.name?.trim()
       ? floor.name
       : floor?.floor_number != null
-        ? `Floor ${floor.floor_number}`
-        : 'Floor';
+        ? `${t('floorWord')} ${floor.floor_number}`
+        : t('floorFallback');
 
   // Use URL room id so prev/next match the route immediately after clicking Next/Prev; `room` lags until fetch completes.
   const navRoomIdNum = roomId != null && roomId !== '' ? Number(roomId) : NaN;
@@ -2306,17 +2326,17 @@ export default function RoomDetail() {
   const prevNavUnavailableHint = prevNavRoom
     ? undefined
     : floorRoomsOrdered.length === 0
-      ? 'Room list unavailable'
+      ? t('navRoomListUnavailable')
       : !navRoomIdValid || roomOrderIdx < 0
-        ? 'Cannot determine position on this floor'
-        : 'First room on this floor';
+        ? t('navCannotDeterminePosition')
+        : t('navFirstRoomFloor');
   const nextNavUnavailableHint = nextNavRoom
     ? undefined
     : floorRoomsOrdered.length === 0
-      ? 'Room list unavailable'
+      ? t('navRoomListUnavailable')
       : !navRoomIdValid || roomOrderIdx < 0
-        ? 'Cannot determine position on this floor'
-        : 'Last room on this floor';
+        ? t('navCannotDeterminePosition')
+        : t('navLastRoomFloor');
 
   return (
     <div className="min-h-dvh min-w-0 max-w-full bg-slate-50 dark:bg-background pb-8">
@@ -2499,10 +2519,10 @@ export default function RoomDetail() {
                 (canChangeStatus ? (
                   <Select value={room.status} onValueChange={handleStatusChange} disabled={editsBlocked}>
                     <SelectTrigger className="h-6 w-[8.5rem] text-[10px] border-border/40 bg-muted/15 text-muted-foreground">
-                      <SelectValue placeholder="Status" />
+                      <SelectValue placeholder={t('selectStatus')} />
                     </SelectTrigger>
                     <SelectContent>
-                      {STATUS_OPTIONS.map((opt) => (
+                      {statusOptions.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
                         </SelectItem>
@@ -3352,7 +3372,7 @@ export default function RoomDetail() {
                               />
                             </div>
                             <Textarea
-                              placeholder="Optional note / deviation"
+                              placeholder={t('optionalNoteDeviation')}
                               value={row.note || ''}
                               disabled={!canEditHeatingCable || heatingCableBlocking}
                               onChange={(e) => updateHeatingStageField(stage.key, 'note', e.target.value)}
@@ -3441,7 +3461,7 @@ export default function RoomDetail() {
                           <div key={sid} className="rounded-md border border-border/50 p-2 space-y-2">
                             <div className="flex items-center justify-between gap-2">
                               <Input
-                                placeholder="Extra step name (e.g. Before connecting thermostat)"
+                                placeholder={t('extraStepNamePlaceholder')}
                                 value={step.label || ''}
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onChange={(e) => updateExtraHeatingStepField(idx, 'label', e.target.value)}
@@ -3524,7 +3544,7 @@ export default function RoomDetail() {
                               />
                             </div>
                             <Textarea
-                              placeholder="Optional note / deviation"
+                              placeholder={t('optionalNoteDeviation')}
                               value={step.note || ''}
                               disabled={!canEditHeatingCable || heatingCableBlocking}
                               onChange={(e) => updateExtraHeatingStepField(idx, 'note', e.target.value)}
@@ -3994,7 +4014,7 @@ export default function RoomDetail() {
                           {showAddTask ? (
                             <div className="mt-2 flex gap-2">
                               <Input
-                                placeholder="New checklist item..."
+                                placeholder={t('newChecklistItemPlaceholder')}
                                 value={newTaskName}
                                 onChange={(e) => setNewTaskName(e.target.value)}
                                 className="h-10 flex-1"
@@ -4083,7 +4103,7 @@ export default function RoomDetail() {
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={uploading || !canMutatePhaseMedia}
                               >
-                                {uploading ? 'Uploading...' : t('uploadPhoto')}
+                                {uploading ? t('uploading') : t('uploadPhoto')}
                               </Button>
                             ) : null}
                             {photosForPhase.length === 0 ? (
@@ -4297,7 +4317,7 @@ export default function RoomDetail() {
                         {canInteractChecklist && !editsBlocked ? (
                           <div className="flex flex-col gap-2 sm:flex-row">
                             <Input
-                              placeholder="Add a deviation…"
+                              placeholder={t('addDeviationPlaceholder')}
                               value={newDeviationText}
                               onChange={(e) => setNewDeviationText(e.target.value)}
                               className="h-9 text-xs"
@@ -4366,7 +4386,7 @@ export default function RoomDetail() {
           </div>
           <div className="flex gap-2 mt-3 pt-2 border-t border-border/40">
             <Input
-              placeholder="New area name"
+              placeholder={t('newAreaNamePlaceholder')}
               value={newAreaName}
               onChange={(e) => setNewAreaName(e.target.value)}
               className="h-9 text-sm flex-1"
@@ -4404,7 +4424,7 @@ export default function RoomDetail() {
           </DialogHeader>
           <Input
             onKeyDown={(e) => { if (e.key === "Escape") setShowBlockDialog(false); }}
-            placeholder="Reason (e.g., waiting for plumbing)"
+            placeholder={t('blockedReasonPlaceholder')}
             value={blockedReason}
             onChange={(e) => setBlockedReason(e.target.value)}
             className="h-12"
@@ -4441,7 +4461,7 @@ export default function RoomDetail() {
               className="bg-red-500 hover:bg-red-600 text-white"
               onClick={() => void handleDeleteRoom()}
             >
-              {deletingRoom ? 'Deleting...' : t('delete')}
+              {deletingRoom ? t('deleting') : t('delete')}
             </Button>
           </DialogFooter>
           </DialogForm>
@@ -4463,7 +4483,7 @@ export default function RoomDetail() {
               Site work must record who performed actions. Enter your name once on this device (saved locally), sign in with your supervisor&apos;s site worker PIN, or set your name on your account profile.
             </p>
             <Input
-              placeholder="e.g., John Smith"
+              placeholder={t('workerNameExamplePlaceholder')}
               value={checkWorkerName}
               onChange={(e) => setCheckWorkerName(e.target.value)}
               className="h-12"
@@ -4507,15 +4527,13 @@ export default function RoomDetail() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ListPlus className="h-5 w-5 text-emerald-500" />
-              Bulk Add Checklist Items
+              {t('bulkAddDialogTitle')}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Enter one item per line. All items will be added to the checklist.
-            </p>
+            <p className="text-sm text-muted-foreground">{t('bulkAddDialogHint')}</p>
             <Textarea
-              placeholder={"Cable routing\nInstall wall boxes\nHeating cable installation\nMounting equipment\nTesting\nFinal inspection"}
+              placeholder={t('bulkAddExamplesPlaceholder')}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
@@ -4530,7 +4548,9 @@ export default function RoomDetail() {
             />
             {bulkTaskText.trim() && (
               <p className="text-xs text-muted-foreground">
-                {bulkTaskText.split('\n').filter((l) => l.trim()).length} items will be added
+                {formatNb(t('toastBulkItemsAdded'), {
+                  n: bulkTaskText.split('\n').filter((l) => l.trim()).length,
+                })}
               </p>
             )}
           </div>
@@ -4540,7 +4560,11 @@ export default function RoomDetail() {
               disabled={!bulkTaskText.trim() || bulkAdding}
               className="w-full bg-emerald-500 hover:bg-emerald-600 text-white h-12"
             >
-              {bulkAdding ? 'Adding...' : `Add ${bulkTaskText.split('\n').filter((l) => l.trim()).length || 0} Items`}
+              {bulkAdding
+                ? t('bulkAdding')
+                : formatNb(t('bulkAddButtonWithCount'), {
+                    n: bulkTaskText.split('\n').filter((l) => l.trim()).length || 0,
+                  })}
             </Button>
           </DialogFooter>
           </DialogForm>
@@ -4561,7 +4585,7 @@ export default function RoomDetail() {
           </button>
           <ImageWithFallback
             src={showPhotoPreview}
-            alt="Preview"
+            alt={t('imagePreviewAlt')}
             className="max-w-full max-h-full object-contain rounded-lg"
             fallbackClassName="h-40 w-40 rounded-lg bg-white/10"
             iconClassName="h-10 w-10 text-white/70"

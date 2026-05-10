@@ -4,13 +4,7 @@ import { User, AlertTriangle, Clock, Lock, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { deriveRoomDashboardStatus, type DashboardStatusKind } from '@/lib/roomDashboardDerived';
 import { formatTimestamp } from '@/lib/timeFormat';
-
-const STATUS_LABELS: Record<DashboardStatusKind, string> = {
-  blocked: 'Blocked',
-  not_started: 'Not started',
-  in_progress: 'In progress',
-  completed: 'Completed',
-};
+import { formatNb, useI18n } from '@/lib/i18n';
 
 const CARD_SHELL: Record<DashboardStatusKind, string> = {
   blocked:
@@ -133,6 +127,13 @@ export default function RoomDashboardCard({
   trailing,
   className,
 }: RoomDashboardCardProps) {
+  const { t } = useI18n();
+  const statusLabels: Record<DashboardStatusKind, string> = {
+    blocked: t('statusCardBlocked'),
+    not_started: t('statusCardNotStarted'),
+    in_progress: t('statusCardInProgress'),
+    completed: t('statusCardCompleted'),
+  };
   const kind = deriveRoomDashboardStatus(blocked, total, completed);
   const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
   const remaining = total > 0 ? Math.max(0, total - completed) : 0;
@@ -196,7 +197,9 @@ export default function RoomDashboardCard({
                   )}
                 >
                   <Calendar className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
-                  <span>Due {dueShort}</span>
+                  <span>
+                    {t('cardDue')} {dueShort}
+                  </span>
                 </div>
               ) : null}
             </div>
@@ -205,8 +208,8 @@ export default function RoomDashboardCard({
                 {contentLocked ? (
                   <span
                     className="inline-flex items-center justify-center rounded-md bg-amber-600 text-white p-1"
-                    title="Locked — view only for workers"
-                    aria-label="Locked"
+                    title={t('ariaLockedViewOnly')}
+                    aria-label={t('ariaLockedViewOnly')}
                   >
                     <Lock className="h-4 w-4" />
                   </span>
@@ -214,8 +217,8 @@ export default function RoomDashboardCard({
                 {blocked ? (
                   <span
                     className="inline-flex items-center justify-center rounded-md bg-red-600 text-white p-1"
-                    title={blockedReason || 'Blocked'}
-                    aria-label="Blocked"
+                    title={blockedReason || t('ariaBlocked')}
+                    aria-label={t('ariaBlocked')}
                   >
                     <AlertTriangle className="h-4 w-4" />
                   </span>
@@ -248,18 +251,21 @@ export default function RoomDashboardCard({
                 STATUS_PILL[kind]
               )}
             >
-              {STATUS_LABELS[kind]}
+              {statusLabels[kind]}
             </span>
             {!blocked && remaining > 0 ? (
               <span className="text-[10px] font-medium text-slate-600 dark:text-slate-400">
-                {remaining} {remaining === 1 ? 'item' : 'items'} remaining
+                {remaining === 1
+                  ? t('oneChecklistPointLeft')
+                  : formatNb(t('nChecklistPointsLeft'), { n: remaining })}
               </span>
             ) : null}
           </div>
 
           {heatingCableStatusLabel ? (
             <div className="text-[10px] text-muted-foreground">
-              Heating cable: <span className="font-medium text-foreground/85">{heatingCableStatusLabel}</span>
+              {t('cardHeatingCable')}{' '}
+              <span className="font-medium text-foreground/85">{heatingCableStatusLabel}</span>
             </div>
           ) : null}
 
@@ -273,7 +279,9 @@ export default function RoomDashboardCard({
           {updatedLabel ? (
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <Clock className="h-3 w-3 shrink-0" />
-              <span>Updated {updatedLabel}</span>
+              <span>
+                {t('cardUpdated')} {updatedLabel}
+              </span>
             </div>
           ) : null}
         </div>

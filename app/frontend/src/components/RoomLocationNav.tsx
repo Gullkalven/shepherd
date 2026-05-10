@@ -46,7 +46,7 @@ export function RoomLocationNav({
           'min-w-0 flex-wrap items-center gap-1 text-sm text-muted-foreground',
           isWorker ? 'hidden sm:flex' : 'flex'
         )}
-        aria-label="Location"
+        aria-label={t('ariaLocation')}
       >
         <Link to="/" className={linkCls}>
           {isWorker ? t('today') : t('projects')}
@@ -63,7 +63,7 @@ export function RoomLocationNav({
           to={`/project/${projectId}/floor/${floorId}`}
           className={cn(linkCls, 'max-w-[38vw] truncate sm:max-w-[12rem]')}
         >
-          {floorName.trim() ? floorName : 'Floor'}
+          {floorName.trim() ? floorName : t('floorFallback')}
         </Link>
         <ChevronRight className="h-4 w-4 shrink-0 opacity-50" aria-hidden />
         <span
@@ -79,11 +79,11 @@ export function RoomLocationNav({
           <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5" asChild>
             <Link
               to={`/project/${projectId}/floor/${floorId}/room/${prevRoom.id}`}
-              aria-label={`Previous room, ${prevRoom.room_number}`}
+              aria-label={`${t('previousRoom')}, ${prevRoom.room_number}`}
             >
               <ChevronLeft className="h-4 w-4" aria-hidden />
-              <span className="hidden sm:inline">Previous room</span>
-              <span className="inline sm:hidden">Prev</span>
+              <span className="hidden sm:inline">{t('previousRoom')}</span>
+              <span className="inline sm:hidden">{t('previousRoomShort')}</span>
             </Link>
           </Button>
         ) : (
@@ -93,11 +93,11 @@ export function RoomLocationNav({
             className="h-8 gap-1 px-2.5"
             disabled
             title={prevUnavailableHint}
-            aria-label={prevUnavailableHint ?? 'No previous room'}
+            aria-label={prevUnavailableHint ?? t('noPreviousRoom')}
           >
             <ChevronLeft className="h-4 w-4 opacity-50" aria-hidden />
-            <span className="hidden sm:inline">Previous room</span>
-            <span className="inline sm:hidden">Prev</span>
+            <span className="hidden sm:inline">{t('previousRoom')}</span>
+            <span className="inline sm:hidden">{t('previousRoomShort')}</span>
           </Button>
         )}
         <span className="text-muted-foreground/60 hidden sm:inline" aria-hidden>
@@ -107,15 +107,15 @@ export function RoomLocationNav({
           <Button variant="outline" size="sm" className="h-8 gap-1 px-2.5" asChild>
             <Link
               to={`/project/${projectId}/floor/${floorId}/room/${nextRoom.id}`}
-              title={isWorker ? 'Move to next room' : undefined}
+              title={isWorker ? t('nextRoomWorkerHint') : undefined}
               aria-label={
                 isWorker
-                  ? `Move to next room, ${nextRoom.room_number}`
-                  : `Next room, ${nextRoom.room_number}`
+                  ? `${t('nextRoomWorkerHint')}, ${nextRoom.room_number}`
+                  : `${t('nextRoom')}, ${nextRoom.room_number}`
               }
             >
-              <span className="hidden sm:inline">Next room</span>
-              <span className="inline sm:hidden">Next</span>
+              <span className="hidden sm:inline">{t('nextRoom')}</span>
+              <span className="inline sm:hidden">{t('nextRoomShort')}</span>
               <ChevronRight className="h-4 w-4" aria-hidden />
             </Link>
           </Button>
@@ -126,10 +126,10 @@ export function RoomLocationNav({
             className="h-8 gap-1 px-2.5"
             disabled
             title={nextUnavailableHint}
-            aria-label={nextUnavailableHint ?? 'No next room'}
+            aria-label={nextUnavailableHint ?? t('noNextRoom')}
           >
-            <span className="hidden sm:inline">Next room</span>
-            <span className="inline sm:hidden">Next</span>
+            <span className="hidden sm:inline">{t('nextRoom')}</span>
+            <span className="inline sm:hidden">{t('nextRoomShort')}</span>
             <ChevronRight className="h-4 w-4 opacity-50" aria-hidden />
           </Button>
         )}

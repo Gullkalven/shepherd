@@ -54,6 +54,7 @@ import {
   phaseTimelineState,
 } from '@/lib/roomPhases';
 import { WORKER_ROOM_DOCUMENTATION_ANCHOR } from '@/lib/workerLastRoom';
+import { formatNb, useI18n, type TranslateFn } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { ActivityDisplayRow } from '@/lib/roomActivity';
 import { formatTimestamp } from '@/lib/timeFormat';
@@ -211,16 +212,16 @@ function heroPhaseChipState(st: PhaseStepStatus | undefined): HeroPhaseChipState
   return 'pending';
 }
 
-function heroPhaseStateLabel(s: HeroPhaseChipState): string {
+function heroPhaseStateLabelNb(s: HeroPhaseChipState, t: TranslateFn): string {
   switch (s) {
     case 'complete':
-      return 'Complete';
+      return t('heroComplete');
     case 'active':
-      return 'Active';
+      return t('heroActive');
     case 'blocked':
-      return 'Blocked';
+      return t('heroBlocked');
     default:
-      return 'Pending';
+      return t('heroPending');
   }
 }
 
@@ -241,6 +242,7 @@ function HeatingStagePhotoPicker(props: {
   disabled?: boolean;
   onFile: (file?: File) => void;
 }) {
+  const { t } = useI18n();
   const galleryRef = useRef<HTMLInputElement | null>(null);
   const cameraRef = useRef<HTMLInputElement | null>(null);
   const onPick = (e: ChangeEvent<HTMLInputElement>) => {
@@ -283,7 +285,7 @@ function HeatingStagePhotoPicker(props: {
           onClick={() => cameraRef.current?.click()}
         >
           <Camera className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-          <span className="max-w-full">Take photo</span>
+          <span className="max-w-full">{t('takePhoto')}</span>
         </Button>
         <Button
           type="button"
@@ -293,14 +295,14 @@ function HeatingStagePhotoPicker(props: {
           onClick={() => galleryRef.current?.click()}
         >
           <ImageIcon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-          <span className="max-w-full">Choose from gallery</span>
+          <span className="max-w-full">{t('chooseGallery')}</span>
         </Button>
       </div>
     </>
   );
 }
 
-function heatingStageCollapseSummary(stage: HeatingCableStage): string {
+function heatingStageCollapseSummary(stage: HeatingCableStage, emptyLabel: string): string {
   const parts: string[] = [];
   if (stage.resistance_ohm?.trim()) parts.push(`${stage.resistance_ohm.trim()} Ω`);
   if (stage.insulation_mohm?.trim()) parts.push(`${stage.insulation_mohm.trim()} MΩ`);
@@ -313,11 +315,12 @@ function heatingStageCollapseSummary(stage: HeatingCableStage): string {
     stage.performed_by?.trim() ||
     '';
   if (who) parts.push(who);
-  if (parts.length === 0) return 'No readings yet';
+  if (parts.length === 0) return emptyLabel;
   return parts.join(' · ');
 }
 
 export function WorkerRoomView(p: Props) {
+  const { t } = useI18n();
   const heatingStepConfirmBlockedReason = (
     stageKey: HeatingCableStageKey,
     stage: HeatingCableStage,
@@ -326,7 +329,7 @@ export function WorkerRoomView(p: Props) {
     if (!canAccessStage) return 'Fullforrige trinn før du bekrefter dette.';
     if (!stage.resistance_ohm?.trim()) return 'Fyll inn motstand før bekreftelse.';
     if (!stage.insulation_mohm?.trim()) return 'Fyll inn isolasjon før bekreftelse.';
-    if (!p.currentWorkerUserId?.trim()) return 'You must be logged in as a Site Worker to confirm this step.';
+    if (!p.currentWorkerUserId?.trim()) return t('heatingConfirmMustLogin');
     if (stageKey === 'after_cable_laid') {
       const hasPhoto = Array.isArray(stage.photos) && stage.photos.some((x) => typeof x === 'string' && x.trim());
       if (!hasPhoto) return 'Legg til minst ett bilde før bekreftelse av dette trinnet.';
@@ -408,8 +411,8 @@ export function WorkerRoomView(p: Props) {
       return HEATING_CABLE_STAGES.find((s) => s.key === focusTarget.key)?.label ?? focusTarget.key;
     }
     const step = p.heatingCableDoc.extra_steps?.[focusTarget.index];
-    return step?.label?.trim() || `Extra step ${focusTarget.index + 1}`;
-  }, [focusTarget, p.heatingCableDoc.extra_steps]);
+    return step?.label?.trim() || formatNb(t('extraStepFallback'), { n: focusTarget.index + 1 });
+  }, [focusTarget, p.heatingCableDoc.extra_steps, t]);
 
   const heatingCablePhasePrimary =
     p.showHeatingModule && isHeatingCablePhase(p.selectedPhaseKey, selectedLabel);
@@ -429,84 +432,90 @@ export function WorkerRoomView(p: Props) {
     const forcedLock = p.phaseExplicitWorkerLock === true;
     if (forcedLock && st === 'in_progress' && p.phaseTabLocked) {
       return {
-        badge: 'Handed off',
+        badge: t('badgeHandedOff'),
         badgeClass:
           'border-emerald-400/75 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-50',
-        description: 'Locked after worker signoff — review only until an admin unlocks.',
+        description: t('descHandoffLock'),
       };
     }
     if (st === 'blocked' && !p.phaseTabLocked) {
       return {
-        badge: 'Blocked',
+        badge: t('badgeBlocked'),
         badgeClass:
           'border-orange-300/80 bg-orange-50 text-orange-950 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-50',
-        description: 'Waiting on a status update — details below are read-only.',
+        description: t('descBlockedReadonly'),
       };
     }
     if (p.phaseTabLocked && (st === 'not_started' || st === 'complete' || phaseTimeline === 'upcoming')) {
       return {
-        badge: 'Locked',
+        badge: t('badgeLocked'),
         badgeClass:
           'border-amber-300/80 bg-amber-100 text-amber-950 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-100',
-        description: 'Waiting for access.',
+        description: t('descWaitingAccess'),
       };
     }
     if (p.phaseTabLocked) {
       return {
-        badge: 'Locked',
+        badge: t('badgeLocked'),
         badgeClass:
           'border-slate-300/80 bg-slate-100 text-slate-900 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100',
-        description: 'View only for this phase.',
+        description: t('descViewOnlyPhase'),
       };
     }
     if (st === 'complete' || phaseTimeline === 'done') {
       return {
-        badge: 'Completed',
+        badge: t('badgeCompleted'),
         badgeClass:
           'border-emerald-300/80 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-100',
-        description: 'Recorded for reference.',
+        description: t('descRecordedReference'),
       };
     }
     if (st === 'not_started') {
       return {
-        badge: 'Not started',
+        badge: t('badgeNotStarted'),
         badgeClass:
           'border-blue-300/70 bg-blue-50 text-blue-950 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100',
-        description: 'Current work is on another phase.',
+        description: t('descWorkOnOtherPhase'),
       };
     }
     return {
-      badge: 'In progress',
+      badge: t('badgeInProgress'),
       badgeClass:
         'border-teal-300/75 bg-teal-50 text-teal-950 dark:border-teal-800 dark:bg-teal-950/35 dark:text-teal-50',
       description: null as string | null,
     };
-  }, [p.phaseTabLocked, phaseTimeline, p.selectedPhaseStepStatus, p.phaseExplicitWorkerLock]);
+  }, [p.phaseTabLocked, phaseTimeline, p.selectedPhaseStepStatus, p.phaseExplicitWorkerLock, t]);
 
   const compactSummaryLines = useMemo(() => {
     const lines: string[] = [];
     const tasks = p.tasksForSelectedPhase;
     if (p.showChecklistSection) {
       if (tasks.length > 0) {
-        const done = tasks.filter((t) => t.is_completed).length;
-        lines.push(`Checklist ${done}/${tasks.length} marked`);
+        const done = tasks.filter((task) => task.is_completed).length;
+        lines.push(formatNb(t('compactChecklistProgress'), { done, total: tasks.length }));
       } else {
-        lines.push('No checklist items in this phase');
+        lines.push(t('noTasksThisPhase'));
       }
     }
     if (p.showHeatingModule && selectedHeatingDocProgress) {
-      lines.push(`Heating documentation ${selectedHeatingDocProgress.complete}/${selectedHeatingDocProgress.total}`);
+      lines.push(
+        formatNb(t('compactHeatingDocLine'), {
+          complete: selectedHeatingDocProgress.complete,
+          total: selectedHeatingDocProgress.total,
+        })
+      );
     }
     if (p.showPhotosSection && p.photosForPhase.length > 0) {
       const n = p.photosForPhase.length;
-      lines.push(`${n} phase photo${n === 1 ? '' : 's'}`);
+      lines.push(formatNb(n === 1 ? t('phasePhotosCount') : t('phasePhotosCountPlural'), { n }));
     }
     if (p.deviations.length > 0) {
       const n = p.deviations.length;
-      lines.push(`${n} reported issue${n === 1 ? '' : 's'}`);
+      lines.push(formatNb(n === 1 ? t('reportedIssuesCount') : t('reportedIssuesCountPlural'), { n }));
     }
     if (p.activityEntries.length > 0) {
-      lines.push(`${p.activityEntries.length} activity entr${p.activityEntries.length === 1 ? 'y' : 'ies'}`);
+      const n = p.activityEntries.length;
+      lines.push(formatNb(n === 1 ? t('activityEntriesCount') : t('activityEntriesCountPlural'), { n }));
     }
     return lines;
   }, [
@@ -518,67 +527,71 @@ export function WorkerRoomView(p: Props) {
     p.photosForPhase.length,
     p.deviations.length,
     p.activityEntries.length,
+    t,
   ]);
 
   const workerDecisionStatus = useMemo(() => {
     if (p.blockedReason) {
       return {
-        label: 'Blocked',
+        label: t('workerBlocked'),
         className:
           'border-red-400/60 bg-red-50 text-red-950 dark:border-red-900/60 dark:bg-red-950/45 dark:text-red-50',
       };
     }
     if (p.phaseExplicitWorkerLock && p.phaseTabLocked) {
       return {
-        label: 'Handed off',
+        label: t('workerHandedOff'),
         className:
           'border-emerald-500/50 bg-emerald-50 text-emerald-950 dark:border-emerald-700/55 dark:bg-emerald-950/45 dark:text-emerald-50',
       };
     }
     if (p.phaseCompleteEligible && !p.phaseReadOnly) {
       return {
-        label: 'Ready',
+        label: t('workerReady'),
         className:
           'border-emerald-400/55 bg-emerald-50 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-50',
       };
     }
     return {
-      label: 'In progress',
+      label: t('workerInProgressStatus'),
       className:
         'border-[#1E3A5F]/30 bg-[#1E3A5F]/[0.08] text-[#0f2744] dark:border-blue-800/50 dark:bg-blue-950/35 dark:text-blue-50',
     };
-  }, [p.blockedReason, p.phaseCompleteEligible, p.phaseReadOnly, p.phaseExplicitWorkerLock, p.phaseTabLocked]);
+  }, [p.blockedReason, p.phaseCompleteEligible, p.phaseReadOnly, p.phaseExplicitWorkerLock, p.phaseTabLocked, t]);
 
   const openDeviationsCount = p.deviations.length;
 
   const heroStatPrimary = useMemo(() => {
     const checklistTotal = p.showChecklistSection ? p.tasksForSelectedPhase.length : 0;
     const checklistDone = p.showChecklistSection
-      ? p.tasksForSelectedPhase.filter((t) => t.is_completed).length
+      ? p.tasksForSelectedPhase.filter((task) => task.is_completed).length
       : 0;
     const checklistIncomplete = Math.max(0, checklistTotal - checklistDone);
 
     if (checklistTotal > 0) {
       return {
-        label: 'Open work',
+        label: t('openWork'),
         value: String(checklistIncomplete),
-        sub: `${checklistDone}/${checklistTotal} done`,
+        sub: formatNb(t('doneFraction'), { done: checklistDone, total: checklistTotal }),
       };
     }
     if (p.showHeatingModule && selectedHeatingDocProgress) {
       const left = selectedHeatingDocProgress.total - selectedHeatingDocProgress.complete;
       return {
-        label: 'Open work',
+        label: t('openWork'),
         value: String(Math.max(0, left)),
-        sub: `${selectedHeatingDocProgress.complete}/${selectedHeatingDocProgress.total} documented`,
+        sub: formatNb(t('documentedFraction'), {
+          done: selectedHeatingDocProgress.complete,
+          total: selectedHeatingDocProgress.total,
+        }),
       };
     }
     return {
-      label: 'Open work',
+      label: t('openWork'),
       value: '0',
-      sub: 'Nothing queued this phase',
+      sub: t('nothingQueuedPhase'),
     };
-  }, [p.showChecklistSection, p.tasksForSelectedPhase, p.showHeatingModule, selectedHeatingDocProgress]);
+  }, [p.showChecklistSection, p.tasksForSelectedPhase, p.showHeatingModule, selectedHeatingDocProgress, t]);
 
   return (
     <div className="mx-auto w-full min-w-0 max-w-lg space-y-3 py-3 sm:space-y-4 sm:py-4 lg:max-w-xl">
@@ -612,8 +625,8 @@ export function WorkerRoomView(p: Props) {
                 >
                   <Calendar className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
                   <span>
-                    Due {p.dueLine}
-                    {p.duePast ? <span className="font-bold"> · Overdue</span> : null}
+                    {t('dueWord')} {p.dueLine}
+                    {p.duePast ? <span className="font-bold"> · {t('overdue')}</span> : null}
                   </span>
                 </span>
               ) : null}
@@ -621,9 +634,9 @@ export function WorkerRoomView(p: Props) {
           </div>
 
           <div className="rounded-xl border border-border/50 bg-background/70 px-3 py-2.5 dark:bg-background/50 sm:px-3.5 sm:py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              {heroStatPrimary.label}
-            </p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                {heroStatPrimary.label}
+              </p>
             <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-foreground sm:text-3xl">
               {heroStatPrimary.value}
             </p>
@@ -635,13 +648,13 @@ export function WorkerRoomView(p: Props) {
           {workflowKeys.length > 1 ? (
             <div className="min-w-0 space-y-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Phases
+                {t('phasesHeading')}
               </p>
               <div className="min-w-0 max-w-full">
                 <div className="flex flex-wrap gap-1.5 sm:gap-2">
                   {workflowKeys.map((key) => {
                     const st = heroPhaseChipState(p.phaseStepStatuses[key]);
-                    const stateLabel = heroPhaseStateLabel(st);
+                    const stateLabel = heroPhaseStateLabelNb(st, t);
                     const sel = key === p.selectedPhaseKey;
                     const locked = phaseTabReadOnlyForWorker(
                       p.roomPhasePointer,
@@ -709,7 +722,7 @@ export function WorkerRoomView(p: Props) {
                     : 'text-amber-950 dark:text-amber-200'
                 )}
               >
-                Blockers
+                {t('blockersHeading')}
               </p>
               {p.blockedReason ? (
                 <div
@@ -733,7 +746,10 @@ export function WorkerRoomView(p: Props) {
                       : 'text-amber-950 dark:text-amber-100'
                   )}
                 >
-                  {openDeviationsCount} open issue{openDeviationsCount === 1 ? '' : 's'}
+                  {formatNb(
+                    openDeviationsCount === 1 ? t('openIssuesCount') : t('openIssuesCountPlural'),
+                    { n: openDeviationsCount }
+                  )}
                 </p>
               ) : null}
             </div>
@@ -745,7 +761,7 @@ export function WorkerRoomView(p: Props) {
       {p.showAreasNav && p.areasList.length > 0 ? (
         <div className="flex flex-wrap gap-1.5 rounded-lg border border-border/20 bg-muted/[0.03] px-2 py-2">
           <span className="w-full text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/75 px-0.5">
-            Area
+            {t('areaHeading')}
           </span>
           <div className="flex flex-wrap gap-1.5">
             {p.areasList.map((a) => (
@@ -775,10 +791,9 @@ export function WorkerRoomView(p: Props) {
               aria-hidden
             />
             <div className="min-w-0 space-y-1">
-              <p className="text-sm font-semibold text-emerald-950 dark:text-emerald-50">Phase handed off</p>
+              <p className="text-sm font-semibold text-emerald-950 dark:text-emerald-50">{t('phaseHandedOffTitle')}</p>
               <p className="text-sm leading-snug text-emerald-900/88 dark:text-emerald-100/85">
-                Locked after worker signoff. Checklist, documentation, photos, and notes for this phase are read-only
-                until an admin unlocks editing.
+                {t('phaseHandedOffBody')}
               </p>
             </div>
           </div>
@@ -791,11 +806,11 @@ export function WorkerRoomView(p: Props) {
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0 space-y-1">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  Another phase
+                  {t('anotherPhase')}
                 </p>
                 <p className="text-lg font-semibold tracking-tight leading-snug">{selectedLabel}</p>
                 <p className="text-sm text-muted-foreground">
-                  In progress:{' '}
+                  {t('inProgressColon')}{' '}
                   <span className="font-medium text-foreground">
                     {inProgressKeys.map((k) => phaseLabel(k, p.phaseWorkflow)).join(', ')}
                   </span>
@@ -836,7 +851,7 @@ export function WorkerRoomView(p: Props) {
                 className="h-11 min-h-11 w-full bg-[#1E3A5F] hover:bg-[#1E3A5F]/90 dark:bg-blue-700 dark:hover:bg-blue-700/90 sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1"
                 onClick={() => p.onPhaseSelect(p.boardPhaseKey)}
               >
-                Move to current phase
+                {t('moveToCurrentPhase')}
               </Button>
               <Button
                 type="button"
@@ -844,7 +859,7 @@ export function WorkerRoomView(p: Props) {
                 className="h-11 min-h-11 w-full border-border/60 sm:h-10 sm:min-h-10 sm:w-auto sm:flex-1"
                 onClick={() => setNonBoardDetailsExpanded((v) => !v)}
               >
-                {nonBoardDetailsExpanded ? 'Hide details' : 'View details'}
+                {nonBoardDetailsExpanded ? t('hideDetails') : t('viewDetails')}
               </Button>
             </div>
           </div>
@@ -867,14 +882,17 @@ export function WorkerRoomView(p: Props) {
             </h2>
             <span className="text-[11px] tabular-nums font-medium text-muted-foreground/85">
               {p.showHeatingModule && p.tasksForSelectedPhase.length === 0 && selectedHeatingDocProgress
-                ? `Documentation ${selectedHeatingDocProgress.complete}/${selectedHeatingDocProgress.total}`
-                : `${p.tasksForSelectedPhase.filter((t) => t.is_completed).length}/${p.tasksForSelectedPhase.length}`}
+                ? formatNb(t('compactHeatingDocLine'), {
+                    complete: selectedHeatingDocProgress.complete,
+                    total: selectedHeatingDocProgress.total,
+                  })
+                : `${p.tasksForSelectedPhase.filter((task) => task.is_completed).length}/${p.tasksForSelectedPhase.length}`}
             </span>
           </div>
           {p.legacySavedWorkerName ? (
             <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-border/50 bg-muted/20 px-3 py-3 text-sm sm:py-2 sm:text-xs">
               <span className="text-muted-foreground truncate">
-                Using saved name <strong className="text-foreground">{p.legacySavedWorkerName}</strong>
+                {t('usingSavedName')} <strong className="text-foreground">{p.legacySavedWorkerName}</strong>
               </span>
               {p.onClearSavedWorkerName ? (
                 <button
@@ -882,7 +900,7 @@ export function WorkerRoomView(p: Props) {
                   className="text-muted-foreground hover:text-foreground underline text-sm shrink-0 min-h-10 min-w-[3rem] px-2 sm:min-h-0 sm:text-xs"
                   onClick={p.onClearSavedWorkerName}
                 >
-                  Clear
+                  {t('clear')}
                 </button>
               ) : null}
             </div>
@@ -890,7 +908,7 @@ export function WorkerRoomView(p: Props) {
 
           <div className="space-y-2.5">
             {p.tasksForSelectedPhase.length === 0 ? (
-              <Card className="p-6 text-center text-muted-foreground text-sm">No tasks for this phase.</Card>
+              <Card className="p-6 text-center text-muted-foreground text-sm">{t('noTasksThisPhase')}</Card>
             ) : (
               p.tasksForSelectedPhase.map((task) => {
                 return (
@@ -941,7 +959,7 @@ export function WorkerRoomView(p: Props) {
                             <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                               <User className="h-3 w-3 shrink-0" aria-hidden />
                               <span className="font-medium text-emerald-800/90 dark:text-emerald-300/90">
-                                Completed
+                                {t('taskCompleted')}
                               </span>
                               <span className="opacity-60">·</span>
                               <span>{task.checked_by}</span>
@@ -956,7 +974,7 @@ export function WorkerRoomView(p: Props) {
                           ) : !task.is_completed && task.checked_by ? (
                             <p className="flex items-center gap-1.5 text-[11px] text-amber-900/85 dark:text-amber-100/85">
                               <User className="h-3 w-3 shrink-0" aria-hidden />
-                              <span>Unchecked by</span>
+                              <span>{t('uncheckedByLabel')}</span>
                               <span className="font-medium">{task.checked_by}</span>
                               {task.checked_at ? (
                                 <>
@@ -977,10 +995,8 @@ export function WorkerRoomView(p: Props) {
               <Collapsible defaultOpen={false} className="rounded-xl border border-dashed border-border/55 bg-muted/10">
                 <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:px-4 sm:py-3">
                   <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="text-sm font-medium text-foreground">Other phase photos</span>
-                    <span className="text-xs text-muted-foreground leading-snug">
-                      Optional documentation for this workflow step — not used for heating cable stage records.
-                    </span>
+                    <span className="text-sm font-medium text-foreground">{t('otherPhasePhotos')}</span>
+                    <span className="text-xs text-muted-foreground leading-snug">{t('otherPhasePhotosHint')}</span>
                   </span>
                   <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
                 </CollapsibleTrigger>
@@ -994,7 +1010,7 @@ export function WorkerRoomView(p: Props) {
                       onClick={() => p.onGeneralPhotoClick()}
                     >
                       <Camera className="h-4 w-4 shrink-0" />
-                      {p.uploadingPhoto ? 'Uploading…' : 'Add photo'}
+                      {p.uploadingPhoto ? t('uploading') : t('addPhoto')}
                     </Button>
                   </div>
                 </CollapsibleContent>
@@ -1009,14 +1025,14 @@ export function WorkerRoomView(p: Props) {
         <Card id="worker-heating-block" className="scroll-mt-20 overflow-hidden border-border/60 shadow-sm">
           <div className="border-b border-border/50 bg-muted/30 px-4 py-3 space-y-1.5">
             <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-              <h2 className="text-base font-semibold tracking-tight sm:text-lg">Heating cable</h2>
+              <h2 className="text-base font-semibold tracking-tight sm:text-lg">{t('heatingCableHeading')}</h2>
               {(() => {
                 const passiveComplete =
-                  p.heatingDerived.status === 'complete' ? 'Documentation complete' : 'All changes saved';
+                  p.heatingDerived.status === 'complete' ? t('documentationComplete') : t('allChangesSaved');
                 let statusText: string | null = null;
-                if (heatingCableSaveBusy) statusText = 'Saving';
-                else if (p.heatingCableSaveStatus === 'error') statusText = 'Failed';
-                else if (p.heatingCableSaveStatus === 'saved') statusText = 'Saved';
+                if (heatingCableSaveBusy) statusText = t('savingShort');
+                else if (p.heatingCableSaveStatus === 'error') statusText = t('saveFailedShort');
+                else if (p.heatingCableSaveStatus === 'saved') statusText = t('savedShort');
                 else if (
                   !p.heatingCableDirty ||
                   !p.canEditHeatingCable ||
@@ -1133,7 +1149,7 @@ export function WorkerRoomView(p: Props) {
                         </div>
                         {!open ? (
                           <p className="text-xs text-muted-foreground leading-snug pl-7 sm:pl-0 line-clamp-2">
-                            {heatingStageCollapseSummary(row)}
+                            {heatingStageCollapseSummary(row, t('noReadingsYet'))}
                           </p>
                         ) : null}
                       </div>
@@ -1192,7 +1208,7 @@ export function WorkerRoomView(p: Props) {
                       <div className="space-y-1">
                         <span className="text-[11px] text-muted-foreground">Note (optional)</span>
                         <Textarea
-                          placeholder="Note (optional)"
+                          placeholder={t('noteOptionalPlaceholder')}
                           value={row.note || ''}
                           className="text-base sm:text-sm min-h-[56px]"
                           disabled={stageReadOnly}
@@ -1202,10 +1218,10 @@ export function WorkerRoomView(p: Props) {
                       <div className="space-y-2">
                         <div className="space-y-1">
                           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Documentation photo for this stage
+                            {t('documentationPhotoForStage')}
                           </p>
                           <p className="text-[11px] text-muted-foreground leading-snug">
-                            Saved photos appear in the heating cable gallery below.
+                            {t('heatingGalleryHint')}
                           </p>
                         </div>
                         <HeatingStagePhotoPicker
@@ -1220,14 +1236,14 @@ export function WorkerRoomView(p: Props) {
                       {isLocked ? (
                         <div className="rounded-md border border-emerald-300/60 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/35 dark:text-emerald-100">
                           <p>
-                            <span className="text-muted-foreground">Completed by: </span>
-                            {row.completed_by_name?.trim() || row.completed_by?.trim() || 'Unknown'}
+                            <span className="text-muted-foreground">{t('completedByLabel')} </span>
+                            {row.completed_by_name?.trim() || row.completed_by?.trim() || t('unknownPerformer')}
                           </p>
                           <p className="tabular-nums">
-                            <span className="text-muted-foreground">Time: </span>
+                            <span className="text-muted-foreground">{t('timeLabelShort')} </span>
                             {row.completed_at?.trim()
                               ? formatHeatingCableDateTimeReadable(row.completed_at)
-                              : 'unknown time'}
+                              : t('unknownTimeShort')}
                           </p>
                         </div>
                       ) : !canAccessStage ? (
@@ -1316,7 +1332,7 @@ export function WorkerRoomView(p: Props) {
                         </div>
                         {!open ? (
                           <p className="text-xs text-muted-foreground leading-snug pl-7 sm:pl-0 line-clamp-2">
-                            {heatingStageCollapseSummary(step)}
+                            {heatingStageCollapseSummary(step, t('noReadingsYet'))}
                           </p>
                         ) : null}
                       </div>
@@ -1375,7 +1391,7 @@ export function WorkerRoomView(p: Props) {
                       <div className="space-y-1">
                         <span className="text-[11px] text-muted-foreground">Note (optional)</span>
                         <Textarea
-                          placeholder="Note (optional)"
+                          placeholder={t('noteOptionalPlaceholder')}
                           value={step.note || ''}
                           className="text-base sm:text-sm min-h-[56px]"
                           disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
@@ -1385,10 +1401,10 @@ export function WorkerRoomView(p: Props) {
                       <div className="space-y-2">
                         <div className="space-y-1">
                           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            Documentation photo for this stage
+                            {t('documentationPhotoForStage')}
                           </p>
                           <p className="text-[11px] text-muted-foreground leading-snug">
-                            Saved photos appear in the heating cable gallery below.
+                            {t('heatingGalleryHint')}
                           </p>
                         </div>
                         <HeatingStagePhotoPicker

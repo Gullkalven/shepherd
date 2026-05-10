@@ -14,6 +14,7 @@ import { DEV_ROLE_CHANGED_EVENT } from '@/lib/devRole';
 import { useWorkerRoomEnrichment, type EnrichedRoom, type TaskRow } from '@/hooks/useWorkerRoomEnrichment';
 import { phaseLabel } from '@/lib/roomPhases';
 import { persistStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
+import { formatNb, useI18n, type TranslateFn } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -55,13 +56,13 @@ function isLocalDateToday(iso: string | null | undefined): boolean {
   );
 }
 
-function taskSubtitle(roomId: number, tasks: TaskRow[]): string {
-  const list = tasks.filter((t) => Number(t.room_id) === roomId);
+function taskSubtitle(roomId: number, tasks: TaskRow[], t: TranslateFn): string {
+  const list = tasks.filter((x) => Number(x.room_id) === roomId);
   const total = list.length;
-  if (total === 0) return 'Open room';
-  const done = list.filter((t) => t.is_completed).length;
-  if (done >= total) return `${done}/${total} marked`;
-  return `${done}/${total} open`;
+  if (total === 0) return t('openRoom');
+  const done = list.filter((x) => x.is_completed).length;
+  if (done >= total) return formatNb(t('taskMarkedProgress'), { done, total });
+  return formatNb(t('taskOpenProgress'), { done, total });
 }
 
 /** Local-calendar days between `iso` (activity time) and today; `0` = same calendar day. */
@@ -74,72 +75,72 @@ function calendarDaysAgo(iso: string | null | undefined): number | null {
   return Math.round((startOfDay(new Date()) - startOfDay(d)) / (24 * 60 * 60 * 1000));
 }
 
-function roomReasonLabel(room: EnrichedRoom): string {
+function roomReasonLabel(room: EnrichedRoom, t: TranslateFn): string {
   switch (room.status) {
     case 'blocked':
-      return 'Blocked';
+      return t('statusBlocked');
     case 'ready_for_inspection':
-      return 'Needs handoff';
+      return t('statusNeedsHandoff');
     case 'not_started':
-      return 'Ready to start';
+      return t('statusReadyToStart');
     case 'completed':
-      return 'Completed';
+      return t('statusCompleted');
     case 'in_progress': {
       const days = calendarDaysAgo(room.updated_at);
-      if (days === 0) return 'Last worked on today';
-      if (days === 1) return 'Last worked on yesterday';
-      if (days != null && days > 1 && days <= 30) return `Last worked on ${days} days ago`;
-      return 'In progress';
+      if (days === 0) return t('lastWorkedToday');
+      if (days === 1) return t('lastWorkedYesterday');
+      if (days != null && days > 1 && days <= 30) return formatNb(t('lastWorkedDaysAgo'), { n: days });
+      return t('statusInProgress');
     }
     default:
-      return 'Ready for work';
+      return t('statusReadyForWork');
   }
 }
 
 /** Short lines under room cards explaining why this room is highlighted (trust / clarity). */
-function primaryContinueTrustLines(room: EnrichedRoom): string[] {
+function primaryContinueTrustLines(room: EnrichedRoom, t: TranslateFn): string[] {
   const lines: string[] = [];
   const days = calendarDaysAgo(room.updated_at);
-  if (days === 0) lines.push('Worked here today');
-  else if (days === 1) lines.push('Worked here yesterday');
-  else if (days != null && days >= 2 && days <= 30) lines.push(`Last activity ${days} days ago`);
-  else lines.push('Your last opened room');
+  if (days === 0) lines.push(t('workedHereToday'));
+  else if (days === 1) lines.push(t('workedHereYesterday'));
+  else if (days != null && days >= 2 && days <= 30) lines.push(formatNb(t('lastActivityDaysAgo'), { n: days }));
+  else lines.push(t('yourLastOpenedRoom'));
 
   if (room.status === 'ready_for_inspection') {
-    lines.push('Needs handoff');
+    lines.push(t('needsHandoffShort'));
   } else if (lines.length < 2 && room.status === 'in_progress') {
-    lines.push('Same room as before');
+    lines.push(t('sameRoomAsBefore'));
   }
   return lines.slice(0, 2);
 }
 
-function primaryNextTrustLines(room: EnrichedRoom): string[] {
+function primaryNextTrustLines(room: EnrichedRoom, t: TranslateFn): string[] {
   switch (room.status) {
     case 'not_started':
-      return ['Ready to start'];
+      return [t('statusReadyToStart')];
     case 'ready_for_inspection':
-      return ['Needs handoff'];
+      return [t('statusNeedsHandoff')];
     case 'in_progress': {
       const days = calendarDaysAgo(room.updated_at);
-      if (days === 0) return ['Worked here today'];
-      if (days === 1) return ['Worked here yesterday'];
-      return ['In progress'];
+      if (days === 0) return [t('workedHereToday')];
+      if (days === 1) return [t('workedHereYesterday')];
+      return [t('statusInProgress')];
     }
     default:
-      return ['Ready for work'];
+      return [t('statusReadyForWork')];
   }
 }
 
-function alternateRoomTrustLines(room: EnrichedRoom): string[] {
+function alternateRoomTrustLines(room: EnrichedRoom, t: TranslateFn): string[] {
   switch (room.status) {
     case 'not_started':
-      return ['Ready to start'];
+      return [t('statusReadyToStart')];
     case 'ready_for_inspection':
-      return ['Needs handoff'];
+      return [t('statusNeedsHandoff')];
     case 'in_progress':
-      return ['In progress'];
+      return [t('statusInProgress')];
     default:
-      return [roomReasonLabel(room)];
+      return [roomReasonLabel(room, t)];
   }
 }
 
@@ -163,10 +164,10 @@ function sortBrowseRooms(a: EnrichedRoom, b: EnrichedRoom): number {
   return String(a.room_number).localeCompare(String(b.room_number), undefined, { numeric: true });
 }
 
-function compactRoomMeta(room: EnrichedRoom): string {
+function compactRoomMeta(room: EnrichedRoom, t: TranslateFn): string {
   const phase = room.phase ? phaseLabel(room.phase) : null;
   if (phase) return phase;
-  return roomReasonLabel(room);
+  return roomReasonLabel(room, t);
 }
 
 export default function WorkerTodayView({
@@ -179,6 +180,7 @@ export default function WorkerTodayView({
   const navigate = useNavigate();
   const location = useLocation();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const { t } = useI18n();
   const { displayName, sessionIsPinWorker } = usePermissions();
   const [lastLocal, setLastLocal] = useState<WorkerLastRoom | null>(() => readWorkerLastRoom());
   const [roomSearch, setRoomSearch] = useState('');
@@ -252,9 +254,9 @@ export default function WorkerTodayView({
     }
     return {
       ...live,
-      label: live.room_number || `Room ${live.id}`,
+      label: live.room_number || `${t('roomPrefix')} ${live.id}`,
     };
-  }, [lastLocal, roomById]);
+  }, [lastLocal, roomById, t]);
 
   useEffect(() => {
     if (!lastLocal || roomsFlat.length === 0) return;
@@ -302,7 +304,7 @@ export default function WorkerTodayView({
 
   const loginLabel =
     resolveWorkerActorLabel(displayName) ||
-    (sessionIsPinWorker ? 'Sign in (PIN required)' : 'Set your name on a checklist item');
+    (sessionIsPinWorker ? t('signInPinRequired') : t('setNameOnChecklistHint'));
 
   const primaryRoom = resumeRoom ?? fallbackReady;
   const primaryRoomLabel =
@@ -310,8 +312,8 @@ export default function WorkerTodayView({
 
   const primaryTrustLines = useMemo(() => {
     if (!primaryRoom) return [];
-    return resumeRoom ? primaryContinueTrustLines(primaryRoom) : primaryNextTrustLines(primaryRoom);
-  }, [primaryRoom, resumeRoom]);
+    return resumeRoom ? primaryContinueTrustLines(primaryRoom, t) : primaryNextTrustLines(primaryRoom, t);
+  }, [primaryRoom, resumeRoom, t]);
 
   const searchTrim = roomSearch.trim().toLowerCase();
   const browseRooms = useMemo(() => {
@@ -353,10 +355,10 @@ export default function WorkerTodayView({
 
   const primaryActionLabel = (() => {
     if (!primaryRoom) return '';
-    if (resumeRoom) return 'Continue';
-    if (primaryRoom.status === 'not_started') return 'Start';
-    if (primaryRoom.status === 'ready_for_inspection') return 'Continue handoff';
-    return 'Open room';
+    if (resumeRoom) return t('continue');
+    if (primaryRoom.status === 'not_started') return t('start');
+    if (primaryRoom.status === 'ready_for_inspection') return t('continueHandoff');
+    return t('openRoom');
   })();
 
   return (
@@ -364,57 +366,55 @@ export default function WorkerTodayView({
       <div className="mx-auto w-full min-w-0 max-w-lg space-y-4 pb-4 pt-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:max-w-none lg:px-6 xl:px-8">
         <header className="space-y-2">
           <p className="text-base font-semibold text-slate-900 dark:text-foreground">
-            Logged in as {loginLabel}
+            {t('loggedInAs')} {loginLabel}
           </p>
           {actionableRoomCount > 0 ? (
             <p className="text-sm text-muted-foreground">
-              {actionableRoomCount} room{actionableRoomCount === 1 ? '' : 's'} with open work
+              {actionableRoomCount} {t('roomsWithOpenWork')}
             </p>
           ) : null}
         </header>
 
         {showSitesFailure ? (
           <Card className="border-amber-200/80 bg-amber-50/40 p-6 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
-            <p className="text-sm font-medium text-slate-900 dark:text-foreground">Couldn&apos;t load projects</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Check your connection and try again. Your session is still active.
-            </p>
+            <p className="text-sm font-medium text-slate-900 dark:text-foreground">{t('loadProjectsFailedTitle')}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t('loadProjectsFailedHint')}</p>
             <Button
               type="button"
               className="mt-4 bg-[#1E3A5F] hover:bg-[#2a4f7a] dark:bg-blue-700 dark:hover:bg-blue-600"
               onClick={() => onRefreshSites()}
             >
-              Retry
+              {t('retry')}
             </Button>
           </Card>
         ) : sites.length === 0 ? (
           <Card className="p-8 text-center">
             <Layers className="mx-auto mb-3 h-12 w-12 text-slate-300 dark:text-slate-600" />
-            <p className="text-muted-foreground">No projects yet</p>
+            <p className="text-muted-foreground">{t('noProjectsYet')}</p>
           </Card>
         ) : (
           <div className="space-y-5">
             {sitesLoadFailed && sites.length > 0 && (
               <Card className="border-dashed border-amber-200/70 bg-amber-50/30 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100/90">
-                Project list may be out of date (last refresh failed).{' '}
+                {t('projectListStale')}{' '}
                 <button
                   type="button"
                   className="font-semibold underline underline-offset-2"
                   onClick={() => onRefreshSites()}
                 >
-                  Refresh
+                  {t('refresh')}
                 </button>
               </Card>
             )}
 
             {primaryProject && sites.length > 1 && (
               <div className="rounded-lg border border-border/60 bg-muted/25 px-3 py-2 text-sm dark:bg-muted/15">
-                <span className="text-muted-foreground">Site: </span>
+                <span className="text-muted-foreground">{t('siteLabel')} </span>
                 <span className="font-semibold text-slate-900 dark:text-foreground">{primaryProject.name}</span>
                 <details className="group relative mt-2">
                   <summary className="cursor-pointer list-none text-xs font-semibold text-[#1E3A5F] underline-offset-2 hover:underline dark:text-blue-400 [&::-webkit-details-marker]:hidden">
                     <span className="inline-flex items-center gap-0.5">
-                      Other sites
+                      {t('otherSites')}
                       <ChevronRight className="h-3.5 w-3.5 transition group-open:rotate-90" aria-hidden />
                     </span>
                   </summary>
@@ -434,7 +434,7 @@ export default function WorkerTodayView({
                         <span className="truncate">{p.name}</span>
                         {p.id === primaryProject.id ? (
                           <span className="shrink-0 text-[10px] font-medium uppercase text-muted-foreground">
-                            Current
+                            {t('currentSite')}
                           </span>
                         ) : (
                           <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -448,13 +448,13 @@ export default function WorkerTodayView({
 
             <section className="space-y-3" aria-labelledby="continue-work-heading">
               <h2 id="continue-work-heading" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Continue work
+                {t('continueWork')}
               </h2>
-              {enrichmentLoading && <p className="text-xs text-muted-foreground">Loading rooms…</p>}
+              {enrichmentLoading && <p className="text-xs text-muted-foreground">{t('loadingRooms')}</p>}
 
               {taskSummaryUnavailable && (
                 <Card className="border-dashed border-amber-200/70 bg-amber-50/30 p-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-100/90">
-                  Checklist progress couldn&apos;t be loaded. You can still open rooms below.
+                  {t('checklistProgressUnavailable')}
                 </Card>
               )}
 
@@ -467,9 +467,9 @@ export default function WorkerTodayView({
                 >
                   <div className="min-w-0 flex-1 space-y-1">
                     <span className="block text-lg font-bold leading-tight text-white">
-                      Room {primaryRoomLabel}
+                      {t('roomPrefix')} {primaryRoomLabel}
                     </span>
-                    <span className="block text-sm font-medium text-white/90">{compactRoomMeta(primaryRoom)}</span>
+                    <span className="block text-sm font-medium text-white/90">{compactRoomMeta(primaryRoom, t)}</span>
                     {primaryTrustLines.length > 0 && (
                       <div className="space-y-0.5 pt-0.5">
                         {primaryTrustLines.map((line, i) => (
@@ -480,7 +480,7 @@ export default function WorkerTodayView({
                       </div>
                     )}
                     <span className="block border-t border-white/15 pt-1.5 text-sm leading-snug text-white/75 line-clamp-2">
-                      {taskSubtitle(primaryRoom.id, tasks)}
+                      {taskSubtitle(primaryRoom.id, tasks, t)}
                     </span>
                   </div>
                   <div className="flex shrink-0 flex-col items-end justify-center gap-1 self-center">
@@ -498,12 +498,16 @@ export default function WorkerTodayView({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">In progress</p>
-                      <p className="text-base font-semibold text-slate-900 dark:text-foreground">Room {r.room_number}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {t('inProgressLabel')}
+                      </p>
+                      <p className="text-base font-semibold text-slate-900 dark:text-foreground">
+                        {t('roomPrefix')} {r.room_number}
+                      </p>
                       <p className="text-sm text-muted-foreground">{r.projectName}</p>
                     </div>
                     <span className="shrink-0 rounded-lg bg-[#1E3A5F] px-3 py-1.5 text-sm font-bold text-white dark:bg-blue-700">
-                      Continue
+                      {t('continue')}
                     </span>
                   </div>
                 </Card>
@@ -511,9 +515,7 @@ export default function WorkerTodayView({
 
               {!primaryRoom && primaryProject && (
                 <Card className="border-dashed p-4">
-                  <p className="text-sm text-muted-foreground">
-                    No rooms are ready to open yet. Pick a room below or open the site list.
-                  </p>
+                  <p className="text-sm text-muted-foreground">{t('noRoomsReadyYet')}</p>
                   <Button
                     type="button"
                     variant="outline"
@@ -523,7 +525,7 @@ export default function WorkerTodayView({
                       navigate(`/project/${primaryProject.id}`);
                     }}
                   >
-                    Open site
+                    {t('openSite')}
                   </Button>
                 </Card>
               )}
@@ -536,13 +538,13 @@ export default function WorkerTodayView({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        Another ready room
+                        {t('anotherReadyRoom')}
                       </p>
                       <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
-                        Room {alternateReady.room_number}
+                        {t('roomPrefix')} {alternateReady.room_number}
                       </p>
                       <div className="space-y-0.5 pt-0.5">
-                        {alternateRoomTrustLines(alternateReady).map((line, i) => (
+                        {alternateRoomTrustLines(alternateReady, t).map((line, i) => (
                           <p key={`${i}-${line}`} className="text-sm leading-snug text-muted-foreground">
                             {line}
                           </p>
@@ -565,12 +567,14 @@ export default function WorkerTodayView({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
                       <p className="text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">
-                        Blocked
+                        {t('blockedLabel')}
                       </p>
                       <p className="text-lg font-semibold text-slate-900 dark:text-foreground">
-                        {blockedCount} blocked room{blockedCount === 1 ? '' : 's'}
+                        {formatNb(blockedCount === 1 ? t('blockedRoomSingular') : t('blockedRoomPlural'), {
+                          n: blockedCount,
+                        })}
                       </p>
-                      <p className="text-sm text-red-700/90 dark:text-red-300/90">Open to see why</p>
+                      <p className="text-sm text-red-700/90 dark:text-red-300/90">{t('openToSeeWhy')}</p>
                     </div>
                     <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
                   </div>
@@ -579,7 +583,7 @@ export default function WorkerTodayView({
 
               <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border/70 bg-white/50 px-3 py-2.5 dark:bg-background/50">
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Finished today
+                  {t('finishedToday')}
                 </span>
                 <span className="text-2xl font-bold tabular-nums leading-none text-slate-900 dark:text-foreground">
                   {completedTodayCount}
@@ -589,10 +593,10 @@ export default function WorkerTodayView({
 
             <section className="space-y-2" aria-labelledby="my-assigned-phases-heading">
               <h2 id="my-assigned-phases-heading" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                My assigned phases
+                {t('myAssignedPhases')}
               </h2>
               {myTasks.length === 0 ? (
-                <Card className="p-3 text-sm text-muted-foreground">No assigned phases</Card>
+                <Card className="p-3 text-sm text-muted-foreground">{t('noAssignedPhases')}</Card>
               ) : (
                 <ul className="space-y-2">
                   {myTasks.map((task) => (
@@ -611,9 +615,11 @@ export default function WorkerTodayView({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="text-base font-semibold text-slate-900 dark:text-foreground">
-                              Room {task.room_number ?? task.room_id}
+                              {t('roomPrefix')} {task.room_number ?? task.room_id}
                             </p>
-                            <p className="text-sm text-muted-foreground">Phase: {task.phase_label || phaseLabel(task.phase_key)}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {t('phaseShort')} {task.phase_label || phaseLabel(task.phase_key)}
+                            </p>
                           </div>
                           <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
                         </div>
@@ -630,16 +636,16 @@ export default function WorkerTodayView({
               aria-labelledby="room-search-heading"
             >
               <h2 id="room-search-heading" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Find a room
+                {t('findRoomSection')}
               </h2>
               <label className="sr-only" htmlFor="worker-today-room-search">
-                Search by room number
+                {t('searchRoomAria')}
               </label>
               <Input
                 ref={searchInputRef}
                 id="worker-today-room-search"
                 type="search"
-                placeholder="Room number or site"
+                placeholder={t('roomSearchPlaceholder')}
                 value={roomSearch}
                 onChange={(e) => setRoomSearch(e.target.value)}
                 className="h-12 text-base"
@@ -649,7 +655,7 @@ export default function WorkerTodayView({
 
             <section className="space-y-2" aria-labelledby="all-rooms-heading">
               <h2 id="all-rooms-heading" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                All rooms
+                {t('allRooms')}
               </h2>
               <ul className="space-y-2">
                 {browseRooms.map((r) => (
@@ -661,11 +667,11 @@ export default function WorkerTodayView({
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-base font-semibold text-slate-900 dark:text-foreground">
-                            Room {r.room_number}
+                            {t('roomPrefix')} {r.room_number}
                           </p>
                           <p className="text-sm text-muted-foreground">{r.projectName}</p>
                           <p className="text-sm text-muted-foreground">
-                            {compactRoomMeta(r)} · {taskSubtitle(r.id, tasks)}
+                            {compactRoomMeta(r, t)} · {taskSubtitle(r.id, tasks, t)}
                           </p>
                         </div>
                         <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
@@ -675,7 +681,7 @@ export default function WorkerTodayView({
                 ))}
               </ul>
               {browseRooms.length === 0 && !enrichmentLoading && (
-                <p className="text-center text-sm text-muted-foreground">No matching rooms</p>
+                <p className="text-center text-sm text-muted-foreground">{t('noMatchingRooms')}</p>
               )}
             </section>
           </div>

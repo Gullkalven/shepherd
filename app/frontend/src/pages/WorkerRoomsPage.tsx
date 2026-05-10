@@ -22,6 +22,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ChevronRight, Layers } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
+import type { TranslateFn } from '@/lib/i18n';
 
 interface Project {
   id: number;
@@ -30,13 +32,17 @@ interface Project {
 
 const ACTIONABLE = new Set(['not_started', 'in_progress', 'ready_for_inspection']);
 
-function progressLine(room: EnrichedRoom, taskDone: number, taskTotal: number): string {
-  if (room.status === 'ready_for_inspection') return 'Needs handoff';
-  if (room.status === 'blocked') return 'Blocked';
-  if (room.status === 'completed') return 'Completed';
+function progressLine(room: EnrichedRoom, taskDone: number, taskTotal: number, t: TranslateFn): string {
+  if (room.status === 'ready_for_inspection') return t('statusNeedsHandoff');
+  if (room.status === 'blocked') return t('statusBlocked');
+  if (room.status === 'completed') return t('statusCompleted');
   const phase = room.phase ? phaseLabel(room.phase) : null;
   const tasks =
-    taskTotal > 0 ? `${taskDone}/${taskTotal} checklist` : phase ? `Stage: ${phase}` : 'Open room';
+    taskTotal > 0
+      ? `${taskDone}/${taskTotal} ${t('checklist')}`
+      : phase
+        ? `${t('phaseShort')} ${phase}`
+        : t('openRoom');
   return tasks;
 }
 
@@ -59,6 +65,7 @@ function sortRoomsWorkerPriority(a: EnrichedRoom, b: EnrichedRoom): number {
 }
 
 export default function WorkerRoomsPage() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { displayName, isWorker, loading: permLoading, sessionIsPinWorker } = usePermissions();
   const { sessionActive } = useDevPresentationSession();
@@ -188,39 +195,41 @@ export default function WorkerRoomsPage() {
     );
   }
 
-  const greeting = resolveWorkerActorLabel(displayName) || 'Worker';
+  const greeting = resolveWorkerActorLabel(displayName) || t('loginFallbackWorker');
 
   return (
     <div className="min-h-dvh bg-slate-50 pb-28 dark:bg-background lg:pb-10">
       <div className="mx-auto w-full max-w-lg space-y-4 p-4 lg:max-w-none lg:px-6 xl:px-8">
         <header className="space-y-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Rooms</p>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-foreground">All rooms</h1>
-          <p className="text-sm text-muted-foreground">Logged in as {greeting}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('workerRoomsPageTitle')}</p>
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-foreground">{t('allRooms')}</h1>
+          <p className="text-sm text-muted-foreground">
+            {t('loggedInAs')} {greeting}
+          </p>
         </header>
 
         {projectsLoadFailed && projects.length === 0 ? (
           <Card className="border-amber-200/80 bg-amber-50/40 p-6 text-center dark:border-amber-900/40 dark:bg-amber-950/20">
-            <p className="text-sm font-medium text-slate-900 dark:text-foreground">Couldn&apos;t load sites</p>
+            <p className="text-sm font-medium text-slate-900 dark:text-foreground">{t('loadSitesFailedTitle')}</p>
             <Button type="button" className="mt-4" onClick={() => void refetchProjects()}>
-              Retry
+              {t('retry')}
             </Button>
           </Card>
         ) : projects.length === 0 ? (
           <Card className="p-8 text-center">
             <Layers className="mx-auto mb-3 h-12 w-12 text-slate-300 dark:text-slate-600" />
-            <p className="text-muted-foreground">No sites yet</p>
+            <p className="text-muted-foreground">{t('noSitesYet')}</p>
           </Card>
         ) : (
           <>
             <div className="space-y-2">
               <label className="sr-only" htmlFor="worker-room-search-all">
-                Search by room number
+                {t('searchRoomAria')}
               </label>
               <Input
                 id="worker-room-search-all"
                 type="search"
-                placeholder="Search room number or site"
+                placeholder={t('roomSearchPlaceholder')}
                 value={roomSearch}
                 onChange={(e) => setRoomSearch(e.target.value)}
                 className="h-12 text-base"
@@ -228,10 +237,10 @@ export default function WorkerRoomsPage() {
               />
             </div>
 
-            {enrichmentLoading && <p className="text-xs text-muted-foreground">Loading rooms…</p>}
+            {enrichmentLoading && <p className="text-xs text-muted-foreground">{t('loadingRooms')}</p>}
             {taskSummaryUnavailable && (
               <Card className="border-dashed border-amber-200/70 bg-amber-50/30 p-3 text-sm dark:border-amber-900/50 dark:bg-amber-950/20">
-                Checklist counts unavailable — room list still works.
+                {t('checklistCountsUnavailable')}
               </Card>
             )}
 
@@ -250,20 +259,20 @@ export default function WorkerRoomsPage() {
                       <div className="min-w-0 flex-1 space-y-1">
                         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                           <span className="text-lg font-semibold text-slate-900 dark:text-foreground">
-                            Room {r.room_number}
+                            {t('roomPrefix')} {r.room_number}
                           </span>
                           {ACTIONABLE.has(r.status) ? (
                             <span className="rounded-full bg-[#1E3A5F]/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-[#1E3A5F] dark:bg-blue-950/50 dark:text-blue-200">
                               {r.status === 'in_progress'
-                                ? 'In progress'
+                                ? t('inProgressLabel')
                                 : r.status === 'ready_for_inspection'
-                                  ? 'Handoff'
-                                  : 'Start'}
+                                  ? t('handoffShort')
+                                  : t('start')}
                             </span>
                           ) : null}
                         </div>
                         <p className="text-sm text-muted-foreground">{r.projectName}</p>
-                        <p className="text-sm text-muted-foreground">{progressLine(r, done, total)}</p>
+                        <p className="text-sm text-muted-foreground">{progressLine(r, done, total, t)}</p>
                       </div>
                       <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
                     </div>
@@ -273,7 +282,7 @@ export default function WorkerRoomsPage() {
             </div>
 
             {filteredRooms.length === 0 && !enrichmentLoading && (
-              <Card className="p-6 text-center text-sm text-muted-foreground">No matching rooms</Card>
+              <Card className="p-6 text-center text-sm text-muted-foreground">{t('noMatchingRooms')}</Card>
             )}
           </>
         )}

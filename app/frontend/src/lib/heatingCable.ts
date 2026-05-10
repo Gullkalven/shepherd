@@ -50,18 +50,18 @@ export interface HeatingCableDerived {
 
 /** UI copy for `deriveHeatingCableStatus` — use everywhere to avoid mismatched labels. */
 export const HEATING_CABLE_DERIVED_STATUS_LABEL: Record<HeatingCableRoomStatus, string> = {
-  not_started: 'Not started',
-  partial: 'In progress',
-  complete: 'Complete',
-  has_deviation_missing: 'Needs attention',
+  not_started: 'Ikke startet',
+  partial: 'Pågår',
+  complete: 'Fullført',
+  has_deviation_missing: 'Trenger oppmerksomhet',
 };
 
 export const HEATING_CABLE_STAGES: { key: HeatingCableStageKey; label: string }[] = [
-  { key: 'before_installation', label: 'Before installation' },
-  { key: 'after_cable_laid', label: 'After cable laid' },
-  { key: 'after_screed_final', label: 'After screed / final' },
+  { key: 'before_installation', label: 'Før montering' },
+  { key: 'after_cable_laid', label: 'Etter kabel lagt' },
+  { key: 'after_screed_final', label: 'Etter avretting / slutt' },
 ];
-export const HEATING_CONFIRM_TEXT = 'I confirm this step is completed';
+export const HEATING_CONFIRM_TEXT = 'Jeg bekrefter at dette trinnet er fullført';
 
 function isFilled(v: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0;

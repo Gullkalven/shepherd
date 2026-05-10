@@ -36,7 +36,7 @@ interface ProjectRow {
 }
 
 function floorLabel(f: FloorRow): string {
-  return f.name?.trim() ? f.name : `Floor ${f.floor_number}`;
+  return f.name?.trim() ? f.name : `Etasje ${f.floor_number}`;
 }
 
 type Variant = 'desktop' | 'sheet';
@@ -86,6 +86,7 @@ function ShepherdLogoButton({ afterNav }: { afterNav: () => void }) {
 function DesktopHomeButton({ afterNav }: { afterNav: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useI18n();
   const isActive = location.pathname === '/';
 
   return (
@@ -106,7 +107,7 @@ function DesktopHomeButton({ afterNav }: { afterNav: () => void }) {
       aria-current={isActive ? 'page' : undefined}
     >
       <House className="h-4 w-4" />
-      <span>Home</span>
+      <span>{t('homeNav')}</span>
     </Button>
   );
 }
@@ -118,6 +119,7 @@ export default function AppNavSidebar({
   variant: Variant;
   onNavigate?: () => void;
 }) {
+  const { t } = useI18n();
   const afterNav = () => onNavigate?.();
 
   const inner = (
@@ -143,7 +145,7 @@ export default function AppNavSidebar({
         'hidden lg:flex lg:flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:z-30',
         'lg:w-56 lg:border-r lg:border-border lg:bg-slate-50 lg:dark:bg-background'
       )}
-      aria-label="App navigation"
+      aria-label={t('ariaAppNav')}
     >
       {inner}
     </aside>

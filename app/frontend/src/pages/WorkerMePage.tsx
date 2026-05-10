@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LogOut, Moon, Sun } from 'lucide-react';
 import { usePermissions } from '@/lib/permissions';
 import { useTheme } from '@/lib/theme';
-import { useI18n } from '@/lib/i18n';
+import { formatNb, useI18n } from '@/lib/i18n';
 import { useDevPresentationSession } from '@/lib/devPresentationSession';
 import { runAppLogout, runWorkerSwitch } from '@/lib/runAppLogout';
 import { readWorkerSession, WORKER_SESSION_TTL_MS } from '@/lib/workerSession';
@@ -37,7 +37,7 @@ export default function WorkerMePage() {
     return null;
   }
 
-  const name = resolveWorkerActorLabel(displayName) || 'Worker';
+  const name = resolveWorkerActorLabel(displayName) || t('loginFallbackWorker');
   const pinSession = sessionIsPinWorker ? readWorkerSession() : null;
   const sessionEndsLabel =
     pinSession?.expiresAt != null
@@ -49,17 +49,20 @@ export default function WorkerMePage() {
       <div className="mx-auto w-full min-w-0 max-w-lg space-y-4 pb-4 pt-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:max-w-none lg:px-6 xl:px-8">
         <header className="space-y-1">
           <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-foreground">{t('workerNavSettings')}</h1>
-          <p className="text-sm text-muted-foreground">Logged in as {name}</p>
+          <p className="text-sm text-muted-foreground">
+            {t('workerMeLoggedIn')} {name}
+          </p>
           {sessionIsPinWorker ? null : (
             <p className="text-xs text-muted-foreground">
-              Session: <strong className="text-foreground">App account</strong> (not site worker PIN).
+              {t('workerMeSessionLabel')} <strong className="text-foreground">{t('workerMeAppAccount')}</strong>{' '}
+              {t('workerMeNotPinHint')}
             </p>
           )}
         </header>
 
         {isDevRoleSwitcherHost() ? (
           <Card className="p-4">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Switch user</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('switchUserDev')}</p>
             <DevRoleSwitcher />
           </Card>
         ) : null}
@@ -67,20 +70,24 @@ export default function WorkerMePage() {
         {sessionIsPinWorker ? (
           <Card className="space-y-3 p-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Site worker (PIN)</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('siteWorkerPinCard')}</p>
               {sessionEndsLabel ? (
                 <p className="mt-1 text-xs text-muted-foreground leading-snug">
-                  Session ends {sessionEndsLabel}. Provisional login lasts about {Math.round(WORKER_SESSION_TTL_MS / 3600000)}{' '}
-                  hours on this device — use PIN again after that, or sign out below.
+                  {formatNb(t('sessionEndsFull'), {
+                    time: sessionEndsLabel,
+                    h: Math.round(WORKER_SESSION_TTL_MS / 3600000),
+                  })}
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-muted-foreground leading-snug">
-                  Provisional PIN session on this device (about {Math.round(WORKER_SESSION_TTL_MS / 3600000)} hours).
+                  {formatNb(t('pinSessionShort'), {
+                    h: Math.round(WORKER_SESSION_TTL_MS / 3600000),
+                  })}
                 </p>
               )}
             </div>
             <Button type="button" variant="outline" className="w-full" onClick={() => runWorkerSwitch(navigate)}>
-              Switch worker
+              {t('switchWorker')}
             </Button>
           </Card>
         ) : null}
@@ -104,7 +111,7 @@ export default function WorkerMePage() {
             }
           >
             <LogOut className="h-5 w-5 shrink-0" />
-            {sessionIsPinWorker ? 'Log out' : t('logOut')}
+            {sessionIsPinWorker ? t('logOutPin') : t('logOut')}
           </Button>
         </Card>
       </div>

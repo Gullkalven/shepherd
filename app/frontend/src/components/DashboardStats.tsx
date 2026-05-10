@@ -14,6 +14,7 @@ import type { PhaseWorkflowEntry } from '@/lib/roomPhases';
 import { normalizeRoomPhase, phaseLabel, roomRequiresHeatingCableDocumentation } from '@/lib/roomPhases';
 import { format } from 'date-fns';
 import { Link } from 'react-router-dom';
+import { formatNb, useI18n } from '@/lib/i18n';
 
 interface FloorInfo {
   id: number;
@@ -60,13 +61,7 @@ const STATUS_SORT: Record<HeatingCableRoomStatus, number> = {
   complete: 3,
 };
 
-/** Aligns with the four pilot buckets (same wording as summary cards). */
-const HEATING_ADMIN_STATUS_LABEL: Record<HeatingCableRoomStatus, string> = {
-  not_started: 'Missing documentation',
-  partial: 'Partially documented',
-  complete: 'Complete',
-  has_deviation_missing: 'Issues / deviations',
-};
+/** Labels pulled from `useI18n` inside the component (Norwegian). */
 
 type HeatingCableFilter = 'all' | 'complete' | 'incomplete' | 'missing_doc' | 'issues';
 
@@ -106,7 +101,18 @@ function workflowPhaseOrder(key: string, workflow: PhaseWorkflowEntry[]): number
 }
 
 export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId }: DashboardStatsProps) {
+  const { t } = useI18n();
   const [heatingFilter, setHeatingFilter] = useState<HeatingCableFilter>('all');
+
+  const heatingAdminStatusLabel = useMemo(
+    (): Record<HeatingCableRoomStatus, string> => ({
+      not_started: t('heatingMissingDoc'),
+      partial: t('heatingPartialDoc'),
+      complete: t('heatingComplete'),
+      has_deviation_missing: t('heatingIssues'),
+    }),
+    [t]
+  );
 
   const total = rooms.length;
   const completed = rooms.filter((r) => r.status === 'completed').length;
@@ -135,7 +141,7 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
           floorId: room.floor_id,
           phaseKey: pk,
           phaseLabel: phaseLabel(pk, phaseWorkflow),
-          roomName: room.room_number || `Room ${room.id}`,
+          roomName: room.room_number || `${t('roomWord')} ${room.id}`,
           status: derived.status,
           isLocked: doc.locked_by_admin === true,
           missingStages: missingLabels.join(', '),
@@ -149,7 +155,7 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
         if (da !== db) return da - db;
         return a.roomName.localeCompare(b.roomName, undefined, { numeric: true });
       });
-  }, [rooms, phaseWorkflow]);
+  }, [rooms, phaseWorkflow, t]);
 
   const filteredHeatingRows = useMemo(
     () => heatingRows.filter((r) => passesHeatingFilter(r.status, heatingFilter)),
@@ -165,10 +171,10 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
   const floorLabelById = useMemo(() => {
     const m = new Map<number, string>();
     for (const f of floors) {
-      m.set(f.id, f.name?.trim() || `Floor ${f.floor_number}`);
+      m.set(f.id, f.name?.trim() || `${t('floorWord')} ${f.floor_number}`);
     }
     return m;
-  }, [floors]);
+  }, [floors, t]);
 
   const sortedFloorIds = useMemo(() => [...floors].sort((a, b) => a.floor_number - b.floor_number).map((f) => f.id), [
     floors,
@@ -189,7 +195,7 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
       if (rows?.length) {
         orderedFloors.push({
           floorId: fid,
-          label: floorLabelById.get(fid) ?? `Floor ${fid}`,
+          label: floorLabelById.get(fid) ?? `${t('floorWord')} ${fid}`,
           rows,
         });
         byFloor.delete(fid);
@@ -199,7 +205,7 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
     for (const [floorId, rows] of byFloor) {
       orderedFloors.push({
         floorId,
-        label: floorLabelById.get(floorId) ?? `Unknown floor (${floorId})`,
+        label: floorLabelById.get(floorId) ?? `${t('floorWord')} (${floorId})`,
         rows,
       });
     }
@@ -255,7 +261,7 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
         phaseSections: showPhaseSections ? phaseSections : [{ phaseLabel: '', rows: sortedRows }],
       };
     });
-  }, [filteredHeatingRows, sortedFloorIds, floorLabelById, phaseWorkflow]);
+  }, [filteredHeatingRows, sortedFloorIds, floorLabelById, phaseWorkflow, t]);
 
   const heatingStatusPill: Record<HeatingCableRoomStatus, string> = {
     not_started: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
@@ -265,11 +271,11 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
   };
 
   const stats = [
-    { label: 'Total', value: total, icon: LayoutGrid, color: 'text-slate-600', bg: 'bg-slate-100' },
-    { label: 'Completed', value: completed, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-100' },
-    { label: 'In Progress', value: inProgress, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100' },
-    { label: 'Inspection', value: readyForInspection, icon: AlertTriangle, color: 'text-blue-600', bg: 'bg-blue-100' },
-    { label: 'Blocked', value: blocked, icon: Ban, color: 'text-red-600', bg: 'bg-red-100' },
+    { label: t('statTotal'), value: total, icon: LayoutGrid, color: 'text-slate-600', bg: 'bg-slate-100' },
+    { label: t('statCompleted'), value: completed, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+    { label: t('statInProgress'), value: inProgress, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100' },
+    { label: t('statInspection'), value: readyForInspection, icon: AlertTriangle, color: 'text-blue-600', bg: 'bg-blue-100' },
+    { label: t('statBlocked'), value: blocked, icon: Ban, color: 'text-red-600', bg: 'bg-red-100' },
   ];
 
   const roomLink = (roomId: number, floorId: number) =>
@@ -277,7 +283,7 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
 
   const renderRow = (row: HeatingRow) => {
     const href = roomLink(row.roomId, row.floorId);
-    const label = HEATING_ADMIN_STATUS_LABEL[row.status];
+    const label = heatingAdminStatusLabel[row.status];
     return (
       <tr key={row.roomId} className="border-b border-border/40 last:border-0">
         <td className="py-2 px-2 font-medium text-foreground">
@@ -298,7 +304,7 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
             </span>
             {row.isLocked ? (
               <span className="text-[10px] text-muted-foreground border border-border/60 rounded px-1 py-px">
-                Locked
+                {t('tableLocked')}
               </span>
             ) : null}
           </span>
@@ -335,44 +341,41 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
       </div>
       <div className="space-y-1">
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Overall Progress</span>
+          <span className="text-muted-foreground">{t('overallProgress')}</span>
           <span className="font-bold text-emerald-600">{progressPercent}%</span>
         </div>
         <Progress value={progressPercent} className="h-3" />
       </div>
       <div className="rounded-md border border-border/60 bg-muted/20 p-3 space-y-3">
         <div>
-          <p className="text-sm font-semibold text-foreground">Heating cable documentation</p>
-          <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">
-            Rooms where the workflow includes heating cable. Status reflects the three measurement stages (and visible
-            extra steps).
-          </p>
+          <p className="text-sm font-semibold text-foreground">{t('heatingDocSection')}</p>
+          <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{t('heatingDocBlurb')}</p>
         </div>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
           <Card className="p-2 text-center">
             <div className="text-lg font-bold">{heatingTotal}</div>
-            <div className="text-[10px] text-muted-foreground leading-tight">Rooms in scope</div>
+            <div className="text-[10px] text-muted-foreground leading-tight">{t('roomsInScope')}</div>
           </Card>
           <Card className="p-2 text-center">
             <div className="text-lg font-bold text-emerald-600">{heatingComplete}</div>
-            <div className="text-[10px] text-muted-foreground leading-tight">Complete</div>
+            <div className="text-[10px] text-muted-foreground leading-tight">{t('heatingComplete')}</div>
           </Card>
           <Card className="p-2 text-center">
             <div className="text-lg font-bold text-amber-600">{heatingPartial}</div>
-            <div className="text-[10px] text-muted-foreground leading-tight">Partially documented</div>
+            <div className="text-[10px] text-muted-foreground leading-tight">{t('heatingPartialDoc')}</div>
           </Card>
           <Card className="p-2 text-center">
             <div className="text-lg font-bold text-slate-600">{heatingMissingDoc}</div>
-            <div className="text-[10px] text-muted-foreground leading-tight">Missing documentation</div>
+            <div className="text-[10px] text-muted-foreground leading-tight">{t('heatingMissingDoc')}</div>
           </Card>
           <Card className="p-2 text-center">
             <div className="text-lg font-bold text-red-600">{heatingIssues}</div>
-            <div className="text-[10px] text-muted-foreground leading-tight">Issues / deviations</div>
+            <div className="text-[10px] text-muted-foreground leading-tight">{t('heatingIssues')}</div>
           </Card>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <span className="text-[11px] font-medium text-muted-foreground shrink-0">Filter rooms</span>
+          <span className="text-[11px] font-medium text-muted-foreground shrink-0">{t('filterRooms')}</span>
           <ToggleGroup
             type="single"
             value={heatingFilter}
@@ -383,43 +386,44 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
             size="sm"
             className="flex flex-wrap justify-start gap-1"
           >
-            <ToggleGroupItem value="all" aria-label="All rooms" className="text-[11px] px-2 h-8">
-              All
+            <ToggleGroupItem value="all" aria-label={t('filterAll')} className="text-[11px] px-2 h-8">
+              {t('filterAll')}
             </ToggleGroupItem>
-            <ToggleGroupItem value="complete" aria-label="Complete rooms" className="text-[11px] px-2 h-8">
-              Complete
+            <ToggleGroupItem value="complete" aria-label={t('heatingComplete')} className="text-[11px] px-2 h-8">
+              {t('heatingComplete')}
             </ToggleGroupItem>
-            <ToggleGroupItem value="incomplete" aria-label="Incomplete rooms" className="text-[11px] px-2 h-8">
-              Incomplete
+            <ToggleGroupItem value="incomplete" aria-label={t('filterIncomplete')} className="text-[11px] px-2 h-8">
+              {t('filterIncomplete')}
             </ToggleGroupItem>
-            <ToggleGroupItem value="missing_doc" aria-label="Missing documentation" className="text-[11px] px-2 h-8">
-              Missing doc
+            <ToggleGroupItem value="missing_doc" aria-label={t('filterMissingDoc')} className="text-[11px] px-2 h-8">
+              {t('filterMissingDoc')}
             </ToggleGroupItem>
-            <ToggleGroupItem value="issues" aria-label="Issues and deviations" className="text-[11px] px-2 h-8">
-              Issues
+            <ToggleGroupItem value="issues" aria-label={t('heatingIssues')} className="text-[11px] px-2 h-8">
+              {t('heatingIssues')}
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
 
         {heatingRows.length === 0 ? (
           <div className="rounded-md border border-border/50 bg-background/80 py-6 px-2 text-center text-[13px] text-muted-foreground">
-            No rooms require heating cable documentation for this project workflow.
+            {t('heatingEmptyWorkflow')}
           </div>
         ) : filteredHeatingRows.length === 0 ? (
           <div className="rounded-md border border-border/50 bg-background/80 py-6 px-2 text-center text-[13px] text-muted-foreground">
-            No rooms match this filter.
+            {t('heatingEmptyFilter')}
           </div>
         ) : (
           <div className="space-y-2">
             {floorGroups.map((group) => {
               const { summary } = group;
               const summaryParts = [
-                `${summary.total} room${summary.total === 1 ? '' : 's'}`,
-                `${summary.complete} complete`,
-                `${summary.incomplete} incomplete`,
+                `${summary.total} ${t('floorSummaryRooms')}`,
+                `${summary.complete} ${t('floorSummaryComplete')}`,
+                `${summary.incomplete} ${t('floorSummaryIncomplete')}`,
               ];
-              if (summary.missingDoc > 0) summaryParts.push(`${summary.missingDoc} missing doc`);
-              if (summary.issues > 0) summaryParts.push(`${summary.issues} issues`);
+              if (summary.missingDoc > 0)
+                summaryParts.push(`${summary.missingDoc} ${t('floorSummaryMissingDoc')}`);
+              if (summary.issues > 0) summaryParts.push(`${summary.issues} ${t('floorSummaryIssues')}`);
 
               return (
                 <Collapsible key={group.floorId} defaultOpen className="rounded-md border border-border/50 bg-background/80">
@@ -438,11 +442,11 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
                       <table className="w-full text-[13px]">
                         <thead>
                           <tr className="text-left text-muted-foreground border-b border-border/60 bg-muted/30">
-                            <th className="py-2 px-2 font-medium">Room</th>
-                            <th className="py-2 px-2 font-medium">Status</th>
-                            <th className="py-2 px-2 font-medium">Missing stages</th>
-                            <th className="py-2 px-2 font-medium whitespace-nowrap">Last updated</th>
-                            <th className="py-2 px-2 font-medium">Recorded by</th>
+                            <th className="py-2 px-2 font-medium">{t('tableRoom')}</th>
+                            <th className="py-2 px-2 font-medium">{t('tableStatus')}</th>
+                            <th className="py-2 px-2 font-medium">{t('tableMissingStages')}</th>
+                            <th className="py-2 px-2 font-medium whitespace-nowrap">{t('tableLastUpdated')}</th>
+                            <th className="py-2 px-2 font-medium">{t('tableRecordedBy')}</th>
                           </tr>
                         </thead>
                         {group.phaseSections.map((sec, idx) => (
@@ -453,7 +457,7 @@ export default function DashboardStats({ rooms, floors, phaseWorkflow, projectId
                                   colSpan={5}
                                   className="py-1.5 px-2 text-[11px] font-medium text-muted-foreground"
                                 >
-                                  Phase · {sec.phaseLabel}
+                                  {t('phaseColumnPrefix')} {sec.phaseLabel}
                                 </td>
                               </tr>
                             ) : null}

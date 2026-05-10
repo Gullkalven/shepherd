@@ -31,6 +31,7 @@ import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
 import { readAdminSession } from '@/lib/adminSession';
 import { persistStoredSelectedProjectId } from '@/lib/selectedProjectStorage';
+import { useI18n } from '@/lib/i18n';
 
 interface Project {
   id: number;
@@ -56,6 +57,7 @@ function IndexContent({
   onLogoutClearServer: () => void;
   onDemoSignedIn: () => void;
 }) {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
   const { activateSession, endSession, sessionActive } = useDevPresentationSession();
@@ -141,7 +143,7 @@ function IndexContent({
 
   useEffect(() => {
     if (consumeProjectNotFoundFlash()) {
-      toast.info('Project not found.', { id: 'shepherd-project-not-found' });
+      toast.info(t('toastProjectNotFound'), { id: 'shepherd-project-not-found' });
     }
   }, []);
 
