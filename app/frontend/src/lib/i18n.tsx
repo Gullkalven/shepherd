@@ -23,7 +23,7 @@ const DICTIONARY = {
   loadingFloors: 'Laster etasjer…',
   project: 'Prosjekt',
   noMatches: 'Ingen treff',
-  adminSettings: 'Admin',
+  adminSettings: 'Admininnstillinger',
   lightMode: 'Lys modus',
   darkMode: 'Mørk modus',
   logOut: 'Logg ut',
