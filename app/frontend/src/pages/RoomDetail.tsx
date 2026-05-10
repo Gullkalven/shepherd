@@ -4453,7 +4453,7 @@ export default function RoomDetail() {
       {/* Delete Room Dialog */}
       <Dialog open={showDeleteRoomDialog} onOpenChange={(open) => { if (!deletingRoom) setShowDeleteRoomDialog(open); }}>
         <DialogContent className="max-w-sm mx-4">
-          <DialogForm onSubmit={(e) => { e.preventDefault(); handleDeleteRoom(); }}>
+          <DialogForm onSubmit={(e) => { e.preventDefault(); }}>
           <DialogHeader>
             <DialogTitle>Delete this item?</DialogTitle>
           </DialogHeader>
@@ -4461,13 +4461,14 @@ export default function RoomDetail() {
             This will permanently delete this item and its checklist, photos, visits, and notes.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDeleteRoomDialog(false)} disabled={deletingRoom}>
+            <Button type="button" variant="outline" onClick={() => setShowDeleteRoomDialog(false)} disabled={deletingRoom}>
               Cancel
             </Button>
             <Button
-              type="submit"
+              type="button"
               disabled={deletingRoom}
               className="bg-red-500 hover:bg-red-600 text-white"
+              onClick={() => void handleDeleteRoom()}
             >
               {deletingRoom ? 'Deleting...' : t('delete')}
             </Button>
