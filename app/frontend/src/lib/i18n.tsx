@@ -238,7 +238,7 @@ const DICTIONARY = {
   allChangesSaved: 'Alt lagret',
   documentationPhotoForStage: 'Dokumentasjonsbilde for dette trinnet',
   completedByLabel: 'Fullført av:',
-  uncheckedByLabel: 'Ikke avmerket av',
+  uncheckedByLabel: 'Fjernet av',
   otherPhasePhotos: 'Andre fasebilder',
   otherPhasePhotosHint:
     'Valgfritt dokumentasjon for dette steget — ikke for varmekabel-registrering.',

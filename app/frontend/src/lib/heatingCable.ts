@@ -57,11 +57,35 @@ export const HEATING_CABLE_DERIVED_STATUS_LABEL: Record<HeatingCableRoomStatus, 
 };
 
 export const HEATING_CABLE_STAGES: { key: HeatingCableStageKey; label: string }[] = [
-  { key: 'before_installation', label: 'Før montering' },
+  { key: 'before_installation', label: 'Før legging' },
   { key: 'after_cable_laid', label: 'Etter kabel lagt' },
-  { key: 'after_screed_final', label: 'Etter avretting / slutt' },
+  { key: 'after_screed_final', label: 'Etter avretting / støp' },
 ];
 export const HEATING_CONFIRM_TEXT = 'Jeg bekrefter at dette trinnet er fullført';
+
+/** Legacy English or older Norwegian labels in stored activity meta → current canonical labels. */
+const HEATING_STAGE_LABEL_ALIASES: Record<string, string> = {
+  'Before installation': 'Før legging',
+  'After cable laid': 'Etter kabel lagt',
+  'After screed / final': 'Etter avretting / støp',
+  'After screed/final': 'Etter avretting / støp',
+  'Før montering': 'Før legging',
+  'Etter avretting / slutt': 'Etter avretting / støp',
+};
+
+/**
+ * Norwegian stage title for activity/history: prefers `stage_key`, then normalizes `stage_label`
+ * (English or legacy Norwegian from older logs).
+ */
+export function heatingStageDisplayLabel(meta: Record<string, unknown> | null | undefined): string {
+  const m = meta && typeof meta === 'object' ? meta : {};
+  const key = typeof m.stage_key === 'string' ? m.stage_key.trim() : '';
+  const fromKey = HEATING_CABLE_STAGES.find((s) => s.key === key)?.label;
+  if (fromKey) return fromKey;
+  const raw = typeof m.stage_label === 'string' ? m.stage_label.trim() : '';
+  if (!raw) return '';
+  return HEATING_STAGE_LABEL_ALIASES[raw] ?? raw;
+}
 
 function isFilled(v: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0;

@@ -1,3 +1,4 @@
+import { heatingStageDisplayLabel } from '@/lib/heatingCable';
 import { normalizeRoomPhase, visitMatchesPhase, photoMatchesPhase } from '@/lib/roomPhases';
 import { DEFAULT_AREA_ID, taskBelongsToArea } from '@/lib/roomAreas';
 
@@ -73,11 +74,11 @@ export function formatActivityMessage(e: ActivityLogEntry): string {
     case 'heating_cable_doc_saved':
       return `${actor} lagret varmekabel-dokumentasjon`;
     case 'heating_cable_step_completed': {
-      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      const sl = heatingStageDisplayLabel(meta);
       return sl ? `${actor} fullførte ${sl}` : `${actor} fullførte et varmekabeltrinn`;
     }
     case 'heating_cable_measurements_updated': {
-      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      const sl = heatingStageDisplayLabel(meta);
       const r = typeof meta.resistance_ohm === 'string' ? meta.resistance_ohm.trim() : '';
       const ins = typeof meta.insulation_mohm === 'string' ? meta.insulation_mohm.trim() : '';
       const parts: string[] = [];
@@ -89,7 +90,7 @@ export function formatActivityMessage(e: ActivityLogEntry): string {
       return `${actor} oppdaterte varmekabelmålinger`;
     }
     case 'heating_cable_admin_measurement_correction': {
-      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      const sl = heatingStageDisplayLabel(meta);
       const pr = typeof meta.prev_resistance_ohm === 'string' ? meta.prev_resistance_ohm.trim() : '';
       const pi = typeof meta.prev_insulation_mohm === 'string' ? meta.prev_insulation_mohm.trim() : '';
       const pd = typeof meta.prev_date === 'string' ? meta.prev_date.trim() : '';
@@ -106,15 +107,15 @@ export function formatActivityMessage(e: ActivityLogEntry): string {
       return `${actor} korrigerte varmekabelmålinger`;
     }
     case 'heating_cable_admin_step_unlocked': {
-      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      const sl = heatingStageDisplayLabel(meta);
       return sl ? `${actor} låste opp ${sl}` : `${actor} låste opp et varmekabeltrinn`;
     }
     case 'heating_cable_note_updated': {
-      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      const sl = heatingStageDisplayLabel(meta);
       return sl ? `${actor} oppdaterte notat for ${sl}` : `${actor} oppdaterte et varmekabelnotat`;
     }
     case 'heating_cable_stage_photos_updated': {
-      const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
+      const sl = heatingStageDisplayLabel(meta);
       return sl ? `${actor} oppdaterte bilder for ${sl}` : `${actor} oppdaterte varmekabelbilder`;
     }
     case 'heating_cable_extra_steps_updated':

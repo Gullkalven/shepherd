@@ -29,9 +29,9 @@ admin_router = entities_router
 HEATING_STEP_KEYS: List[str] = ["before_installation", "after_cable_laid", "after_screed_final"]
 
 _HEATING_STAGE_LABELS: Dict[str, str] = {
-    "before_installation": "Before installation",
-    "after_cable_laid": "After cable laid",
-    "after_screed_final": "After screed / final",
+    "before_installation": "Før legging",
+    "after_cable_laid": "Etter kabel lagt",
+    "after_screed_final": "Etter avretting / støp",
 }
 
 
