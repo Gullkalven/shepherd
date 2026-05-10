@@ -56,6 +56,7 @@ import {
 import { WORKER_ROOM_DOCUMENTATION_ANCHOR } from '@/lib/workerLastRoom';
 import { cn } from '@/lib/utils';
 import type { ActivityDisplayRow } from '@/lib/roomActivity';
+import { formatTimestamp } from '@/lib/timeFormat';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 
 export type WorkerTask = {
@@ -223,24 +224,11 @@ function heroPhaseStateLabel(s: HeroPhaseChipState): string {
   }
 }
 
+// Worker-facing checklist completion timestamps. Use the shared Norwegian/
+// European formatter so workers see the same `DD.MM.YYYY HH:MM` value as
+// admins on `RoomDetail.tsx`.
 function formatVisitDateShort(dateStr: string): string {
-  try {
-    const raw = String(dateStr).trim().replace(' ', 'T');
-    const normalized = /(?:Z|[+-]\d{2}:\d{2})$/i.test(raw) ? raw : `${raw}Z`;
-    const d = new Date(normalized);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  } catch {
-    return dateStr;
-  }
+  return formatTimestamp(dateStr);
 }
 
 function heatingPhotoRefKeys(stageId: string) {

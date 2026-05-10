@@ -71,6 +71,7 @@ import {
   type RoomArea,
 } from '@/lib/roomAreas';
 import { buildActivityRows } from '@/lib/roomActivity';
+import { formatTimestamp, parseTimestampMs } from '@/lib/timeFormat';
 import { compressImageForUpload } from '@/lib/compressImageForUpload';
 import { cn } from '@/lib/utils';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
@@ -391,32 +392,15 @@ function coerceWorkflowDeviations(raw: unknown): WorkflowDeviation[] {
   return out;
 }
 
-function parseTimestampMs(s: string | null | undefined): number {
-  if (!s) return 0;
-  const raw = String(s).trim().replace(' ', 'T');
-  if (!raw) return 0;
-  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/i.test(raw) ? raw : `${raw}Z`;
-  const t = Date.parse(normalized);
-  return Number.isNaN(t) ? 0 : t;
-}
-
 function parseActivityTime(s: string | null | undefined): number {
   return parseTimestampMs(s);
 }
 
+// Activity feed, completion events, and resolved-deviation timestamps all
+// render via the shared `DD.MM.YYYY HH:MM` formatter so construction crews
+// always see an unambiguous moment instead of relative phrasing.
 function formatActivityWhen(ts: number): string {
-  if (!ts) return '—';
-  try {
-    return new Date(ts).toLocaleString(undefined, {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return '—';
-  }
+  return formatTimestamp(ts);
 }
 
 function formatDeadlineDisplay(iso?: string | null): string | null {
@@ -445,24 +429,11 @@ function isDeadlinePast(iso?: string | null): boolean {
   }
 }
 
+// Checklist item check/uncheck timestamps. Previously showed relative phrasing
+// ("2h ago"); now render the absolute Norwegian/European timestamp so the
+// site team can correlate actions with the actual day and time.
 function formatVisitDate(dateStr: string): string {
-  try {
-    const t = parseTimestampMs(dateStr);
-    if (!t) return dateStr;
-    const d = new Date(t);
-    const now = new Date();
-    const diffMs = now.getTime() - d.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return dateStr;
-  }
+  return formatTimestamp(dateStr);
 }
 
 export default function RoomDetail() {

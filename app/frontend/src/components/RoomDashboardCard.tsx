@@ -1,9 +1,9 @@
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { User, AlertTriangle, Clock, Lock, Calendar } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { deriveRoomDashboardStatus, type DashboardStatusKind } from '@/lib/roomDashboardDerived';
+import { formatTimestamp } from '@/lib/timeFormat';
 
 const STATUS_LABELS: Record<DashboardStatusKind, string> = {
   blocked: 'Blocked',
@@ -49,13 +49,12 @@ const STATUS_PILL: Record<DashboardStatusKind, string> = {
   completed: 'bg-emerald-600 text-white',
 };
 
+// Room cards show the moment of the last checklist/status update so site
+// leads can read the exact day and time at a glance instead of "2 hours ago".
 function formatUpdatedAt(iso?: string | null): string | null {
   if (!iso) return null;
-  try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true });
-  } catch {
-    return null;
-  }
+  const formatted = formatTimestamp(iso);
+  return formatted === '—' ? null : formatted;
 }
 
 function formatDueShort(iso?: string | null): string | null {
