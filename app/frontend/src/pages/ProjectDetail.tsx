@@ -17,7 +17,7 @@ import {
   type PhaseWorkflowEntry,
 } from '@/lib/roomPhases';
 import { taskCountsForFloorBoard } from '@/lib/roomAreas';
-import { useI18n } from '@/lib/i18n';
+import { formatNb, useI18n } from '@/lib/i18n';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { apiFailureMessage, devLogApiFailure, httpStatusFromError } from '@/lib/apiErrors';
 import { shepherdDebug } from '@/lib/shepherdDebug';
@@ -454,7 +454,7 @@ export default function ProjectDetail() {
 
   const exportHeatingDocumentation = async () => {
     if (!project || heatingExportRoomIds.length === 0) {
-      toast.error('Select at least one room');
+      toast.error(t('exportSelectRoomsFirst'));
       return;
     }
     setExportingHeatingPdf(true);
@@ -509,9 +509,14 @@ export default function ProjectDetail() {
           const photos = roomPhotos.get(room.id) ?? [];
           const gallery = buildHeatingCableGallerySections(doc, photos);
           const floor = floorById.get(room.floor_id);
-          const floorLabel = floor?.name || `Floor ${floor?.floor_number ?? room.floor_id}`;
-          const roomTitle = `Room ${escapeHtml(room.room_number)}`;
-          const roomLocationLabel = `${floorLabel} / Room ${room.room_number}`;
+          const floorLabel =
+            floor?.name?.trim() ||
+            formatNb(t('exportFloorNumbered'), { n: floor?.floor_number ?? room.floor_id });
+          const roomTitle = escapeHtml(formatNb(t('exportRoomTitlePlain'), { number: room.room_number }));
+          const roomLocationLabel = formatNb(t('exportRoomLocationJoin'), {
+            floor: floorLabel,
+            room: room.room_number,
+          });
           const stageRows: Array<{ id: string; label: string; row: Record<string, unknown> }> = [
             ...HEATING_CABLE_STAGES.map((s) => ({
               id: s.key,
@@ -523,7 +528,7 @@ export default function ProjectDetail() {
                 const sid = (step.id && String(step.id).trim()) || `extra-${idx}`;
                 return {
                   id: sid,
-                  label: step.label?.trim() || `Extra step ${idx + 1}`,
+                  label: step.label?.trim() || formatNb(t('extraStepFallback'), { n: idx + 1 }),
                   row: (step as Record<string, unknown>) ?? {},
                   visible: heatingExtraStepRowVisible(step),
                 };
@@ -596,8 +601,12 @@ export default function ProjectDetail() {
                     parseUploadedByFromCaption(meta?.caption ?? null) || meta?.user_id?.trim() || '';
                   const uploadedAt = formatHeatingCableDateTimeReadable(meta?.created_at || '');
                   const uploadParts = [
-                    uploadedBy ? `<span><strong>Uploaded by:</strong> ${escapeHtml(uploadedBy)}</span>` : '',
-                    uploadedAt ? `<span><strong>Recorded:</strong> ${escapeHtml(uploadedAt)}</span>` : '',
+                    uploadedBy
+                      ? `<span><strong>${escapeHtml(t('exportUploadedByStrong'))}</strong> ${escapeHtml(uploadedBy)}</span>`
+                      : '',
+                    uploadedAt
+                      ? `<span><strong>${escapeHtml(t('exportRecordedStrong'))}</strong> ${escapeHtml(uploadedAt)}</span>`
+                      : '',
                   ].filter(Boolean);
                   const captionRoom = escapeHtml(roomLocationLabel);
                   const captionStep = escapeHtml(stage.label);
@@ -605,8 +614,8 @@ export default function ProjectDetail() {
                     <figure class="photo-doc-card" data-photo-id="${x.photoId ?? ''}">
                       <figcaption class="photo-doc-meta">
                         <div class="photo-doc-meta-primary">
-                          <span class="photo-doc-room"><strong>Room:</strong> ${captionRoom}</span>
-                          <span class="photo-doc-step"><strong>Step:</strong> ${captionStep}</span>
+                          <span class="photo-doc-room"><strong>${escapeHtml(t('exportFigureRoomStrong'))}</strong> ${captionRoom}</span>
+                          <span class="photo-doc-step"><strong>${escapeHtml(t('exportFigureStepStrong'))}</strong> ${captionStep}</span>
                         </div>
                         ${
                           uploadParts.length
@@ -626,20 +635,20 @@ export default function ProjectDetail() {
           return `
             <section class="room">
               <h2>${roomTitle}</h2>
-              <p><strong>Project:</strong> ${escapeHtml(project.name)}</p>
-              <p><strong>Location:</strong> ${escapeHtml(roomLocationLabel)}</p>
+              <p><strong>${escapeHtml(t('exportProjectLabel'))}</strong> ${escapeHtml(project.name)}</p>
+              <p><strong>${escapeHtml(t('exportLocationLabel'))}</strong> ${escapeHtml(roomLocationLabel)}</p>
 
               <div class="measurements-block">
-                <h3>Measurements &amp; registration</h3>
+                <h3>${escapeHtml(t('exportMeasurementsHeading'))}</h3>
                 <table class="summary-table">
                   <thead>
                     <tr>
-                      <th>Step</th>
-                      <th>Resistance (Ω)</th>
-                      <th>Insulation (MΩ)</th>
-                      <th>Registered</th>
-                      <th>Confirmed by</th>
-                      <th class="num">Photos</th>
+                      <th>${escapeHtml(t('exportTableStep'))}</th>
+                      <th>${escapeHtml(t('exportTableResistance'))}</th>
+                      <th>${escapeHtml(t('exportTableInsulation'))}</th>
+                      <th>${escapeHtml(t('exportTableRegistered'))}</th>
+                      <th>${escapeHtml(t('exportTableConfirmedBy'))}</th>
+                      <th class="num">${escapeHtml(t('exportTablePhotos'))}</th>
                     </tr>
                   </thead>
                   <tbody>${summaryRows}</tbody>
@@ -647,8 +656,8 @@ export default function ProjectDetail() {
               </div>
 
               <div class="photo-documentation">
-                <h3>Photo documentation</h3>
-                ${photoBlocks || '<p class="muted">No photos uploaded for this room.</p>'}
+                <h3>${escapeHtml(t('exportPhotoDocumentation'))}</h3>
+                ${photoBlocks || `<p class="muted">${escapeHtml(t('exportNoPhotosRoom'))}</p>`}
               </div>
             </section>
           `;
@@ -662,7 +671,7 @@ export default function ProjectDetail() {
       w.document.write(`
         <html>
           <head>
-            <title>Heating Cable Documentation - ${project.name}</title>
+            <title>${escapeHtml(formatNb(t('exportDocWindowTitle'), { name: project.name }))}</title>
             <style>
               @page { margin: 14mm; }
               body { font-family: Arial, Helvetica, sans-serif; padding: 16px 18px; font-size: 11pt; line-height: 1.35; color: #111; }

@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import type { PhaseChipUi } from '@/lib/roomPhases';
 
 /**
  * Central UI strings (Norwegian) for Shepherd pilot on construction sites.
@@ -396,6 +397,199 @@ const DICTIONARY = {
   statusWorkflowBlocked: 'Sperret',
 
   extraStepFallback: 'Ekstra trinn {n}',
+
+  // Phase workflow chips (floor board)
+  phaseChipActive: 'Pågår',
+  phaseChipOpen: 'Åpen',
+  phaseChipLocked: 'Låst',
+  phaseChipCompleted: 'Fullført',
+  phaseChipNotStarted: 'Ikke startet',
+  phaseChipBlocked: 'Sperret',
+  phaseChipTasksMissing: '{n} mangler',
+
+  gjeldendeTrinnPrefix: 'Gjeldende trinn:',
+  allStagesDocumentedShort: 'Alle trinn dokumentert.',
+  heatingLockedByAdminViewOnly: 'Låst av admin — kun visning.',
+  heatingBadgeReopened: 'Opplåst',
+  heatingConfirmPrevStepFirst: 'Fullfør og lås forrige trinn før du redigerer dette.',
+  heatingRetrySave: 'Prøv lagring på nytt',
+  heatingCablePhotosTitle: 'Varmekabelbilder',
+  heatingGalleryTapHint:
+    'Trykk et miniatyr for full størrelse. Bildetekster viser trinn og opplaster når det finnes.',
+  photosOtherThisPhaseTitle: 'Andre bilder denne fasen',
+  photosThisPhaseTitle: 'Bilder denne fasen',
+  phasePhotosReadonlyGeneralHint:
+    'Oppsummering av generelle opplastinger — varmekabel ligger i galleriet over.',
+  phasePhotoFallback: 'Fasebilde',
+
+  measurementsSectionHeading: 'Målinger',
+  measurementsResistance: 'Motstand',
+  measurementsInsulation: 'Isolasjon',
+  ariaResistanceOhm: 'Motstand (Ω)',
+  ariaInsulationMohm: 'Isolasjon (MΩ)',
+  noteOptionalLabel: 'Notat (valgfritt)',
+
+  heatingConfirmCompletePrevFirst: 'Fullfør forrige trinn før du bekrefter dette.',
+  heatingConfirmFillResistance: 'Fyll inn motstand før bekreftelse.',
+  heatingConfirmFillInsulation: 'Fyll inn isolasjon før bekreftelse.',
+  heatingConfirmPhotoCableStep: 'Legg til minst ett bilde før bekreftelse av dette trinnet.',
+
+  dialogConfirmStepTitle: 'Bekreft trinn',
+  dialogConfirmStepBody:
+    'Er du sikker på at du vil bekrefte dette trinnet? Klienten registrerer tidspunkt og innlogget montør.',
+  confirmingShort: 'Bekrefter…',
+  confirmStepButton: 'Bekreft trinn',
+
+  dialogConfirmPhaseHandoffTitle: 'Bekreft faseoverlevering',
+  dialogConfirmPhaseHandoffIntro: 'Du bekrefter at arbeidet i',
+  dialogConfirmPhaseHandoffTail: 'er fullført og korrekt på stedet.',
+  dialogPhaseHandoffBulletLock:
+    'Denne fasen låses — du kan ikke endre sjekkliste eller varmekabel-dokumentasjon her lenger.',
+  dialogPhaseHandoffBulletNext:
+    'Overlevering registreres for admin. Tavlen går videre til {next} når prosjektet flyttes.',
+  dialogPhaseHandoffBulletLast:
+    'Overlevering registreres for admin. Dette var siste steg i flyten for dette rommet.',
+  recordingShort: 'Registrerer…',
+  confirmHandoffButton: 'Bekreft overlevering',
+  markPhaseCompleteCta: 'Marker fase som fullført',
+
+  moreOnPhaseSection: 'Mer om denne fasen',
+  reportIssueLink: 'Meld avvik',
+  activityHistoryHeading: 'Historikk',
+  noOpenIssuesThisPhase: 'Ingen åpne avvik i denne fasen.',
+  resolvedSectionCount: 'Løst ({n})',
+  deviationDescribePlaceholder: 'Beskriv avviket…',
+  reportedByPrefix: 'Rapportert av',
+  markIssueResolved: 'Merk som løst',
+  resolvedByPrefix: 'Løst av',
+  nothingLoggedPhaseYet: 'Ingenting logget i denne fasen ennå.',
+  latestBadge: 'Siste',
+
+  manageAreasButton: 'Administrer',
+  assignWorkerMenuLabel: 'Tildel montør',
+  menuPhaseOpenWorkers: 'Åpen for montører',
+  menuPhaseLockWorkers: 'Låst for montører',
+  workerUnassigned: 'Ikke tildelt',
+  workerCurrentSuffix: '(nåværende)',
+  phaseAriaActionsFor: 'Handlinger for fase {phase}',
+  viewingPhaseVsBoard: 'Ser på {viewing} — tavlefase er {board}.',
+  goToBoardPhase: 'Gå til tavlefase',
+  notBoardPhaseTabEditHint:
+    'Ikke tavlefane, men fortsatt åpen for redigering hvis rollen din tillater det.',
+  phaseBannerReadOnlyLocked: 'Låst — kun visning',
+  phaseBannerReadOnly: 'Skrivebeskyttet',
+  phaseReadOnlyIntro:
+    'Denne fasen er lukket for redigering på kontoen din. Historikk vises under.',
+  checklistShortDone: 'Sjekkliste:',
+  doneWord: 'avmerket',
+  photosShortLabel: 'Bilder:',
+  cableDocsShortLabel: 'Varmekabel:',
+  completedItemsHeading: 'Fullførte punkter',
+  moreItemsPlus: '+{n} flere',
+  noChecklistMarkedComplete: 'Ingen sjekkpunkter er avmerket i denne fasen.',
+  phaseUnlockNeedsAdminHint:
+    'Opplåsing og flytting i flyten krever admin — kontakt ved behov.',
+
+  heatingDocRoomHeading: 'Varmekabel-dokumentasjon',
+  heatingReadOnlyIntroLine: 'Registrerte målinger og modulbilder — kun visning for din rolle.',
+  noMeasurementsOrPhotos: 'Ingen målinger eller bilder registrert.',
+  completedAtLabel: 'Fullført:',
+  heatingCompletedByLabel: 'Utført av:',
+  heatingDateLabel: 'Dato:',
+  heatingPerformedByLabel: 'Registrert av:',
+  unlockStepButton: 'Lås opp trinn',
+  stagePhotosLabel: 'Trinnbilder',
+  stagePhotoCountOne: '{n} trinnbilde',
+  stagePhotoCountMany: '{n} trinnbilder',
+  galleryPickShort: 'Album',
+  removeExtraStep: 'Fjern',
+  noPhotosThisPhaseEmpty: 'Ingen bilder i denne fasen',
+  noActivityPhaseYet: 'Ingen aktivitet i denne fasen ennå.',
+
+  deviationsNotesHeading: 'Avvik / notater',
+  deviationsMetaOpenOnly: '{open} åpne',
+  deviationsMetaResolvedOnly: '{n} løst',
+  deviationsIntroHint: 'Avvik og mangler — ikke chat. Kun denne fasen.',
+
+  activityActorUnknown: 'Ukjent',
+
+  // Print export (project heating summary HTML)
+  exportMeasurementsHeading: 'Målinger og registrering',
+  exportTableStep: 'Trinn',
+  exportTableResistance: 'Motstand (Ω)',
+  exportTableInsulation: 'Isolasjon (MΩ)',
+  exportTableRegistered: 'Registrert',
+  exportTableConfirmedBy: 'Bekreftet av',
+  exportTablePhotos: 'Bilder',
+  exportPhotoDocumentation: 'Bildedokumentasjon',
+  exportNoPhotosRoom: 'Ingen bilder lastet opp for dette rommet.',
+  exportProjectLabel: 'Prosjekt:',
+  exportLocationLabel: 'Plassering:',
+  exportDocWindowTitle: 'Varmekabel-dokumentasjon – {name}',
+  exportUploadedByStrong: 'Lastet opp av:',
+  exportRecordedStrong: 'Registrert:',
+  exportFigureRoomStrong: 'Rom:',
+  exportFigureStepStrong: 'Trinn:',
+  exportSelectRoomsFirst: 'Velg minst ett rom',
+  exportFloorNumbered: 'Etasje {n}',
+  exportRoomTitlePlain: 'Rom {number}',
+  exportRoomLocationJoin: '{floor} · Rom {room}',
+
+  toastDeviationAdded: 'Avvik lagt til',
+  toastIssueResolvedMark: 'Avvik markert som løst',
+  toastIssueReopened: 'Avvik gjenåpnet',
+
+  heatingDocFillStagesHint: 'Fyll ut alle tre måletrinn for komplett dokumentasjon.',
+  heatingLockedAdminEditableHint: 'Låst av admin. Montører ser kun — admin kan fortsatt korrigere.',
+  adminHeatingLockButton: 'Lås',
+  adminHeatingUnlockButton: 'Lås opp',
+  removeItemAria: 'Fjern punkt',
+
+  addExtraHeatingStep: 'Legg til ekstra trinn',
+  missingHeatingStagesPrefix: 'Mangler trinn:',
+  missingHeatingStagesNone: 'Ingen',
+
+  phaseToolsCardTitle: 'Faseverktøy (dette rommet)',
+  phaseToolsCardHint:
+    'Sjekkliste og varmekabel per fase for montører. Prosjektstandard gjelder om du ikke overstyrer — å skjule et verktøy sletter ikke data.',
+  checklistToolCheckbox: 'Sjekkliste',
+
+  floorBoardHintShort:
+    'Fanen som matcher etasjetavlen er uthevet. Under velger du hvilken fase du redigerer.',
+  boardPhaseSelectLabel: 'Tavlefase',
+  areaPhaseSelectLabel: 'Sonefase',
+  workflowStepStatusHeading: 'Status per trinn',
+  workflowParallelStepsHint:
+    'Flere trinn kan være «Pågår» samtidig. Tavlefase-kontrollen over gir en enkel lineær progresjon når du trenger det.',
+
+  photoSectionHeading: 'Bilder',
+  reopenIssue: 'Gjenåpne',
+  noChecklistItemsThisPhase: 'Ingen sjekkpunkter i denne fasen.',
+
+  areasDialogTitle: 'Sonar',
+  areasDialogHint:
+    'Hver sone har egen flyt og sjekkliste. Første sone styrer tavlefase for dette rommet.',
+
+  roomNotFoundShort: 'Ikke funnet',
+  areaPrimaryBadge: 'Hoved',
+  areasRemoveZone: 'Fjern',
+  areasDialogDone: 'Ferdig',
+
+  dialogBlockRoomTitle: 'Sperr rom',
+  dialogMarkRoomBlocked: 'Merk som sperret',
+
+  dialogDeleteRoomTitle: 'Slette dette rommet?',
+  dialogDeleteRoomBody:
+    'Dette sletter rommet permanent sammen med sjekkliste, bilder, besøk og notater.',
+
+  checkNameDialogTitle: 'Hvem krysser av?',
+  checkNameDialogIntro:
+    'Arbeid på byggeplass må knyttes til navn. Skriv navn én gang på denne enheten (lagres lokalt), logg inn med montør-PIN, eller sett navn på profilen.',
+  knownWorkersLabel: 'Kjente montører:',
+  continueAction: 'Fortsett',
+
+  heatingManualSaveChanges: 'Lagre endringer',
+  heatingManualSaveDocumentation: 'Lagre dokumentasjon',
 } as const;
 
 export type TranslationKey = keyof typeof DICTIONARY;
@@ -415,6 +609,33 @@ export function formatNb(template: string, vars: Record<string, string | number>
     out = out.replaceAll(`{${k}}`, String(v));
   }
   return out;
+}
+
+/** Norwegian label for phase chip status (internal enum stays English for styling). */
+export function translatePhaseChipStatus(status: PhaseChipUi['status'], t: TranslateFn): string {
+  switch (status) {
+    case 'Active':
+      return t('phaseChipActive');
+    case 'Open':
+      return t('phaseChipOpen');
+    case 'Locked':
+      return t('phaseChipLocked');
+    case 'Completed':
+      return t('phaseChipCompleted');
+    case 'Not started':
+      return t('phaseChipNotStarted');
+    case 'Blocked':
+      return t('phaseChipBlocked');
+    default:
+      return status;
+  }
+}
+
+/** Localize chip progress like `3 missing` → `3 mangler`. */
+export function translatePhaseChipProgress(progress: string, t: TranslateFn): string {
+  const m = /^(\d+) missing$/.exec(progress.trim());
+  if (m) return formatNb(t('phaseChipTasksMissing'), { n: Number(m[1]) });
+  return progress;
 }
 
 export function I18nProvider({ children }: { children: ReactNode }) {

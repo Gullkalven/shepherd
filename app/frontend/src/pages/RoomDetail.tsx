@@ -77,7 +77,7 @@ import { cn } from '@/lib/utils';
 import { useDesktopAutoFocus } from '@/lib/useDesktopAutoFocus';
 import { readWorkerSession } from '@/lib/workerSession';
 import { resolveWorkerActorLabel, LEGACY_WORKER_DISPLAY_NAME_KEY } from '@/lib/workerIdentity';
-import { formatNb, useI18n } from '@/lib/i18n';
+import { formatNb, translatePhaseChipProgress, translatePhaseChipStatus, useI18n } from '@/lib/i18n';
 import { WorkerRoomView } from '@/components/WorkerRoomView';
 import { ImageWithFallback } from '@/components/ImageWithFallback';
 import { RoomLocationNav, type RoomNavSibling } from '@/components/RoomLocationNav';
@@ -1272,7 +1272,7 @@ export default function RoomDetail() {
       reported_by: reporter,
       ...(showAreasNav ? { area_id: activeAreaId } : {}),
     };
-    await persistWorkflowDeviations([...deviations, item], 'Deviation added');
+    await persistWorkflowDeviations([...deviations, item], t('toastDeviationAdded'));
     setNewDeviationText('');
   };
 
@@ -2170,9 +2170,9 @@ export default function RoomDetail() {
   const heatingCableManualSaveLabel = useMemo(
     () =>
       deriveHeatingCableStatus(heatingCableDoc).status === 'complete'
-        ? 'Save changes'
-        : 'Save documentation',
-    [heatingCableDoc]
+        ? t('heatingManualSaveChanges')
+        : t('heatingManualSaveDocumentation'),
+    [heatingCableDoc, t]
   );
 
   const heatingCableSaveBusy = useMemo(
@@ -2191,7 +2191,7 @@ export default function RoomDetail() {
   if (!room) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Not found</p>
+        <p className="text-muted-foreground">{t('roomNotFoundShort')}</p>
       </div>
     );
   }
@@ -2254,7 +2254,7 @@ export default function RoomDetail() {
         resolved_by: resolver,
       };
     });
-    await persistWorkflowDeviations(next, 'Issue marked as resolved');
+    await persistWorkflowDeviations(next, t('toastIssueResolvedMark'));
   };
 
   const handleReopenIssue = async (id: string) => {
@@ -2268,7 +2268,7 @@ export default function RoomDetail() {
         resolved_by: undefined,
       };
     });
-    await persistWorkflowDeviations(next, 'Issue reopened');
+    await persistWorkflowDeviations(next, t('toastIssueReopened'));
   };
 
   const canMutateChecklist = canAddChecklistItem && !editsBlocked && !phaseReadOnly;
@@ -2606,11 +2606,8 @@ export default function RoomDetail() {
 
         {canEdit && !editsBlocked ? (
           <Card className="border-border/45 bg-background/70 shadow-none p-2.5 sm:p-3">
-            <p className="text-[11px] font-semibold text-foreground">Phase tools (this room)</p>
-            <p className="text-[10px] text-muted-foreground mt-1 mb-2 leading-snug">
-              Per-phase checklist and heating cable visibility for workers. Project defaults apply unless you override
-              here; hiding a tool does not remove saved data.
-            </p>
+            <p className="text-[11px] font-semibold text-foreground">{t('phaseToolsCardTitle')}</p>
+            <p className="text-[10px] text-muted-foreground mt-1 mb-2 leading-snug">{t('phaseToolsCardHint')}</p>
             <div className="space-y-2 max-h-52 overflow-y-auto">
               {phaseWorkflow.map((pe) => {
                 const eff = resolvePhaseTools(pe, phaseToolOverrides[pe.key]);
@@ -2630,7 +2627,7 @@ export default function RoomDetail() {
                         disabled={phaseToolsSaving}
                         onChange={(e) => void persistPhaseToolToggle(pe.key, { checklist: e.target.checked })}
                       />
-                      Checklist
+                      {t('checklistToolCheckbox')}
                     </label>
                     <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground cursor-pointer">
                       <input
@@ -2642,7 +2639,7 @@ export default function RoomDetail() {
                           void persistPhaseToolToggle(pe.key, { heating_cable: e.target.checked })
                         }
                       />
-                      Heating cable
+                      {t('heatingCableHeading')}
                     </label>
                   </div>
                 );
@@ -2664,13 +2661,10 @@ export default function RoomDetail() {
 
             {canMovePhase ? (
               <div className="rounded-lg border border-border/55 bg-muted/12 px-2.5 py-2.5 space-y-2.5 dark:bg-muted/10">
-                <p className="text-[10px] text-muted-foreground leading-snug">
-                  The <span className="font-medium text-foreground/85">amber</span> tab matches the floor board. Phase
-                  tabs below stay in workflow order — you are selecting which phase to work in.
-                </p>
+                <p className="text-[10px] text-muted-foreground leading-snug">{t('floorBoardHintShort')}</p>
                 <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center">
                   <span className="text-[10px] font-medium text-muted-foreground/85 shrink-0 sm:min-w-[5.5rem]">
-                    Board phase
+                    {t('boardPhaseSelectLabel')}
                   </span>
                   <Select value={boardPhaseNorm} onValueChange={handleSetMainPhase} disabled={editsBlocked}>
                     <SelectTrigger className="h-7 flex-1 min-w-[8rem] max-w-xs text-[11px] border-border/45 bg-background/80 text-foreground/90">
@@ -2688,7 +2682,7 @@ export default function RoomDetail() {
                 {multiArea && activeAreaId !== primaryAreaId ? (
                   <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center">
                     <span className="text-[10px] font-medium text-muted-foreground/85 shrink-0 sm:min-w-[5.5rem]">
-                      Area phase
+                      {t('areaPhaseSelectLabel')}
                     </span>
                     <Select
                       value={areaMainPhaseNorm}
@@ -2710,12 +2704,9 @@ export default function RoomDetail() {
                 ) : null}
                 <div className="flex flex-col gap-1.5 border-t border-border/35 pt-2.5 mt-2">
                   <span className="text-[10px] font-medium text-muted-foreground/85">
-                    Workflow step status
+                    {t('workflowStepStatusHeading')}
                   </span>
-                  <p className="text-[10px] text-muted-foreground leading-snug">
-                    Several steps may be <span className="font-medium text-foreground/90">In progress</span> together.
-                    The board-phase control above keeps a simple linear progression when you need it.
-                  </p>
+                  <p className="text-[10px] text-muted-foreground leading-snug">{t('workflowParallelStepsHint')}</p>
                   <div className="grid gap-1.5 sm:grid-cols-2">
                     {workflowPhaseKeys.map((k) => (
                       <div key={k} className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-2">
@@ -2731,10 +2722,10 @@ export default function RoomDetail() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="not_started">Not started</SelectItem>
-                            <SelectItem value="in_progress">In progress</SelectItem>
-                            <SelectItem value="complete">Complete</SelectItem>
-                            <SelectItem value="blocked">Blocked</SelectItem>
+                            <SelectItem value="not_started">{t('statusCardNotStarted')}</SelectItem>
+                            <SelectItem value="in_progress">{t('statusCardInProgress')}</SelectItem>
+                            <SelectItem value="complete">{t('statusCardCompleted')}</SelectItem>
+                            <SelectItem value="blocked">{t('statusCardBlocked')}</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -2791,7 +2782,7 @@ export default function RoomDetail() {
                       disabled={editsBlocked}
                       onClick={() => setShowManageAreas(true)}
                     >
-                      Manage
+                      {t('manageAreasButton')}
                     </Button>
                   ) : null}
                 </div>
@@ -2865,10 +2856,14 @@ export default function RoomDetail() {
                             ui.status === 'Locked' && 'text-slate-600 dark:text-slate-400'
                           )}
                         >
-                          {ui.status}
+                          {translatePhaseChipStatus(ui.status, t)}
                         </span>
                         {ui.workerLocked ? <Lock className="h-3 w-3 shrink-0 text-slate-500" aria-hidden /> : null}
-                        {ui.progress ? <span className="text-slate-600 dark:text-slate-400">· {ui.progress}</span> : null}
+                        {ui.progress ? (
+                          <span className="text-slate-600 dark:text-slate-400">
+                            · {translatePhaseChipProgress(ui.progress, t)}
+                          </span>
+                        ) : null}
                       </span>
                       {assignedWorker ? (
                         <span className="mt-1 text-[10px] text-slate-600 dark:text-slate-300 truncate">
@@ -2891,18 +2886,20 @@ export default function RoomDetail() {
                               e.preventDefault();
                               e.stopPropagation();
                             }}
-                            aria-label={`Phase actions for ${phaseLabel(key, phaseWorkflow)}`}
+                            aria-label={formatNb(t('phaseAriaActionsFor'), {
+                              phase: phaseLabel(key, phaseWorkflow),
+                            })}
                           >
                             <EllipsisVertical className="h-3 w-3 text-muted-foreground" />
                           </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
-                          <DropdownMenuLabel>Assign worker</DropdownMenuLabel>
+                          <DropdownMenuLabel>{t('assignWorkerMenuLabel')}</DropdownMenuLabel>
                           <DropdownMenuItem
                             onClick={() => void handleAssignPhaseWorker(key, null)}
                             disabled={assigningPhaseKey === key}
                           >
-                            Unassigned
+                            {t('workerUnassigned')}
                           </DropdownMenuItem>
                           {projectWorkers.map((worker) => (
                             <DropdownMenuItem
@@ -2911,12 +2908,12 @@ export default function RoomDetail() {
                               disabled={assigningPhaseKey === key}
                             >
                               {worker.name}
-                              {assignedWorkerId === worker.id ? ' (current)' : ''}
+                              {assignedWorkerId === worker.id ? ` ${t('workerCurrentSuffix')}` : ''}
                             </DropdownMenuItem>
                           ))}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => void handleTogglePhaseWorkerLock(key)}>
-                            {tabLockedForWorkers ? 'Open for workers' : 'Lock for workers'}
+                            {tabLockedForWorkers ? t('menuPhaseOpenWorkers') : t('menuPhaseLockWorkers')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -2929,8 +2926,10 @@ export default function RoomDetail() {
             {selPhase !== areaMainPhaseNorm ? (
               <div className="flex flex-col gap-1.5 rounded-md border border-amber-200/70 bg-amber-50/70 px-2.5 py-2 dark:border-amber-900/45 dark:bg-amber-950/30 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs text-amber-950 dark:text-amber-100 leading-snug">
-                  Viewing <span className="font-medium">{phaseLabel(selPhase, phaseWorkflow)}</span> — board phase is{' '}
-                  <span className="font-medium">{phaseLabel(areaMainPhaseNorm, phaseWorkflow)}</span>.
+                  {formatNb(t('viewingPhaseVsBoard'), {
+                    viewing: phaseLabel(selPhase, phaseWorkflow),
+                    board: phaseLabel(areaMainPhaseNorm, phaseWorkflow),
+                  })}
                 </p>
                 <Button
                   type="button"
@@ -2939,14 +2938,14 @@ export default function RoomDetail() {
                   className="h-8 shrink-0 text-xs border-amber-200/80 bg-white/90 hover:bg-amber-100/80 dark:border-amber-800 dark:bg-amber-950 dark:hover:bg-amber-900"
                   onClick={() => setPhaseTab(areaMainPhaseNorm)}
                 >
-                  Go to board phase
+                  {t('goToBoardPhase')}
                 </Button>
               </div>
             ) : null}
 
             {selPhase !== areaMainPhaseNorm && !phaseReadOnly ? (
               <p className="text-[11px] text-muted-foreground rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5 leading-snug">
-                Not the board phase tab, but still open for editing if your role allows it.
+                {t('notBoardPhaseTabEditHint')}
               </p>
             ) : null}
 
@@ -2964,14 +2963,16 @@ export default function RoomDetail() {
                           variant="secondary"
                           className="text-[10px] font-medium border-slate-300/80 bg-white/90 text-slate-800 dark:border-slate-600 dark:bg-slate-950/60 dark:text-slate-100"
                         >
-                          {chipUiSel.workerLocked ? 'Locked — view only' : 'Read-only'}
+                          {chipUiSel.workerLocked ? t('phaseBannerReadOnlyLocked') : t('phaseBannerReadOnly')}
                         </Badge>
                         {chipUiSel.status !== 'Active' ? (
-                          <span className="text-[10px] font-medium text-muted-foreground">{chipUiSel.status}</span>
+                          <span className="text-[10px] font-medium text-muted-foreground">
+                            {translatePhaseChipStatus(chipUiSel.status, t)}
+                          </span>
                         ) : null}
                       </div>
                       <p className="text-[11px] text-muted-foreground leading-snug">
-                        This phase is closed for editing on your account. Historical work stays visible below.
+                        {t('phaseReadOnlyIntro')}
                       </p>
                     </div>
                   </div>
@@ -2980,30 +2981,31 @@ export default function RoomDetail() {
                   <div className="flex flex-wrap gap-x-3 gap-y-1">
                     {toolsSel.checklist ? (
                     <span className="text-muted-foreground">
-                      Checklist:{' '}
-                      <span className="font-medium text-foreground tabular-nums">
-                        {completedForPhase}/{totalForPhase}
-                      </span>{' '}
-                      done
+                      {formatNb(t('compactChecklistProgress'), {
+                        done: completedForPhase,
+                        total: totalForPhase,
+                      })}
                     </span>
                     ) : null}
                     {sectionVisibility.photos ? (
                       <span className="text-muted-foreground">
-                        Photos:{' '}
+                        {t('photosShortLabel')}{' '}
                         <span className="font-medium text-foreground tabular-nums">{photosForPhase.length}</span>
                       </span>
                     ) : null}
                     {showHeatingCableModule ? (
                       <span className="text-muted-foreground">
-                        Cable docs:{' '}
-                        <span className="font-medium text-foreground">{HEATING_CABLE_DERIVED_STATUS_LABEL[heatingDerived.status]}</span>
+                        {t('cableDocsShortLabel')}{' '}
+                        <span className="font-medium text-foreground">
+                          {HEATING_CABLE_DERIVED_STATUS_LABEL[heatingDerived.status]}
+                        </span>
                       </span>
                     ) : null}
                   </div>
                   {toolsSel.checklist && completedTaskNamesForPhase.length > 0 ? (
                     <div className="rounded-md border border-border/50 bg-background/60 px-2 py-1.5 dark:bg-background/40">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground/90">
-                        Completed items
+                        {t('completedItemsHeading')}
                       </p>
                       <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[11px] text-foreground/90">
                         {tasksForPhase
@@ -3015,16 +3017,17 @@ export default function RoomDetail() {
                       </ul>
                       {completedTaskNamesForPhase.length > 8 ? (
                         <p className="mt-1 text-[10px] text-muted-foreground">
-                          +{completedTaskNamesForPhase.length - 8} more
+                          {formatNb(t('moreItemsPlus'), {
+                            n: completedTaskNamesForPhase.length - 8,
+                          })}
                         </p>
                       ) : null}
                     </div>
                   ) : toolsSel.checklist && totalForPhase > 0 ? (
-                    <p className="text-[11px] text-muted-foreground">No checklist items marked complete in this phase.</p>
+                    <p className="text-[11px] text-muted-foreground">{t('noChecklistMarkedComplete')}</p>
                   ) : null}
                   <p className="border-t border-border/35 pt-2 text-[10px] text-muted-foreground leading-relaxed">
-                    Unlocking, workflow moves, and corrections require an <span className="font-medium text-foreground/90">Admin</span>{' '}
-                    — contact them if something needs to change here.
+                    {t('phaseUnlockNeedsAdminHint')}
                   </p>
                 </div>
               </Card>
@@ -3038,14 +3041,14 @@ export default function RoomDetail() {
                     <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-2 sm:px-2.5">
                       <div className="flex items-center justify-between gap-2">
                         <h3 className="text-[15px] font-semibold tracking-tight text-foreground">
-                          Heating cable documentation
+                          {t('heatingDocRoomHeading')}
                         </h3>
                         <Badge variant="secondary" className="text-[10px]">
                           {HEATING_CABLE_DERIVED_STATUS_LABEL[heatingDerived.status]}
                         </Badge>
                       </div>
                       <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-                        Recorded measurements and module photos — view only for your role.
+                        {t('heatingReadOnlyIntroLine')}
                       </p>
                     </div>
                     <div className="p-2 space-y-3">
@@ -3063,43 +3066,43 @@ export default function RoomDetail() {
                           <div key={stage.key} className="rounded-md border border-border/50 p-2 space-y-2">
                             <p className="text-xs font-semibold text-foreground">{stage.label}</p>
                             {!has ? (
-                              <p className="text-[11px] text-muted-foreground">No measurements or photos recorded.</p>
+                              <p className="text-[11px] text-muted-foreground">{t('noMeasurementsOrPhotos')}</p>
                             ) : (
                               <>
                                 <div className="space-y-1.5 text-[11px] leading-snug">
                                   {completedAt ? (
                                     <p>
-                                      <span className="text-muted-foreground">Completed at: </span>
+                                      <span className="text-muted-foreground">{t('completedAtLabel')} </span>
                                       <span className="text-foreground">{formatHeatingCableDateTimeReadable(completedAt)}</span>
                                     </p>
                                   ) : null}
                                   {completedBy ? (
                                     <p>
-                                      <span className="text-muted-foreground">Completed by: </span>
+                                      <span className="text-muted-foreground">{t('heatingCompletedByLabel')} </span>
                                       <span className="text-foreground">{completedBy}</span>
                                     </p>
                                   ) : null}
                                   {row.resistance_ohm ? (
                                     <p>
-                                      <span className="text-muted-foreground">Resistance: </span>
+                                      <span className="text-muted-foreground">{t('measurementsResistance')}: </span>
                                       <span className="text-foreground">{row.resistance_ohm} Ω</span>
                                     </p>
                                   ) : null}
                                   {row.insulation_mohm ? (
                                     <p>
-                                      <span className="text-muted-foreground">Insulation: </span>
+                                      <span className="text-muted-foreground">{t('measurementsInsulation')}: </span>
                                       <span className="text-foreground">{row.insulation_mohm} MΩ</span>
                                     </p>
                                   ) : null}
                                   {row.date ? (
                                     <p>
-                                      <span className="text-muted-foreground">Date: </span>
+                                      <span className="text-muted-foreground">{t('heatingDateLabel')} </span>
                                       <span className="text-foreground">{formatHeatingCableDateTimeReadable(row.date)}</span>
                                     </p>
                                   ) : null}
                                   {row.performed_by ? (
                                     <p>
-                                      <span className="text-muted-foreground">Performed by: </span>
+                                      <span className="text-muted-foreground">{t('heatingPerformedByLabel')} </span>
                                       <span className="text-foreground">{row.performed_by}</span>
                                     </p>
                                   ) : null}
@@ -3148,46 +3151,46 @@ export default function RoomDetail() {
                         return (
                           <div key={sid} className="rounded-md border border-border/50 p-2 space-y-2">
                             <p className="text-xs font-semibold text-foreground">
-                              {step.label?.trim() ? step.label : `Extra step ${idx + 1}`}
+                              {step.label?.trim() ? step.label : formatNb(t('extraStepFallback'), { n: idx + 1 })}
                             </p>
                             {!has ? (
-                              <p className="text-[11px] text-muted-foreground">No measurements or photos recorded.</p>
+                              <p className="text-[11px] text-muted-foreground">{t('noMeasurementsOrPhotos')}</p>
                             ) : (
                               <>
                                 <div className="space-y-1.5 text-[11px] leading-snug">
                                   {completedAt ? (
                                     <p>
-                                      <span className="text-muted-foreground">Completed at: </span>
+                                      <span className="text-muted-foreground">{t('completedAtLabel')} </span>
                                       <span className="text-foreground">{formatHeatingCableDateTimeReadable(completedAt)}</span>
                                     </p>
                                   ) : null}
                                   {completedBy ? (
                                     <p>
-                                      <span className="text-muted-foreground">Completed by: </span>
+                                      <span className="text-muted-foreground">{t('heatingCompletedByLabel')} </span>
                                       <span className="text-foreground">{completedBy}</span>
                                     </p>
                                   ) : null}
                                   {step.resistance_ohm ? (
                                     <p>
-                                      <span className="text-muted-foreground">Resistance: </span>
+                                      <span className="text-muted-foreground">{t('measurementsResistance')}: </span>
                                       <span className="text-foreground">{step.resistance_ohm} Ω</span>
                                     </p>
                                   ) : null}
                                   {step.insulation_mohm ? (
                                     <p>
-                                      <span className="text-muted-foreground">Insulation: </span>
+                                      <span className="text-muted-foreground">{t('measurementsInsulation')}: </span>
                                       <span className="text-foreground">{step.insulation_mohm} MΩ</span>
                                     </p>
                                   ) : null}
                                   {step.date ? (
                                     <p>
-                                      <span className="text-muted-foreground">Date: </span>
+                                      <span className="text-muted-foreground">{t('heatingDateLabel')} </span>
                                       <span className="text-foreground">{formatHeatingCableDateTimeReadable(step.date)}</span>
                                     </p>
                                   ) : null}
                                   {step.performed_by ? (
                                     <p>
-                                      <span className="text-muted-foreground">Performed by: </span>
+                                      <span className="text-muted-foreground">{t('heatingPerformedByLabel')} </span>
                                       <span className="text-foreground">{step.performed_by}</span>
                                     </p>
                                   ) : null}
@@ -3225,7 +3228,7 @@ export default function RoomDetail() {
                     <div className="border-b border-border/45 bg-muted/[0.35] dark:bg-muted/20 px-2 py-2 sm:px-2.5">
                       <div className="flex items-center justify-between gap-2">
                         <h3 className="text-[15px] font-semibold tracking-tight text-foreground">
-                          Heating Cable Documentation
+                          {t('heatingDocRoomHeading')}
                         </h3>
                         <div className="flex items-center gap-1.5">
                           <Badge variant="secondary" className="text-[10px]">
@@ -3240,13 +3243,13 @@ export default function RoomDetail() {
                               onClick={() => void toggleHeatingCableLock()}
                               disabled={heatingCableBlocking}
                             >
-                              {heatingLockedByAdmin ? 'Unlock' : 'Lock'}
+                              {heatingLockedByAdmin ? t('adminHeatingUnlockButton') : t('adminHeatingLockButton')}
                             </Button>
                           ) : null}
                         </div>
                       </div>
                       <p className="mt-1 text-[11px] text-muted-foreground leading-snug">
-                        Fill all three measurement stages for complete documentation.
+                        {t('heatingDocFillStagesHint')}
                       </p>
                       {canEditHeatingCable && !heatingLockedByAdmin ? (
                         <p
@@ -3260,21 +3263,21 @@ export default function RoomDetail() {
                           aria-live="polite"
                         >
                           {heatingCableSaveBusy
-                            ? 'Saving'
+                            ? t('savingShort')
                             : heatingCableSaveUi === 'saved'
-                              ? 'Saved'
+                              ? t('savedShort')
                               : heatingCableSaveUi === 'error'
-                                ? 'Failed'
+                                ? t('saveFailedShort')
                                 : !heatingCableDirty
                                   ? heatingDerived.status === 'complete'
-                                    ? 'Documentation complete'
-                                    : 'All changes saved'
+                                    ? t('documentationComplete')
+                                    : t('allChangesSaved')
                                   : null}
                         </p>
                       ) : null}
                       {heatingLockedByAdmin ? (
                         <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400 leading-snug">
-                          Locked by admin. Workers can view, admins can still correct.
+                          {t('heatingLockedAdminEditableHint')}
                         </p>
                       ) : null}
                     </div>
@@ -3298,7 +3301,7 @@ export default function RoomDetail() {
                                   disabled={heatingCableBlocking}
                                   onClick={() => void unlockHeatingCableStage(stage.key)}
                                 >
-                                  Unlock step
+                                  {t('unlockStepButton')}
                                 </Button>
                               ) : null}
                             </div>
@@ -3306,13 +3309,13 @@ export default function RoomDetail() {
                               <div className="space-y-1 text-[11px] leading-snug">
                                 {completedAt ? (
                                   <p>
-                                    <span className="text-muted-foreground">Completed at: </span>
+                                    <span className="text-muted-foreground">{t('completedAtLabel')} </span>
                                     <span className="text-foreground">{formatHeatingCableDateTimeReadable(completedAt)}</span>
                                   </p>
                                 ) : null}
                                 {completedBy ? (
                                   <p>
-                                    <span className="text-muted-foreground">Completed by: </span>
+                                    <span className="text-muted-foreground">{t('heatingCompletedByLabel')} </span>
                                     <span className="text-foreground">{completedBy}</span>
                                   </p>
                                 ) : null}
@@ -3324,7 +3327,7 @@ export default function RoomDetail() {
                                   htmlFor={`hc-room-${stage.key}-r`}
                                   className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                                 >
-                                  Resistance{' '}
+                                  {t('measurementsResistance')}{' '}
                                   <span className="font-normal text-muted-foreground">(Ω)</span>
                                 </Label>
                                 <Input
@@ -3334,7 +3337,7 @@ export default function RoomDetail() {
                                   step="any"
                                   value={row.resistance_ohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
-                                  aria-label="Resistance (Ω)"
+                                  aria-label={t('ariaResistanceOhm')}
                                   onChange={(e) =>
                                     updateHeatingStageField(stage.key, 'resistance_ohm', e.target.value)
                                   }
@@ -3346,7 +3349,7 @@ export default function RoomDetail() {
                                   htmlFor={`hc-room-${stage.key}-i`}
                                   className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                                 >
-                                  Insulation{' '}
+                                  {t('measurementsInsulation')}{' '}
                                   <span className="font-normal text-muted-foreground">(MΩ)</span>
                                 </Label>
                                 <Input
@@ -3356,7 +3359,7 @@ export default function RoomDetail() {
                                   step="any"
                                   value={row.insulation_mohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
-                                  aria-label="Insulation (MΩ)"
+                                  aria-label={t('ariaInsulationMohm')}
                                   onChange={(e) =>
                                     updateHeatingStageField(stage.key, 'insulation_mohm', e.target.value)
                                   }
@@ -3381,7 +3384,7 @@ export default function RoomDetail() {
                             />
                             {stagePhotos.length > 0 ? (
                               <div className="space-y-1.5">
-                                <p className="text-[10px] text-muted-foreground">Stage photos</p>
+                                <p className="text-[10px] text-muted-foreground">{t('stagePhotosLabel')}</p>
                                 <div className="grid grid-cols-3 gap-2">
                                   {stagePhotos.map((item, pi) => {
                                     const src =
@@ -3430,7 +3433,7 @@ export default function RoomDetail() {
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
                                   onClick={() => heatingPhotoInputRefs.current[`${stage.key}:camera`]?.click()}
                                 >
-                                  Take photo
+                                  {t('takePhoto')}
                                 </Button>
                                 <Button
                                   type="button"
@@ -3440,12 +3443,16 @@ export default function RoomDetail() {
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
                                   onClick={() => heatingPhotoInputRefs.current[`${stage.key}:gallery`]?.click()}
                                 >
-                                  Gallery
+                                  {t('galleryPickShort')}
                                 </Button>
                               </div>
                               <span className="text-[10px] text-muted-foreground sm:ml-auto">
-                                {Array.isArray(row.photos) ? row.photos.length : 0} stage photo
-                                {Array.isArray(row.photos) && row.photos.length !== 1 ? 's' : ''}
+                                {formatNb(
+                                  (Array.isArray(row.photos) ? row.photos.length : 0) === 1
+                                    ? t('stagePhotoCountOne')
+                                    : t('stagePhotoCountMany'),
+                                  { n: Array.isArray(row.photos) ? row.photos.length : 0 }
+                                )}
                               </span>
                             </div>
                           </div>
@@ -3475,20 +3482,20 @@ export default function RoomDetail() {
                                 disabled={!canEditHeatingCable || heatingCableBlocking}
                                 onClick={() => removeExtraHeatingStep(idx)}
                               >
-                                Remove
+                                {t('removeExtraStep')}
                               </Button>
                             </div>
                             {(completedAt || completedBy) && (
                               <div className="space-y-1 text-[11px] leading-snug">
                                 {completedAt ? (
                                   <p>
-                                    <span className="text-muted-foreground">Completed at: </span>
+                                    <span className="text-muted-foreground">{t('completedAtLabel')} </span>
                                     <span className="text-foreground">{formatHeatingCableDateTimeReadable(completedAt)}</span>
                                   </p>
                                 ) : null}
                                 {completedBy ? (
                                   <p>
-                                    <span className="text-muted-foreground">Completed by: </span>
+                                    <span className="text-muted-foreground">{t('heatingCompletedByLabel')} </span>
                                     <span className="text-foreground">{completedBy}</span>
                                   </p>
                                 ) : null}
@@ -3500,7 +3507,7 @@ export default function RoomDetail() {
                                   htmlFor={`hc-room-extra-${idx}-r`}
                                   className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                                 >
-                                  Resistance{' '}
+                                  {t('measurementsResistance')}{' '}
                                   <span className="font-normal text-muted-foreground">(Ω)</span>
                                 </Label>
                                 <Input
@@ -3510,7 +3517,7 @@ export default function RoomDetail() {
                                   step="any"
                                   value={step.resistance_ohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
-                                  aria-label="Resistance (Ω)"
+                                  aria-label={t('ariaResistanceOhm')}
                                   onChange={(e) => updateExtraHeatingStepField(idx, 'resistance_ohm', e.target.value)}
                                   className="h-9 sm:h-8 text-base sm:text-xs"
                                 />
@@ -3520,7 +3527,7 @@ export default function RoomDetail() {
                                   htmlFor={`hc-room-extra-${idx}-i`}
                                   className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                                 >
-                                  Insulation{' '}
+                                  {t('measurementsInsulation')}{' '}
                                   <span className="font-normal text-muted-foreground">(MΩ)</span>
                                 </Label>
                                 <Input
@@ -3530,7 +3537,7 @@ export default function RoomDetail() {
                                   step="any"
                                   value={step.insulation_mohm || ''}
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
-                                  aria-label="Insulation (MΩ)"
+                                  aria-label={t('ariaInsulationMohm')}
                                   onChange={(e) => updateExtraHeatingStepField(idx, 'insulation_mohm', e.target.value)}
                                   className="h-9 sm:h-8 text-base sm:text-xs"
                                 />
@@ -3553,7 +3560,7 @@ export default function RoomDetail() {
                             />
                             {stagePhotos.length > 0 ? (
                               <div className="space-y-1.5">
-                                <p className="text-[10px] text-muted-foreground">Stage photos</p>
+                                <p className="text-[10px] text-muted-foreground">{t('stagePhotosLabel')}</p>
                                 <div className="grid grid-cols-3 gap-2">
                                   {stagePhotos.map((item, pi) => {
                                     const src =
@@ -3602,7 +3609,7 @@ export default function RoomDetail() {
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
                                   onClick={() => heatingPhotoInputRefs.current[`${sid}:camera`]?.click()}
                                 >
-                                  Take photo
+                                  {t('takePhoto')}
                                 </Button>
                                 <Button
                                   type="button"
@@ -3612,12 +3619,16 @@ export default function RoomDetail() {
                                   disabled={!canEditHeatingCable || heatingCableBlocking}
                                   onClick={() => heatingPhotoInputRefs.current[`${sid}:gallery`]?.click()}
                                 >
-                                  Gallery
+                                  {t('galleryPickShort')}
                                 </Button>
                               </div>
                               <span className="text-[10px] text-muted-foreground sm:ml-auto">
-                                {Array.isArray(step.photos) ? step.photos.length : 0} stage photo
-                                {Array.isArray(step.photos) && step.photos.length !== 1 ? 's' : ''}
+                                {formatNb(
+                                  (Array.isArray(step.photos) ? step.photos.length : 0) === 1
+                                    ? t('stagePhotoCountOne')
+                                    : t('stagePhotoCountMany'),
+                                  { n: Array.isArray(step.photos) ? step.photos.length : 0 }
+                                )}
                               </span>
                             </div>
                           </div>
@@ -3632,15 +3643,15 @@ export default function RoomDetail() {
                           onClick={addExtraHeatingStep}
                           disabled={!canEditHeatingCable || heatingCableBlocking}
                         >
-                          Add extra step
+                          {t('addExtraHeatingStep')}
                         </Button>
                         <p className="text-[11px] text-muted-foreground">
-                          Missing stages:{' '}
+                          {t('missingHeatingStagesPrefix')}{' '}
                           {heatingDerived.missingStages.length > 0
                             ? heatingDerived.missingStages
                                 .map((k) => HEATING_CABLE_STAGES.find((s) => s.key === k)?.label || k)
                                 .join(', ')
-                            : 'None'}
+                            : t('missingHeatingStagesNone')}
                         </p>
                         {canEditHeatingCable &&
                         !heatingLockedByAdmin &&
@@ -3657,7 +3668,7 @@ export default function RoomDetail() {
                               !canEditHeatingCable || heatingCableBlocking || heatingCableSaveBusy
                             }
                           >
-                            {heatingCableSaveUi === 'error' ? 'Retry save' : heatingCableManualSaveLabel}
+                            {heatingCableSaveUi === 'error' ? t('heatingRetrySave') : heatingCableManualSaveLabel}
                           </Button>
                         ) : null}
                       </div>
@@ -3870,7 +3881,9 @@ export default function RoomDetail() {
 
                       <div className="divide-y divide-border/50 rounded-md border border-border/50 bg-background dark:bg-background/80">
                         {tasksForPhase.length === 0 ? (
-                          <p className="py-5 text-center text-sm text-muted-foreground/90">No checklist items for this phase.</p>
+                          <p className="py-5 text-center text-sm text-muted-foreground/90">
+                            {t('noChecklistItemsThisPhase')}
+                          </p>
                         ) : null}
                         {tasksForPhase.map((task) => (
                           <div
@@ -3997,7 +4010,7 @@ export default function RoomDetail() {
                                       type="button"
                                       className="opacity-0 group-hover/task:opacity-100 transition-opacity text-muted-foreground hover:text-destructive p-2 -m-1 shrink-0 mt-0.5 min-h-10 min-w-10 flex items-center justify-center rounded-md hover:bg-muted/80"
                                       onClick={() => handleDeleteTask(task.id)}
-                                      aria-label="Remove item"
+                                      aria-label={t('removeItemAria')}
                                     >
                                       <Trash2 className="h-4 w-4" />
                                     </button>
@@ -4088,7 +4101,7 @@ export default function RoomDetail() {
                         <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/25 rounded-md">
                           <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                             <Camera className="h-3.5 w-3.5 opacity-70" />
-                            Photos
+                            {t('photoSectionHeading')}
                             <span className="font-normal opacity-80">({photosForPhase.length})</span>
                           </span>
                           <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180" />
@@ -4109,7 +4122,7 @@ export default function RoomDetail() {
                             {photosForPhase.length === 0 ? (
                               <div className="text-center py-3 text-muted-foreground text-xs">
                                 <ImageIcon className="h-6 w-6 mx-auto mb-1.5 opacity-40" />
-                                <p>No photos for this phase</p>
+                                <p>{t('noPhotosThisPhaseEmpty')}</p>
                               </div>
                             ) : (
                               <div className="grid grid-cols-3 gap-2">
@@ -4153,7 +4166,7 @@ export default function RoomDetail() {
                       <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/25 rounded-md">
                         <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                           <History className="h-3.5 w-3.5 opacity-70" />
-                          Activity
+                          {t('activityHistoryHeading')}
                           <span className="font-normal opacity-80">({activityEntries.length})</span>
                         </span>
                         <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180" />
@@ -4162,7 +4175,7 @@ export default function RoomDetail() {
                         <div className="px-3 pb-3 pt-0 max-h-56 overflow-y-auto space-y-2 text-xs border-t border-border/40">
                           {activityEntries.length === 0 ? (
                             <p className="text-muted-foreground py-2 leading-snug">
-                              No activity for this phase yet.
+                              {t('noActivityPhaseYet')}
                             </p>
                           ) : (
                             activityEntries.map((row, i) => (
@@ -4177,7 +4190,7 @@ export default function RoomDetail() {
                                         variant="secondary"
                                         className="h-5 shrink-0 px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wide"
                                       >
-                                        Latest
+                                        {t('latestBadge')}
                                       </Badge>
                                     ) : null}
                                     <span className="min-w-0 flex-1 leading-snug text-foreground/90">
@@ -4202,11 +4215,16 @@ export default function RoomDetail() {
                     <CollapsibleTrigger className="group flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/25 rounded-md">
                       <span className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground/90">
                         <AlertTriangle className="h-3.5 w-3.5 opacity-70 text-amber-600 dark:text-amber-500" />
-                        Deviations / notes
+                        {t('deviationsNotesHeading')}
                         <span className="font-normal opacity-80">
-                          ({openDeviationsForPhase.length} open
+                          (
+                          {formatNb(t('deviationsMetaOpenOnly'), {
+                            open: openDeviationsForPhase.length,
+                          })}
                           {resolvedDeviationsForPhase.length > 0
-                            ? ` · ${resolvedDeviationsForPhase.length} resolved`
+                            ? ` · ${formatNb(t('deviationsMetaResolvedOnly'), {
+                                n: resolvedDeviationsForPhase.length,
+                              })}`
                             : ''}
                           )
                         </span>
@@ -4215,12 +4233,10 @@ export default function RoomDetail() {
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="px-3 pb-3 pt-0 space-y-3 border-t border-border/40">
-                        <p className="text-[11px] text-muted-foreground leading-snug pt-2">
-                          Issues or missing work — not a chat. This phase only.
-                        </p>
+                        <p className="text-[11px] text-muted-foreground leading-snug pt-2">{t('deviationsIntroHint')}</p>
                         <div className="space-y-2">
                           {openDeviationsForPhase.length === 0 ? (
-                            <p className="text-xs text-muted-foreground py-0.5">No open issues for this phase.</p>
+                            <p className="text-xs text-muted-foreground py-0.5">{t('noOpenIssuesThisPhase')}</p>
                           ) : (
                             openDeviationsForPhase.map((d) => (
                               <div
@@ -4233,12 +4249,12 @@ export default function RoomDetail() {
                                       variant="secondary"
                                       className="text-[10px] mb-1 h-5 bg-amber-100/90 text-amber-950 dark:bg-amber-900/50 dark:text-amber-100"
                                     >
-                                      Open
+                                      {t('phaseChipOpen')}
                                     </Badge>
                                     <p className="text-foreground leading-snug">{d.text}</p>
                                     {d.reported_by?.trim() ? (
                                       <p className="mt-1 text-[10px] text-muted-foreground">
-                                        Reported by {d.reported_by.trim()}
+                                        {t('reportedByPrefix')} {d.reported_by.trim()}
                                       </p>
                                     ) : null}
                                   </div>
@@ -4251,7 +4267,7 @@ export default function RoomDetail() {
                                       disabled={savingDeviations}
                                       onClick={() => void handleMarkIssueResolved(d.id)}
                                     >
-                                      Mark as resolved
+                                      {t('markIssueResolved')}
                                     </Button>
                                   ) : null}
                                 </div>
@@ -4263,7 +4279,9 @@ export default function RoomDetail() {
                           <Collapsible defaultOpen={false} className="rounded-md border border-border/35 bg-muted/[0.04]">
                             <CollapsibleTrigger className="group flex w-full items-center justify-between px-2.5 py-2 text-left hover:bg-muted/20 rounded-md">
                               <span className="text-[11px] font-medium text-muted-foreground">
-                                Resolved ({resolvedDeviationsForPhase.length})
+                                {formatNb(t('resolvedSectionCount'), {
+                                  n: resolvedDeviationsForPhase.length,
+                                })}
                               </span>
                               <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform group-data-[state=open]:rotate-180" />
                             </CollapsibleTrigger>
@@ -4279,12 +4297,12 @@ export default function RoomDetail() {
                                         <p className="text-foreground leading-snug">{d.text}</p>
                                         {d.reported_by?.trim() ? (
                                           <p className="mt-1 text-[10px] text-muted-foreground">
-                                            Reported by {d.reported_by.trim()}
+                                            {t('reportedByPrefix')} {d.reported_by.trim()}
                                           </p>
                                         ) : null}
                                         {d.resolved_by?.trim() ? (
                                           <p className="mt-1 text-[10px] text-muted-foreground">
-                                            Resolved by {d.resolved_by.trim()}
+                                            {t('resolvedByPrefix')} {d.resolved_by.trim()}
                                             {d.resolved_at
                                               ? ` · ${formatActivityWhen(parseTimestampMs(d.resolved_at))}`
                                               : ''}
@@ -4304,7 +4322,7 @@ export default function RoomDetail() {
                                           disabled={savingDeviations}
                                           onClick={() => void handleReopenIssue(d.id)}
                                         >
-                                          Reopen
+                                          {t('reopenIssue')}
                                         </Button>
                                       ) : null}
                                     </div>
@@ -4333,7 +4351,7 @@ export default function RoomDetail() {
                               disabled={!newDeviationText.trim() || savingDeviations}
                               onClick={() => void handleAddDeviation()}
                             >
-                              Add
+                              {t('add')}
                             </Button>
                           </div>
                         ) : null}
@@ -4351,11 +4369,9 @@ export default function RoomDetail() {
       <Dialog open={showManageAreas} onOpenChange={setShowManageAreas}>
         <DialogContent className="max-w-md mx-4">
           <DialogHeader>
-            <DialogTitle>Areas</DialogTitle>
+            <DialogTitle>{t('areasDialogTitle')}</DialogTitle>
           </DialogHeader>
-          <p className="text-xs text-muted-foreground mb-2 leading-snug">
-            Each area has its own phases and checklist. The first area sets the board phase for this item.
-          </p>
+          <p className="text-xs text-muted-foreground mb-2 leading-snug">{t('areasDialogHint')}</p>
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {areasList.map((a) => (
               <div key={a.id} className="flex items-center gap-2 border border-border/50 rounded-md p-2">
@@ -4369,7 +4385,7 @@ export default function RoomDetail() {
                   }}
                 />
                 {a.id === primaryAreaId ? (
-                  <span className="text-[10px] text-muted-foreground shrink-0 w-14">Primary</span>
+                  <span className="text-[10px] text-muted-foreground shrink-0 w-14">{t('areaPrimaryBadge')}</span>
                 ) : (
                   <Button
                     type="button"
@@ -4378,7 +4394,7 @@ export default function RoomDetail() {
                     className="h-8 text-destructive shrink-0 px-2"
                     onClick={() => void handleDeleteArea(a.id)}
                   >
-                    Remove
+                    {t('areasRemoveZone')}
                   </Button>
                 )}
               </div>
@@ -4401,12 +4417,12 @@ export default function RoomDetail() {
               onClick={() => void handleAddArea()}
               disabled={!newAreaName.trim()}
             >
-              Add
+              {t('add')}
             </Button>
           </div>
           <DialogFooter className="mt-2">
             <Button type="button" variant="secondary" className="w-full" onClick={() => setShowManageAreas(false)}>
-              Done
+              {t('areasDialogDone')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4419,7 +4435,7 @@ export default function RoomDetail() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Ban className="h-5 w-5 text-red-500" />
-              Block
+              {t('dialogBlockRoomTitle')}
             </DialogTitle>
           </DialogHeader>
           <Input
@@ -4434,7 +4450,7 @@ export default function RoomDetail() {
               type="submit"
               className="w-full bg-red-500 hover:bg-red-600 h-12"
             >
-              Mark as Blocked
+              {t('dialogMarkRoomBlocked')}
             </Button>
           </DialogFooter>
           </DialogForm>
@@ -4446,14 +4462,12 @@ export default function RoomDetail() {
         <DialogContent className="max-w-sm mx-4">
           <DialogForm onSubmit={(e) => { e.preventDefault(); }}>
           <DialogHeader>
-            <DialogTitle>Delete this item?</DialogTitle>
+            <DialogTitle>{t('dialogDeleteRoomTitle')}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            This will permanently delete this item and its checklist, photos, visits, and notes.
-          </p>
+          <p className="text-sm text-muted-foreground">{t('dialogDeleteRoomBody')}</p>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setShowDeleteRoomDialog(false)} disabled={deletingRoom}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -4475,13 +4489,11 @@ export default function RoomDetail() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <User className="h-5 w-5 text-emerald-500" />
-              Who&apos;s checking?
+              {t('checkNameDialogTitle')}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Site work must record who performed actions. Enter your name once on this device (saved locally), sign in with your supervisor&apos;s site worker PIN, or set your name on your account profile.
-            </p>
+            <p className="text-sm text-muted-foreground">{t('checkNameDialogIntro')}</p>
             <Input
               placeholder={t('workerNameExamplePlaceholder')}
               value={checkWorkerName}
@@ -4492,7 +4504,7 @@ export default function RoomDetail() {
 
             {uniqueWorkers.length > 0 && !checkWorkerName && (
               <div>
-                <p className="text-xs text-muted-foreground mb-1.5">Known workers:</p>
+                <p className="text-xs text-muted-foreground mb-1.5">{t('knownWorkersLabel')}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {uniqueWorkers.slice(0, 8).map((name) => (
                     <button
@@ -4513,7 +4525,7 @@ export default function RoomDetail() {
               disabled={!checkWorkerName.trim()}
               className="w-full bg-emerald-500 hover:bg-emerald-600 text-white h-12"
             >
-              Continue
+              {t('continueAction')}
             </Button>
           </DialogFooter>
           </DialogForm>

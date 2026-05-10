@@ -24,57 +24,57 @@ function q(s: string): string {
   return s.replace(/"/g, "'");
 }
 
-/** Primary line (requirement wording for checklist). */
+/** Primary activity line (Norwegian UI copy). */
 export function formatActivityMessage(e: ActivityLogEntry): string {
-  const actor = (e.actor || 'Unknown').trim();
+  const actor = (e.actor || 'Ukjent').trim();
   const kind = e.kind || '';
   const item = (e.item_name || '').trim();
   const meta = e.meta && typeof e.meta === 'object' ? e.meta : {};
 
   switch (kind) {
     case 'checklist_checked':
-      return `${actor} checked off "${q(item) || 'item'}"`;
+      return `${actor} avmerket «${q(item) || 'punkt'}»`;
     case 'checklist_unchecked':
-      return `${actor} unchecked "${q(item) || 'item'}"`;
+      return `${actor} fjernet avmerking på «${q(item) || 'punkt'}»`;
     case 'checklist_item_added':
-      return `${actor} added checklist item "${q(item) || 'item'}"`;
+      return `${actor} la til sjekkpunkt «${q(item) || 'punkt'}»`;
     case 'checklist_item_renamed': {
       const nn = typeof meta.new_name === 'string' ? meta.new_name.trim() : '';
-      return `${actor} renamed checklist item from "${q(item)}" to "${q(nn) || '…'}"`;
+      return `${actor} endret navn på sjekkpunkt fra «${q(item)}» til «${q(nn) || '…'}»`;
     }
     case 'checklist_item_deleted':
-      return `${actor} removed checklist item "${q(item) || 'item'}"`;
+      return `${actor} fjernet sjekkpunkt «${q(item) || 'punkt'}»`;
     case 'photo_uploaded': {
       const fn = typeof meta.filename === 'string' ? meta.filename.trim() : '';
-      return fn ? `${actor} uploaded photo (${fn})` : `${actor} uploaded photo`;
+      return fn ? `${actor} lastet opp bilde (${fn})` : `${actor} lastet opp bilde`;
     }
     case 'legacy_photo': {
       const fn = typeof meta.filename === 'string' ? meta.filename.trim() : '';
-      return fn ? `Photo uploaded: ${fn}` : 'Photo uploaded';
+      return fn ? `Bilde lastet opp: ${fn}` : 'Bilde lastet opp';
     }
     case 'photo_deleted': {
       const fn = typeof meta.filename === 'string' ? meta.filename.trim() : '';
-      return fn ? `${actor} deleted photo: ${fn}` : `${actor} deleted a photo`;
+      return fn ? `${actor} slettet bilde: ${fn}` : `${actor} slettet et bilde`;
     }
     case 'room_visit': {
       const act = typeof meta.action === 'string' ? meta.action.trim() : '';
-      const tail = act ? `: ${act}` : ' visited the room';
+      const tail = act ? `: ${act}` : ' besøkte rommet';
       return `${actor}${tail}`;
     }
     case 'legacy_visit': {
       const s = typeof meta.summary === 'string' ? meta.summary.trim() : '';
       if (s) return `${actor}${s.startsWith(' ') ? '' : ' '}${s}`;
-      return `${actor} visited the room`;
+      return `${actor} besøkte rommet`;
     }
     case 'phase_handoff': {
       const d = typeof meta.detail === 'string' ? meta.detail.trim() : '';
-      return d || `${actor} completed phase handoff`;
+      return d || `${actor} registrerte faseoverlevering`;
     }
     case 'heating_cable_doc_saved':
-      return `${actor} saved heating cable documentation`;
+      return `${actor} lagret varmekabel-dokumentasjon`;
     case 'heating_cable_step_completed': {
       const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
-      return sl ? `${actor} completed ${sl}` : `${actor} completed a heating cable step`;
+      return sl ? `${actor} fullførte ${sl}` : `${actor} fullførte et varmekabeltrinn`;
     }
     case 'heating_cable_measurements_updated': {
       const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
@@ -84,9 +84,9 @@ export function formatActivityMessage(e: ActivityLogEntry): string {
       if (r) parts.push(`${r} Ω`);
       if (ins) parts.push(`${ins} MΩ`);
       const detail = parts.join(' / ');
-      if (sl && detail) return `${actor} updated measurements for ${sl} · ${detail}`;
-      if (sl) return `${actor} updated measurements for ${sl}`;
-      return `${actor} updated heating cable measurements`;
+      if (sl && detail) return `${actor} oppdaterte målinger for ${sl} · ${detail}`;
+      if (sl) return `${actor} oppdaterte målinger for ${sl}`;
+      return `${actor} oppdaterte varmekabelmålinger`;
     }
     case 'heating_cable_admin_measurement_correction': {
       const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
@@ -97,59 +97,60 @@ export function formatActivityMessage(e: ActivityLogEntry): string {
       const ni = typeof meta.insulation_mohm === 'string' ? meta.insulation_mohm.trim() : '';
       const nd = typeof meta.date === 'string' ? meta.date.trim() : '';
       const bits: string[] = [];
-      if (pr !== nr) bits.push(`Resistance ${pr || '—'} Ω → ${nr || '—'} Ω`);
-      if (pi !== ni) bits.push(`Insulation ${pi || '—'} MΩ → ${ni || '—'} MΩ`);
-      if (pd !== nd) bits.push(`Date ${pd || '—'} → ${nd || '—'}`);
+      if (pr !== nr) bits.push(`Motstand ${pr || '—'} Ω → ${nr || '—'} Ω`);
+      if (pi !== ni) bits.push(`Isolasjon ${pi || '—'} MΩ → ${ni || '—'} MΩ`);
+      if (pd !== nd) bits.push(`Dato ${pd || '—'} → ${nd || '—'}`);
       const detail = bits.join(' · ');
-      if (sl && detail) return `${actor} corrected measurements for ${sl} · ${detail}`;
-      if (sl) return `${actor} corrected measurements for ${sl}`;
-      return `${actor} corrected heating cable measurements`;
+      if (sl && detail) return `${actor} korrigerte målinger for ${sl} · ${detail}`;
+      if (sl) return `${actor} korrigerte målinger for ${sl}`;
+      return `${actor} korrigerte varmekabelmålinger`;
     }
     case 'heating_cable_admin_step_unlocked': {
       const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
-      return sl ? `${actor} unlocked ${sl}` : `${actor} unlocked a heating cable step`;
+      return sl ? `${actor} låste opp ${sl}` : `${actor} låste opp et varmekabeltrinn`;
     }
     case 'heating_cable_note_updated': {
       const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
-      return sl ? `${actor} updated note for ${sl}` : `${actor} updated a heating cable note`;
+      return sl ? `${actor} oppdaterte notat for ${sl}` : `${actor} oppdaterte et varmekabelnotat`;
     }
     case 'heating_cable_stage_photos_updated': {
       const sl = typeof meta.stage_label === 'string' ? meta.stage_label.trim() : '';
-      return sl ? `${actor} updated photos for ${sl}` : `${actor} updated heating cable photos`;
+      return sl ? `${actor} oppdaterte bilder for ${sl}` : `${actor} oppdaterte varmekabelbilder`;
     }
     case 'heating_cable_extra_steps_updated':
-      return `${actor} updated extra heating cable measurements`;
+      return `${actor} oppdaterte ekstra varmekabelmålinger`;
     case 'status_changed': {
       const from = meta.from != null ? String(meta.from) : '—';
       const to = meta.to != null ? String(meta.to) : '—';
-      return `${actor} changed room status from ${from} to ${to}`;
+      return `${actor} endret romstatus fra ${from} til ${to}`;
     }
     case 'due_date_changed': {
       const from = meta.from != null ? String(meta.from) : '—';
       const to = meta.to != null ? String(meta.to) : '—';
-      return `${actor} changed due date (${from} → ${to})`;
+      return `${actor} endret frist (${from} → ${to})`;
     }
     case 'room_note_updated':
-      return `${actor} updated room notes`;
+      return `${actor} oppdaterte romnotat`;
     case 'phase_status_changed': {
       const from = meta.from != null ? String(meta.from) : '—';
       const to = meta.to != null ? String(meta.to) : '—';
-      return `${actor} updated phase step (${from} → ${to})`;
+      return `${actor} oppdaterte fasetrinn (${from} → ${to})`;
     }
     case 'phase_lock_changed': {
-      const to = meta.to === true ? 'locked for workers' : meta.to === false ? 'reopened' : String(meta.to);
-      return `${actor} ${to}`;
+      if (meta.to === true) return `${actor} låste fase for montører`;
+      if (meta.to === false) return `${actor} åpnet fase for montører`;
+      return `${actor} ${String(meta.to)}`;
     }
     case 'workflow_deviations_updated':
-      return `${actor} updated issues / deviations`;
+      return `${actor} oppdaterte avvik`;
     case 'issue_resolved':
-      return `${actor} resolved issue`;
+      return `${actor} løste avvik`;
     case 'checklist_labels_updated':
-      return `${actor} updated checklist section titles`;
+      return `${actor} oppdaterte titler på sjekkliste-seksjoner`;
     case 'phase_tool_overrides_updated':
-      return `${actor} updated phase tools visibility`;
+      return `${actor} oppdaterte synlighet for faseverktøy`;
     default:
-      return `${actor} — ${kind || 'activity'}`;
+      return `${actor} — ${kind || 'hendelse'}`;
   }
 }
 
@@ -242,7 +243,7 @@ export function buildActivityRows(params: {
     if (!taskBelongsToArea(v.area_id, activeAreaId, areasPrimaryId)) continue;
     if (!visitMatchesPhase(v.phase, sel, phaseWorkflow)) continue;
     const t = parseActivityTime(v.visited_at);
-    const tail = v.action?.trim() ? `: ${v.action.trim()}` : ' visited the room';
+    const tail = v.action?.trim() ? `: ${v.action.trim()}` : ' besøkte rommet';
     rows.push({
       t,
       msg: `${v.worker_name}${tail}`,
@@ -258,7 +259,7 @@ export function buildActivityRows(params: {
     const t = parseActivityTime(p.created_at ?? null);
     rows.push({
       t,
-      msg: p.filename ? `Photo uploaded: ${p.filename}` : 'Photo uploaded',
+      msg: p.filename ? `Bilde lastet opp: ${p.filename}` : 'Bilde lastet opp',
       seq: seq++,
       rowKey: `photo:${p.id}`,
     });

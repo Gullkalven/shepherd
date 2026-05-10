@@ -326,13 +326,13 @@ export function WorkerRoomView(p: Props) {
     stage: HeatingCableStage,
     canAccessStage: boolean
   ): string | null => {
-    if (!canAccessStage) return 'Fullforrige trinn før du bekrefter dette.';
-    if (!stage.resistance_ohm?.trim()) return 'Fyll inn motstand før bekreftelse.';
-    if (!stage.insulation_mohm?.trim()) return 'Fyll inn isolasjon før bekreftelse.';
+    if (!canAccessStage) return t('heatingConfirmCompletePrevFirst');
+    if (!stage.resistance_ohm?.trim()) return t('heatingConfirmFillResistance');
+    if (!stage.insulation_mohm?.trim()) return t('heatingConfirmFillInsulation');
     if (!p.currentWorkerUserId?.trim()) return t('heatingConfirmMustLogin');
     if (stageKey === 'after_cable_laid') {
       const hasPhoto = Array.isArray(stage.photos) && stage.photos.some((x) => typeof x === 'string' && x.trim());
-      if (!hasPhoto) return 'Legg til minst ett bilde før bekreftelse av dette trinnet.';
+      if (!hasPhoto) return t('heatingConfirmPhotoCableStep');
     }
     return null;
   };
@@ -1060,14 +1060,14 @@ export function WorkerRoomView(p: Props) {
             </div>
             {focusStageLabel ? (
               <p className="text-xs font-medium text-amber-900/90 dark:text-amber-100/90 flex items-center gap-1.5">
-                <span className="text-muted-foreground font-normal">Current stage:</span>
+                <span className="text-muted-foreground font-normal">{t('gjeldendeTrinnPrefix')}</span>
                 <span>{focusStageLabel}</span>
               </p>
             ) : (
-              <p className="text-xs font-medium text-emerald-800 dark:text-emerald-200">All stages documented.</p>
+              <p className="text-xs font-medium text-emerald-800 dark:text-emerald-200">{t('allStagesDocumentedShort')}</p>
             )}
             {p.heatingLockedByAdmin ? (
-              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">Locked by admin — view only.</p>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">{t('heatingLockedByAdminViewOnly')}</p>
             ) : null}
           </div>
           <div className="p-4 space-y-3">
@@ -1092,18 +1092,18 @@ export function WorkerRoomView(p: Props) {
                 complete &&
                 !!(row.completed_at?.trim() || row.confirmed_at?.trim());
               const badgeLabel = isLocked
-                ? 'Locked'
+                ? t('badgeLocked')
                 : !canAccessStage
-                  ? 'Locked'
+                  ? t('badgeLocked')
                   : reopenedByAdmin
-                    ? 'Unlocked'
+                    ? t('heatingBadgeReopened')
                     : complete
-                      ? 'Complete'
+                      ? t('badgeCompleted')
                       : isFocus
-                        ? 'Open'
+                        ? t('phaseChipOpen')
                         : started
-                          ? 'In progress'
-                          : 'Not started';
+                          ? t('badgeInProgress')
+                          : t('badgeNotStarted');
 
               return (
                 <Collapsible
@@ -1160,7 +1160,7 @@ export function WorkerRoomView(p: Props) {
                     <div className="space-y-3 border-t border-border/40 px-3 pb-3 pt-3">
                       <div className="space-y-2">
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                          Measurements
+                          {t('measurementsSectionHeading')}
                         </p>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div className="space-y-1.5">
@@ -1168,7 +1168,7 @@ export function WorkerRoomView(p: Props) {
                               htmlFor={`hc-worker-${stage.key}-r`}
                               className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                             >
-                              Resistance{' '}
+                              {t('measurementsResistance')}{' '}
                               <span className="font-normal text-muted-foreground">(Ω)</span>
                             </Label>
                             <Input
@@ -1179,7 +1179,7 @@ export function WorkerRoomView(p: Props) {
                               value={row.resistance_ohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={stageReadOnly}
-                              aria-label="Resistance (Ω)"
+                              aria-label={t('ariaResistanceOhm')}
                               onChange={(e) => p.onHeatingFieldChange(stage.key, 'resistance_ohm', e.target.value)}
                             />
                           </div>
@@ -1188,7 +1188,7 @@ export function WorkerRoomView(p: Props) {
                               htmlFor={`hc-worker-${stage.key}-i`}
                               className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                             >
-                              Insulation{' '}
+                              {t('measurementsInsulation')}{' '}
                               <span className="font-normal text-muted-foreground">(MΩ)</span>
                             </Label>
                             <Input
@@ -1199,14 +1199,14 @@ export function WorkerRoomView(p: Props) {
                               value={row.insulation_mohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={stageReadOnly}
-                              aria-label="Insulation (MΩ)"
+                              aria-label={t('ariaInsulationMohm')}
                               onChange={(e) => p.onHeatingFieldChange(stage.key, 'insulation_mohm', e.target.value)}
                             />
                           </div>
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <span className="text-[11px] text-muted-foreground">Note (optional)</span>
+                        <span className="text-[11px] text-muted-foreground">{t('noteOptionalLabel')}</span>
                         <Textarea
                           placeholder={t('noteOptionalPlaceholder')}
                           value={row.note || ''}
@@ -1248,7 +1248,7 @@ export function WorkerRoomView(p: Props) {
                         </div>
                       ) : !canAccessStage ? (
                         <div className="rounded-md border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/35 dark:text-amber-100">
-                          Complete and lock the previous step before editing this step.
+                          {t('heatingConfirmPrevStepFirst')}
                         </div>
                       ) : null}
                       {!isLocked && canAccessStage ? (
@@ -1263,7 +1263,7 @@ export function WorkerRoomView(p: Props) {
                             disabled={stageReadOnly || Boolean(confirmBlockedReason)}
                             onClick={() => setConfirmStageKey(stage.key)}
                           >
-                            Confirm step
+                            {t('confirmStepButton')}
                           </Button>
                           {confirmBlockedReason ? (
                             <p className="text-[11px] text-muted-foreground leading-snug">{confirmBlockedReason}</p>
@@ -1284,7 +1284,13 @@ export function WorkerRoomView(p: Props) {
               const isFocus = focusStageId === panelId;
               const open = heatingStageOpen(panelId);
               const started = heatingStageHasAnyData(step);
-              const badgeLabel = complete ? 'Complete' : isFocus ? 'Open' : started ? 'In progress' : 'Not started';
+              const badgeLabel = complete
+                ? t('badgeCompleted')
+                : isFocus
+                  ? t('phaseChipOpen')
+                  : started
+                    ? t('badgeInProgress')
+                    : t('badgeNotStarted');
 
               return (
                 <Collapsible
@@ -1314,7 +1320,7 @@ export function WorkerRoomView(p: Props) {
                             />
                           )}
                           <span className="text-sm font-semibold truncate">
-                            {step.label?.trim() || `Extra step ${idx + 1}`}
+                            {step.label?.trim() || formatNb(t('extraStepFallback'), { n: idx + 1 })}
                           </span>
                           <Badge
                             variant="secondary"
@@ -1343,7 +1349,7 @@ export function WorkerRoomView(p: Props) {
                     <div className="space-y-3 border-t border-border/40 px-3 pb-3 pt-3">
                       <div className="space-y-2">
                         <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                          Measurements
+                          {t('measurementsSectionHeading')}
                         </p>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                           <div className="space-y-1.5">
@@ -1351,7 +1357,7 @@ export function WorkerRoomView(p: Props) {
                               htmlFor={`hc-worker-extra-${idx}-r`}
                               className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                             >
-                              Resistance{' '}
+                              {t('measurementsResistance')}{' '}
                               <span className="font-normal text-muted-foreground">(Ω)</span>
                             </Label>
                             <Input
@@ -1362,7 +1368,7 @@ export function WorkerRoomView(p: Props) {
                               value={step.resistance_ohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
-                              aria-label="Resistance (Ω)"
+                              aria-label={t('ariaResistanceOhm')}
                               onChange={(e) => p.onExtraHeatingFieldChange(idx, 'resistance_ohm', e.target.value)}
                             />
                           </div>
@@ -1371,7 +1377,7 @@ export function WorkerRoomView(p: Props) {
                               htmlFor={`hc-worker-extra-${idx}-i`}
                               className="text-xs font-medium leading-snug text-foreground sm:text-[13px]"
                             >
-                              Insulation{' '}
+                              {t('measurementsInsulation')}{' '}
                               <span className="font-normal text-muted-foreground">(MΩ)</span>
                             </Label>
                             <Input
@@ -1382,14 +1388,14 @@ export function WorkerRoomView(p: Props) {
                               value={step.insulation_mohm || ''}
                               className="h-11 text-base sm:text-sm"
                               disabled={!p.canEditHeatingCable || p.heatingCableBlocking}
-                              aria-label="Insulation (MΩ)"
+                              aria-label={t('ariaInsulationMohm')}
                               onChange={(e) => p.onExtraHeatingFieldChange(idx, 'insulation_mohm', e.target.value)}
                             />
                           </div>
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <span className="text-[11px] text-muted-foreground">Note (optional)</span>
+                        <span className="text-[11px] text-muted-foreground">{t('noteOptionalLabel')}</span>
                         <Textarea
                           placeholder={t('noteOptionalPlaceholder')}
                           value={step.note || ''}
@@ -1424,10 +1430,8 @@ export function WorkerRoomView(p: Props) {
             {heatingGallerySections.length > 0 ? (
               <div className="space-y-4 rounded-xl border border-border/55 bg-muted/[0.06] px-3 py-4 sm:px-4">
                 <div className="space-y-0.5">
-                  <p className="text-sm font-semibold text-foreground">Heating cable photos</p>
-                  <p className="text-[11px] text-muted-foreground leading-snug">
-                    Tap a thumbnail for full size. Captions show the stage and uploader when available.
-                  </p>
+                  <p className="text-sm font-semibold text-foreground">{t('heatingCablePhotosTitle')}</p>
+                  <p className="text-[11px] text-muted-foreground leading-snug">{t('heatingGalleryTapHint')}</p>
                 </div>
                 <div className="space-y-5">
                   {heatingGallerySections.map((sec) => (
@@ -1469,7 +1473,7 @@ export function WorkerRoomView(p: Props) {
                 disabled={p.heatingCableBlocking || heatingCableSaveBusy}
                 onClick={() => p.onSaveHeatingCable()}
               >
-                {p.heatingCableSaveStatus === 'error' ? 'Retry save' : p.heatingCableManualSaveLabel}
+                {p.heatingCableSaveStatus === 'error' ? t('heatingRetrySave') : p.heatingCableManualSaveLabel}
               </Button>
             ) : null}
           </div>
@@ -1501,7 +1505,7 @@ export function WorkerRoomView(p: Props) {
               disabled={p.completingPhase}
               onClick={() => setPhaseHandoffDialogOpen(true)}
             >
-              Mark phase complete
+              {t('markPhaseCompleteCta')}
             </Button>
           </div>
         </Card>
@@ -1516,34 +1520,23 @@ export function WorkerRoomView(p: Props) {
       >
         <DialogContent className="max-w-md gap-4 px-5 pb-6 pt-6 max-sm:fixed max-sm:bottom-0 max-sm:left-0 max-sm:right-0 max-sm:top-auto max-sm:max-h-[min(88dvh,560px)] max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-b-none max-sm:rounded-t-2xl max-sm:border-x-0 max-sm:border-b-0 max-sm:overflow-y-auto sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%]">
           <DialogHeader className="space-y-2 text-left">
-            <DialogTitle className="text-xl leading-snug">Confirm phase handoff</DialogTitle>
+            <DialogTitle className="text-xl leading-snug">{t('dialogConfirmPhaseHandoffTitle')}</DialogTitle>
             <DialogDescription className="text-left text-base leading-relaxed text-muted-foreground">
-              You are confirming that work for{' '}
-              <span className="font-medium text-foreground">{selectedLabel}</span> is complete and correct
-              on site.
+              {t('dialogConfirmPhaseHandoffIntro')}{' '}
+              <span className="font-medium text-foreground">{selectedLabel}</span> {t('dialogConfirmPhaseHandoffTail')}
             </DialogDescription>
           </DialogHeader>
           <ul className="space-y-2.5 text-sm leading-snug text-foreground/90">
             <li className="flex gap-2.5">
               <Lock className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-              <span>
-                This phase will lock—you won't change checklist or heating documentation here anymore.
-              </span>
+              <span>{t('dialogPhaseHandoffBulletLock')}</span>
             </li>
             <li className="flex gap-2.5">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
               <span>
-                {nextPhaseLabelAfterHandoff ? (
-                  <>
-                    Handoff is recorded for admin review. The board moves forward to{' '}
-                    <span className="font-medium text-foreground">{nextPhaseLabelAfterHandoff}</span> when
-                    the project advances.
-                  </>
-                ) : (
-                  <>
-                    Handoff is recorded for admin review. This was the last workflow step for this room.
-                  </>
-                )}
+                {nextPhaseLabelAfterHandoff
+                  ? formatNb(t('dialogPhaseHandoffBulletNext'), { next: nextPhaseLabelAfterHandoff })
+                  : t('dialogPhaseHandoffBulletLast')}
               </span>
             </li>
           </ul>
@@ -1555,7 +1548,7 @@ export function WorkerRoomView(p: Props) {
               disabled={p.completingPhase}
               onClick={() => setPhaseHandoffDialogOpen(false)}
             >
-              Cancel
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -1568,7 +1561,7 @@ export function WorkerRoomView(p: Props) {
                 })();
               }}
             >
-              {p.completingPhase ? 'Recording…' : 'Confirm handoff'}
+              {p.completingPhase ? t('recordingShort') : t('confirmHandoffButton')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1577,14 +1570,14 @@ export function WorkerRoomView(p: Props) {
       <Dialog open={confirmStageKey !== null} onOpenChange={(open) => !open && setConfirmStageKey(null)}>
         <DialogContent className="max-w-md gap-4 px-5 pb-6 pt-6">
           <DialogHeader className="space-y-2 text-left">
-            <DialogTitle className="text-xl leading-snug">Confirm step</DialogTitle>
+            <DialogTitle className="text-xl leading-snug">{t('dialogConfirmStepTitle')}</DialogTitle>
             <DialogDescription className="text-left text-base leading-relaxed text-muted-foreground">
-              Are you sure you want to confirm this step? The server will stamp the current time and signed-in worker.
+              {t('dialogConfirmStepBody')}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
             <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={() => setConfirmStageKey(null)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button
               type="button"
@@ -1596,7 +1589,7 @@ export function WorkerRoomView(p: Props) {
                 setConfirmStageKey(null);
               }}
             >
-              {p.heatingCableBlocking ? 'Confirming...' : 'Confirm step'}
+              {p.heatingCableBlocking ? t('confirmingShort') : t('confirmStepButton')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1608,15 +1601,17 @@ export function WorkerRoomView(p: Props) {
           <CollapsibleTrigger className="group flex w-full min-h-11 items-center justify-between gap-2 px-3 py-2.5 text-left sm:min-h-0 sm:px-4 sm:py-3">
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {heatingCablePhasePrimary ? 'Other photos this phase' : 'Photos this phase'}
+                {heatingCablePhasePrimary ? t('photosOtherThisPhaseTitle') : t('photosThisPhaseTitle')}
               </span>
               <span className="text-sm font-medium text-foreground">
-                {p.photosForPhase.length} photo{p.photosForPhase.length === 1 ? '' : 's'}
+                {formatNb(
+                  p.photosForPhase.length === 1 ? t('phasePhotosCount') : t('phasePhotosCountPlural'),
+                  { n: p.photosForPhase.length }
+                )}
               </span>
               {heatingCablePhasePrimary ? (
                 <span className="text-xs text-muted-foreground leading-snug pt-0.5">
-                  Read-only summary of general uploads for this step — heating cable documentation lives in the gallery
-                  above.
+                  {t('phasePhotosReadonlyGeneralHint')}
                 </span>
               ) : null}
             </span>
@@ -1644,7 +1639,7 @@ export function WorkerRoomView(p: Props) {
                         ? photo.caption.trim()
                         : photo.filename
                           ? photo.filename
-                          : 'Phase photo'}
+                          : t('phasePhotoFallback')}
                     </span>
                   </button>
                 ))}
@@ -1658,7 +1653,7 @@ export function WorkerRoomView(p: Props) {
       {showFullPhaseDetails ? (
         <Card className="overflow-hidden border-border/20 bg-muted/[0.04] shadow-none">
           <p className="border-b border-border/20 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
-            More on this phase
+            {t('moreOnPhaseSection')}
           </p>
           <Collapsible defaultOpen={false}>
             <CollapsibleTrigger
@@ -1667,7 +1662,7 @@ export function WorkerRoomView(p: Props) {
             >
               <span className="flex min-w-0 flex-1 items-center gap-2.5">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600/90" />
-                <span className="leading-snug">Report issue</span>
+                <span className="leading-snug">{t('reportIssueLink')}</span>
                 {openDeviationsCount > 0 ? (
                   <Badge variant="secondary" className="text-[10px]">
                     {openDeviationsCount}
@@ -1690,7 +1685,7 @@ export function WorkerRoomView(p: Props) {
                             <span className="block leading-snug">{d.text}</span>
                             {d.reported_by?.trim() ? (
                               <span className="mt-1 block text-[11px] text-muted-foreground">
-                                Reported by {d.reported_by.trim()}
+                                {t('reportedByPrefix')} {d.reported_by.trim()}
                               </span>
                             ) : null}
                           </div>
@@ -1703,7 +1698,7 @@ export function WorkerRoomView(p: Props) {
                               disabled={p.savingDeviations}
                               onClick={() => p.onResolveDeviation?.(d.id)}
                             >
-                              Mark as resolved
+                              {t('markIssueResolved')}
                             </Button>
                           ) : null}
                         </div>
@@ -1711,12 +1706,12 @@ export function WorkerRoomView(p: Props) {
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs text-muted-foreground">No open issues for this phase.</p>
+                  <p className="text-xs text-muted-foreground">{t('noOpenIssuesThisPhase')}</p>
                 )}
                 {(p.resolvedDeviations?.length ?? 0) > 0 ? (
                   <Collapsible defaultOpen={false} className="rounded-md border border-border/35 bg-muted/15">
                     <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 px-2.5 py-2 text-left text-xs font-medium text-muted-foreground hover:bg-muted/25">
-                      <span>Resolved ({p.resolvedDeviations?.length ?? 0})</span>
+                      <span>{formatNb(t('resolvedSectionCount'), { n: p.resolvedDeviations?.length ?? 0 })}</span>
                       <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
                     </CollapsibleTrigger>
                     <CollapsibleContent>
@@ -1729,7 +1724,7 @@ export function WorkerRoomView(p: Props) {
                             <span className="text-foreground">{d.text}</span>
                             {d.resolved_by?.trim() ? (
                               <span className="mt-1 block text-[11px] text-muted-foreground">
-                                Resolved by {d.resolved_by.trim()}
+                                {t('resolvedByPrefix')} {d.resolved_by.trim()}
                                 {d.resolved_at && p.formatResolvedAt
                                   ? ` · ${p.formatResolvedAt(d.resolved_at)}`
                                   : ''}
@@ -1746,7 +1741,7 @@ export function WorkerRoomView(p: Props) {
                 {p.canAddDeviation ? (
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch pt-1">
                     <Input
-                      placeholder="Describe the issue…"
+                      placeholder={t('deviationDescribePlaceholder')}
                       value={p.newDeviationText}
                       onChange={(e) => p.onNewDeviationChange(e.target.value)}
                       className="h-12 min-h-12 text-base sm:h-11 sm:min-h-11 sm:text-sm"
@@ -1762,7 +1757,7 @@ export function WorkerRoomView(p: Props) {
                       disabled={!p.newDeviationText.trim() || p.savingDeviations}
                       onClick={() => p.onAddDeviation()}
                     >
-                      Add
+                      {t('add')}
                     </Button>
                   </div>
                 ) : null}
@@ -1773,14 +1768,14 @@ export function WorkerRoomView(p: Props) {
             <CollapsibleTrigger className="group flex w-full min-h-[44px] cursor-pointer items-center justify-between gap-3 border-t border-border/25 px-3 py-2.5 text-left text-sm text-muted-foreground hover:bg-muted/25 sm:min-h-0">
               <span className="flex items-center gap-2.5">
                 <History className="h-4 w-4 shrink-0 opacity-80" />
-                Activity
+                {t('activityHistoryHeading')}
               </span>
               <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-data-[state=open]:rotate-180" />
             </CollapsibleTrigger>
             <CollapsibleContent>
               <div className="max-h-48 space-y-2 overflow-y-auto border-t border-border/25 px-3 pb-3 pt-2 text-xs">
                 {p.activityEntries.length === 0 ? (
-                  <p className="text-muted-foreground py-1">Nothing logged for this phase yet.</p>
+                  <p className="text-muted-foreground py-1">{t('nothingLoggedPhaseYet')}</p>
                 ) : (
                   p.activityEntries.map((row, i) => (
                     <div
@@ -1794,7 +1789,7 @@ export function WorkerRoomView(p: Props) {
                               variant="secondary"
                               className="h-5 shrink-0 px-1.5 py-0 text-[9px] font-semibold uppercase tracking-wide"
                             >
-                              Latest
+                              {t('latestBadge')}
                             </Badge>
                           ) : null}
                           <span className="min-w-0 flex-1 leading-snug text-foreground">{row.msg}</span>
