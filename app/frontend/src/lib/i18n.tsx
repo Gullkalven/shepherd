@@ -127,7 +127,6 @@ const DICTIONARY = {
   workerLoginIntro:
     'Skriv inn innloggingsinformasjon: prosjektnummer og montør-PIN. Økta varer ca. {h} t på denne enheten.',
   projectNumber: 'Prosjektnummer',
-  projectNumberPlaceholder: 'Fra basen',
   pinLabel: 'Montør-PIN',
   signingIn: 'Logger inn…',
   signIn: 'Logg inn',

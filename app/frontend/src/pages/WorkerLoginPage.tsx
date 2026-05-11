@@ -121,8 +121,7 @@ export default function WorkerLoginPage() {
           {t('projectNumber')}
           <Input
             inputMode="numeric"
-            className="mt-1.5 h-12 border-white/15 bg-slate-800/70 text-lg text-slate-100 placeholder:text-slate-500"
-            placeholder={t('projectNumberPlaceholder')}
+            className="mt-1.5 h-12 border-white/15 bg-slate-800/70 text-lg text-slate-100"
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
             autoComplete="off"

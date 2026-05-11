@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { ChevronLeft } from 'lucide-react';
 import { ShepherdLogo } from '@/components/ShepherdLogo';
 import { PROJECTS_NAV_REFRESH_EVENT } from '@/lib/runAppLogout';
 import { formatNb, useI18n } from '@/lib/i18n';
@@ -58,14 +57,6 @@ export default function AdminLoginPage() {
       }
     };
   }, []);
-
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-    navigate('/');
-  };
 
   const submit = async () => {
     const p = password.trim();
@@ -124,15 +115,6 @@ export default function AdminLoginPage() {
 
   return (
     <div className="fixed inset-0 flex h-dvh min-h-[100dvh] w-full flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-slate-100">
-      <Button
-        type="button"
-        variant="ghost"
-        className="absolute left-4 top-[max(0.5rem,env(safe-area-inset-top))] z-10 h-10 gap-1 text-slate-200/90 hover:text-white"
-        onClick={handleBack}
-      >
-        <ChevronLeft className="h-4 w-4" aria-hidden />
-        {t('back')}
-      </Button>
       <div className="mb-5 flex justify-center">
         <ShepherdLogo className="h-16 w-16 rounded-xl shadow-md" />
       </div>
@@ -159,11 +141,20 @@ export default function AdminLoginPage() {
 
         <Button
           type="button"
-          className="mt-6 h-12 w-full rounded-xl bg-[#1E3A5F] font-semibold text-white hover:bg-[#2a4f7a]"
+          className="mt-6 h-12 w-full bg-[#1E3A5F] text-base font-semibold text-white hover:bg-[#2a4f7a]"
           disabled={busy}
           onClick={() => void submit()}
         >
           {busy ? t('signingIn') : t('signIn')}
+        </Button>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="mt-3 w-full text-slate-300 hover:bg-white/10 hover:text-white"
+          onClick={() => navigate('/')}
+        >
+          {t('back')}
         </Button>
       </Card>
     </div>

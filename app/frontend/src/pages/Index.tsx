@@ -274,8 +274,8 @@ function IndexContent({
 
   if (!user) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-[#0b1623] bg-gradient-to-b from-[#0f1f30] to-[#0b1623] p-6">
-        <div className="max-w-sm space-y-6 text-center">
+      <div className="flex min-h-[100dvh] w-full flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-slate-100">
+        <div className="max-w-sm space-y-6 py-6 text-center">
           <ShepherdLogo className="mx-auto h-24 w-24 rounded-2xl shadow-lg" />
           <h1 className="text-4xl font-black uppercase tracking-[0.14em] text-white">
             {APP_NAME_PARTS.prefix}
