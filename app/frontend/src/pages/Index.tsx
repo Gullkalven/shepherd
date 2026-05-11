@@ -147,6 +147,19 @@ function IndexContent({
     }
   }, []);
 
+  /** Match login routes: dark status bar on the unauthenticated gate. */
+  useEffect(() => {
+    if (loading || user) return;
+    const themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    const previousThemeColor = themeColorMeta?.getAttribute('content');
+    themeColorMeta?.setAttribute('content', '#0b1623');
+    return () => {
+      if (previousThemeColor) {
+        themeColorMeta?.setAttribute('content', previousThemeColor);
+      }
+    };
+  }, [loading, user]);
+
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
@@ -261,16 +274,16 @@ function IndexContent({
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#1E3A5F] to-[#0F2440] dark:from-slate-900 dark:to-slate-950 flex flex-col items-center justify-center p-6">
-        <div className="text-center space-y-6 max-w-sm">
+      <div className="flex min-h-screen flex-col items-center justify-center bg-[#0b1623] bg-gradient-to-b from-[#0f1f30] to-[#0b1623] p-6">
+        <div className="max-w-sm space-y-6 text-center">
           <ShepherdLogo className="mx-auto h-24 w-24 rounded-2xl shadow-lg" />
-          <h1 className="text-4xl font-black tracking-[0.14em] uppercase text-white">
+          <h1 className="text-4xl font-black uppercase tracking-[0.14em] text-white">
             {APP_NAME_PARTS.prefix}
             <span className="text-amber-300/90">{APP_NAME_PARTS.dot}</span>
             {APP_NAME_PARTS.suffix}
           </h1>
           {isDevRoleSwitcherHost() ? (
-            <p className="text-white/55 text-sm">Demo sign-in — choose a role (no password)</p>
+            <p className="text-sm text-white/55">{t('demoSignInGateHint')}</p>
           ) : null}
           <div className="w-full space-y-2 pt-1">
             {isDevRoleSwitcherHost()
@@ -280,7 +293,7 @@ function IndexContent({
                     type="button"
                     onClick={() => signInAsDemoRole(role)}
                     size="lg"
-                    className="w-full bg-amber-400 hover:bg-amber-500 text-[#1E3A5F] font-semibold text-base h-12 rounded-xl"
+                    className="h-12 w-full rounded-xl bg-amber-400 text-base font-semibold text-[#1E3A5F] hover:bg-amber-500"
                   >
                     {label}
                   </Button>
@@ -290,20 +303,20 @@ function IndexContent({
               type="button"
               variant="outline"
               size="lg"
-              className="w-full border-white/35 bg-white/10 text-white hover:bg-white/15"
+              className="h-12 w-full border-white/35 bg-white/10 text-white hover:bg-white/15"
               onClick={() => navigate('/worker/login')}
             >
-              Site worker sign-in (PIN)
+              {t('gateWorkerLogin')}
             </Button>
             {!isDevRoleSwitcherHost() ? (
               <Button
                 type="button"
                 variant="outline"
                 size="lg"
-                className="w-full border-white/35 bg-white/10 text-white hover:bg-white/15"
+                className="h-12 w-full border-white/35 bg-white/10 text-white hover:bg-white/15"
                 onClick={() => navigate('/admin/login')}
               >
-                Administrator sign-in
+                {t('gateAdminLogin')}
               </Button>
             ) : null}
           </div>

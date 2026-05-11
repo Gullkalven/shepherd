@@ -87,6 +87,11 @@ const DICTIONARY = {
   setNameOnChecklistHint: 'Sett navnet ditt på et sjekkpunkt',
   loginFallbackWorker: 'Montør',
 
+  // Gate / velger (forside uten app-bruker)
+  gateWorkerLogin: 'Innlogging (Montør / Lærling)',
+  gateAdminLogin: 'Innlogging (Admin)',
+  demoSignInGateHint: 'Demoinnlogging — velg rolle (uten passord)',
+
   // Worker trust / status lines
   statusBlocked: 'Sperret',
   statusNeedsHandoff: 'Trenger overlevering',
@@ -118,20 +123,30 @@ const DICTIONARY = {
   pinSessionShort: 'Midlertidig PIN-økt på denne enheten (ca. {h} timer).',
   switchWorker: 'Bytt montør',
   logOutPin: 'Logg ut',
-  workerLoginTitle: 'Montørinnlogging',
+  workerLoginTitle: 'Montør / lærling',
   workerLoginIntro:
-    'Skriv inn prosjektnummer fra basen og PIN. Etter innlogging forblir denne enheten innlogget i ca. {h} timer — du trenger ikke PIN på nytt før økta utløper eller du logger ut.',
+    'Skriv inn innloggingsinformasjon: prosjektnummer og montør-PIN. Økta varer ca. {h} t på denne enheten.',
   projectNumber: 'Prosjektnummer',
   projectNumberPlaceholder: 'Fra basen',
-  pinLabel: 'PIN',
+  pinLabel: 'Montør-PIN',
   signingIn: 'Logger inn…',
   signIn: 'Logg inn',
-  backToHome: 'Tilbake til forsiden',
   toastInvalidProject: 'Oppgi gyldig prosjektnummer.',
   toastPinTooShort: 'PIN må være minst 4 tegn.',
-  toastWrongPin: 'Feil PIN. Prøv igjen.',
+  toastWrongPin: 'Feil PIN eller inaktiv montør. Prøv igjen.',
+  toastAuthFailedGeneric: 'Ugyldig innlogging',
   toastNetworkError: 'Nettverksfeil',
   toastSignedInAs: 'Innlogget som {name}',
+  toastUnexpectedResponse: 'Uventet svar fra server',
+  toastAdminSignedIn: 'Innlogget som admin',
+
+  // Admin-innlogging (egen flyt)
+  adminLoginTitle: 'Innlogging (Admin)',
+  adminLoginIntro:
+    'Skriv inn innloggingsinformasjon: adminpassord (ikke montør-PIN). Økta varer ca. {h} t på denne enheten.',
+  adminPasswordLabel: 'Passord',
+  adminPasswordPlaceholder: 'Skriv passord',
+  toastAdminPasswordTooShort: 'Passord må være minst 4 tegn.',
 
   // Room breadcrumb / nav
   ariaLocation: 'Plassering',

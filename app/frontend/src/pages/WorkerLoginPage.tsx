@@ -68,8 +68,14 @@ export default function WorkerLoginPage() {
       });
       const data = (await res.json().catch(() => null)) as LoginResponse & { detail?: string };
       if (!res.ok) {
-        const msg = typeof data?.detail === 'string' ? data.detail : 'Could not sign in';
-        toast.error(msg === 'Wrong PIN or inactive worker' ? t('toastWrongPin') : msg);
+        const msg = typeof data?.detail === 'string' ? data.detail : '';
+        if (msg === 'Wrong PIN or inactive worker') {
+          toast.error(t('toastWrongPin'));
+        } else if (msg === 'Project not found') {
+          toast.error(t('toastProjectNotFound'));
+        } else {
+          toast.error(t('toastAuthFailedGeneric'));
+        }
         return;
       }
       persistWorkerSession({
@@ -93,7 +99,7 @@ export default function WorkerLoginPage() {
   if (!bootReady) {
     return (
       <div className="flex h-dvh min-h-dvh flex-col items-center justify-center overflow-hidden bg-[#0b1623] px-4 pt-[env(safe-area-inset-top)] text-slate-100">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1E3A5F] border-t-transparent dark:border-blue-400" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#1E3A5F]/50 border-t-sky-400" />
       </div>
     );
   }
@@ -105,17 +111,17 @@ export default function WorkerLoginPage() {
       <div className="mb-5 flex justify-center">
         <ShepherdLogo className="h-16 w-16 rounded-xl shadow-md" />
       </div>
-      <Card className="max-h-full w-full max-w-md overflow-hidden border-border p-5 shadow-sm sm:p-6">
-        <h1 className="text-xl font-black tracking-tight text-[#1E3A5F] dark:text-foreground">{t('workerLoginTitle')}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+      <Card className="max-h-full w-full max-w-md overflow-hidden border border-white/10 bg-slate-900/90 p-5 text-slate-100 shadow-xl backdrop-blur-sm sm:p-6">
+        <h1 className="text-xl font-black tracking-tight text-white">{t('workerLoginTitle')}</h1>
+        <p className="mt-2 text-sm leading-snug text-slate-400">
           {formatNb(t('workerLoginIntro'), { h: ttlHours })}
         </p>
 
-        <label className="mt-6 block text-sm font-medium text-foreground">
+        <label className="mt-6 block text-sm font-medium text-slate-200">
           {t('projectNumber')}
           <Input
             inputMode="numeric"
-            className="mt-1.5 h-12 text-lg"
+            className="mt-1.5 h-12 border-white/15 bg-slate-800/70 text-lg text-slate-100 placeholder:text-slate-500"
             placeholder={t('projectNumberPlaceholder')}
             value={projectId}
             onChange={(e) => setProjectId(e.target.value)}
@@ -123,12 +129,12 @@ export default function WorkerLoginPage() {
           />
         </label>
 
-        <label className="mt-4 block text-sm font-medium text-foreground">
+        <label className="mt-4 block text-sm font-medium text-slate-200">
           {t('pinLabel')}
           <Input
             type="password"
             inputMode="numeric"
-            className="mt-1.5 h-14 text-center text-2xl tracking-[0.35em]"
+            className="mt-1.5 h-14 border-white/15 bg-slate-800/70 text-center text-2xl tracking-[0.35em] text-slate-100 placeholder:text-slate-500"
             placeholder="••••"
             value={pin}
             onChange={(e) => setPin(e.target.value)}
@@ -138,15 +144,20 @@ export default function WorkerLoginPage() {
 
         <Button
           type="button"
-          className="mt-6 h-12 w-full text-base font-semibold"
+          className="mt-6 h-12 w-full bg-[#1E3A5F] text-base font-semibold text-white hover:bg-[#2a4f7a]"
           disabled={busy}
           onClick={() => void submit()}
         >
           {busy ? t('signingIn') : t('signIn')}
         </Button>
 
-        <Button type="button" variant="ghost" className="mt-3 w-full" onClick={() => navigate('/')}>
-          {t('backToHome')}
+        <Button
+          type="button"
+          variant="ghost"
+          className="mt-3 w-full text-slate-300 hover:bg-white/10 hover:text-white"
+          onClick={() => navigate('/')}
+        >
+          {t('back')}
         </Button>
       </Card>
     </div>
