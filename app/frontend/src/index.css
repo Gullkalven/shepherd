@@ -172,3 +172,17 @@
     @apply active:scale-[0.99];
   }
 }
+
+/*
+ * Mobile: match PWA/native feel — no page pinch-zoom (viewport) and no iOS focus zoom
+ * (font size < 16px on focused inputs). Placed after Tailwind layers so this wins over
+ * utility font-size on form controls. Excludes controls that are not text fields.
+ * Vertical/horizontal scrolling is unchanged (no overflow or touch-action overrides).
+ */
+@media (max-width: 767px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='hidden']):not([type='button']):not([type='submit']):not([type='reset']):not([type='image']),
+  textarea,
+  select {
+    font-size: max(16px, 1rem);
+  }
+}
