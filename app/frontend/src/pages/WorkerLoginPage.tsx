@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { ShepherdLogo } from '@/components/ShepherdLogo';
 import { formatNb, useI18n } from '@/lib/i18n';
+import { PIN_ERROR_DIGITS_ONLY_NO, PIN_ERROR_MUST_BE_SIX_NO, validateWorkerLoginPinInput } from '@/lib/pinValidation';
 
 type LoginResponse = {
   access_token: string;
@@ -54,8 +55,9 @@ export default function WorkerLoginPage() {
       toast.error(t('toastInvalidProject'));
       return;
     }
-    if (pin.trim().length < 4) {
-      toast.error(t('toastPinTooShort'));
+    const pinCheck = validateWorkerLoginPinInput(pin);
+    if (!pinCheck.ok) {
+      toast.error(pinCheck.message);
       return;
     }
     setBusy(true);
@@ -64,12 +66,14 @@ export default function WorkerLoginPage() {
       const res = await fetch(`${base}/api/v1/worker/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: pid, pin: pin.trim() }),
+        body: JSON.stringify({ project_id: pid, pin: pinCheck.pin }),
       });
       const data = (await res.json().catch(() => null)) as LoginResponse & { detail?: string };
       if (!res.ok) {
         const msg = typeof data?.detail === 'string' ? data.detail : '';
-        if (msg === 'Wrong PIN or inactive worker') {
+        if (msg === PIN_ERROR_MUST_BE_SIX_NO || msg === PIN_ERROR_DIGITS_ONLY_NO) {
+          toast.error(msg);
+        } else if (msg === 'Wrong PIN or inactive worker') {
           toast.error(t('toastWrongPin'));
         } else if (msg === 'Project not found') {
           toast.error(t('toastProjectNotFound'));
@@ -133,10 +137,12 @@ export default function WorkerLoginPage() {
           <Input
             type="password"
             inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={6}
             className="mt-1.5 h-14 border-white/15 bg-slate-800/70 text-center text-2xl tracking-[0.35em] text-slate-100 placeholder:text-slate-500"
-            placeholder="••••"
+            placeholder="••••••"
             value={pin}
-            onChange={(e) => setPin(e.target.value)}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
             autoComplete="one-time-code"
           />
         </label>

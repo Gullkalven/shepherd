@@ -1,4 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { PIN_ERROR_DIGITS_ONLY_NO, PIN_ERROR_MUST_BE_SIX_NO } from '@/lib/pinValidation';
 import type { PhaseChipUi } from '@/lib/roomPhases';
 
 /**
@@ -131,7 +132,8 @@ const DICTIONARY = {
   signingIn: 'Logger inn…',
   signIn: 'Logg inn',
   toastInvalidProject: 'Oppgi gyldig prosjektnummer.',
-  toastPinTooShort: 'PIN må være minst 4 tegn.',
+  pinErrorMustBeSix: PIN_ERROR_MUST_BE_SIX_NO,
+  pinErrorDigitsOnly: PIN_ERROR_DIGITS_ONLY_NO,
   toastWrongPin: 'Feil PIN eller inaktiv montør. Prøv igjen.',
   toastAuthFailedGeneric: 'Ugyldig innlogging',
   toastNetworkError: 'Nettverksfeil',

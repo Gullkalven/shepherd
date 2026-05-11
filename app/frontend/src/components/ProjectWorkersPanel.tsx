@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogF
 import { Plus, Pencil, UserX, UserCheck, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFailureMessage, devLogApiFailure } from '@/lib/apiErrors';
+import { validateNewSixDigitPin } from '@/lib/pinValidation';
 
 type ProjectWorker = {
   id: number;
@@ -57,8 +58,13 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
   }, [load]);
 
   const createWorker = async () => {
-    if (!newName.trim() || newPin.trim().length < 4) {
-      toast.error('Name and PIN (4+ characters) are required');
+    if (!newName.trim()) {
+      toast.error('Name is required');
+      return;
+    }
+    const pinRes = validateNewSixDigitPin(newPin);
+    if (!pinRes.ok) {
+      toast.error(pinRes.message);
       return;
     }
     setCreating(true);
@@ -67,7 +73,7 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
       await client.apiCall.invoke({
         url: `/api/v1/projects/${projectId}/workers`,
         method: 'POST',
-        data: { name: newName.trim(), pin: newPin.trim(), role: 'worker' },
+        data: { name: newName.trim(), pin: pinRes.pin, role: 'worker' },
       });
       await load();
       toast.success('Worker created');
@@ -96,13 +102,20 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
     }
     try {
       const payload: { name: string; pin?: string } = { name: editName.trim() };
-      if (editPin.trim().length >= 4) payload.pin = editPin.trim();
+      if (editPin.trim()) {
+        const pinRes = validateNewSixDigitPin(editPin);
+        if (!pinRes.ok) {
+          toast.error(pinRes.message);
+          return;
+        }
+        payload.pin = pinRes.pin;
+      }
       await client.apiCall.invoke({
         url: `/api/v1/projects/${projectId}/workers/${editing.id}`,
         method: 'PATCH',
         data: payload,
       });
-      toast.success(editPin.trim().length >= 4 ? 'Worker updated (PIN changed)' : 'Worker updated');
+      toast.success(editPin.trim() ? 'Worker updated (PIN changed)' : 'Worker updated');
       setEditing(null);
       void load();
     } catch (err) {
@@ -272,9 +285,11 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
               <Input
                 type="password"
                 inputMode="numeric"
-                placeholder="PIN (4+ digits)"
+                pattern="[0-9]*"
+                maxLength={6}
+                placeholder="PIN (6 siffer)"
                 value={newPin}
-                onChange={(e) => setNewPin(e.target.value)}
+                onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 className="h-12 text-center text-lg tracking-widest"
                 autoComplete="new-password"
               />
@@ -310,9 +325,11 @@ export default function ProjectWorkersPanel({ projectId }: { projectId: number }
               <Input
                 type="password"
                 inputMode="numeric"
-                placeholder="New PIN (leave blank to keep)"
+                pattern="[0-9]*"
+                maxLength={6}
+                placeholder="Ny PIN (6 siffer, tom = behold)"
                 value={editPin}
-                onChange={(e) => setEditPin(e.target.value)}
+                onChange={(e) => setEditPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 className="h-12 text-center text-lg tracking-widest"
                 autoComplete="new-password"
               />

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogForm, DialogHeader, DialogTi
 import { Switch } from '@/components/ui/switch';
 import { Crown, HardHat, House, LayoutDashboard, Layers, Pencil, Plus, Shield, Trash2, UserCheck, UserCog, UserX } from 'lucide-react';
 import { toast } from 'sonner';
+import { validateNewSixDigitPin } from '@/lib/pinValidation';
 
 type AdminTab = 'project' | 'workers' | 'features' | 'admins';
 
@@ -262,7 +263,14 @@ export default function AdminUsers() {
       toast.error('Worker name is required');
       return;
     }
-    if (editWorkerPin.trim().length >= 4) payload.pin = editWorkerPin.trim();
+    if (editWorkerPin.trim()) {
+      const pinRes = validateNewSixDigitPin(editWorkerPin);
+      if (!pinRes.ok) {
+        toast.error(pinRes.message);
+        return;
+      }
+      payload.pin = pinRes.pin;
+    }
     try {
       await client.apiCall.invoke({
         url: `/api/v1/projects/${selectedProjectId}/workers/${editingWorker.id}`,
@@ -286,12 +294,9 @@ export default function AdminUsers() {
       toast.error('Worker name is required');
       return;
     }
-    if (pin.length < 4) {
-      toast.error('PIN must be 4-8 digits');
-      return;
-    }
-    if (!/^\d{4,8}$/.test(pin)) {
-      toast.error('PIN must be 4-8 digits');
+    const pinRes = validateNewSixDigitPin(pin);
+    if (!pinRes.ok) {
+      toast.error(pinRes.message);
       return;
     }
     setCreatingWorker(true);
@@ -301,7 +306,7 @@ export default function AdminUsers() {
         method: 'POST',
         data: {
           name,
-          pin,
+          pin: pinRes.pin,
           active: createWorkerActive,
         },
       });
@@ -561,7 +566,17 @@ export default function AdminUsers() {
             <DialogHeader><DialogTitle>Edit site worker</DialogTitle></DialogHeader>
             <div className="space-y-3">
               <Input placeholder="Worker name" value={editWorkerName} onChange={(e) => setEditWorkerName(e.target.value)} className="h-12" />
-              <Input type="password" inputMode="numeric" placeholder="New PIN (optional)" value={editWorkerPin} onChange={(e) => setEditWorkerPin(e.target.value)} className="h-12 text-center tracking-widest" autoComplete="new-password" />
+              <Input
+                type="password"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                placeholder="Ny PIN (6 siffer, valgfritt)"
+                value={editWorkerPin}
+                onChange={(e) => setEditWorkerPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="h-12 text-center tracking-widest"
+                autoComplete="new-password"
+              />
             </div>
             <DialogFooter><Button type="submit" className="w-full">Save changes</Button></DialogFooter>
           </DialogForm>
@@ -589,9 +604,11 @@ export default function AdminUsers() {
               <Input
                 type="password"
                 inputMode="numeric"
-                placeholder="PIN (4-8 digits)"
+                pattern="[0-9]*"
+                maxLength={6}
+                placeholder="PIN (6 siffer)"
                 value={createWorkerPin}
-                onChange={(e) => setCreateWorkerPin(e.target.value)}
+                onChange={(e) => setCreateWorkerPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 className="h-12 text-center tracking-widest"
                 autoComplete="new-password"
                 disabled={creatingWorker}

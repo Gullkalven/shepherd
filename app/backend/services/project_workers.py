@@ -16,6 +16,7 @@ from models.projects import Projects
 from models.rooms import Rooms
 from models.worker_tasks import WorkerTasks
 from services.pin_hash import hash_pin, verify_pin
+from services.pin_policy import validate_new_site_worker_pin
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +58,7 @@ async def create_worker(
     )
     if existing_worker.scalar_one_or_none() is not None:
         raise ValueError("A site worker with this name already exists in this project")
-    pin = (pin or "").strip()
-    if len(pin) < 4:
-        raise ValueError("PIN must be at least 4 characters")
+    pin = validate_new_site_worker_pin(pin or "")
     row = Project_workers(
         project_id=project_id,
         name=nm,
@@ -108,9 +107,8 @@ async def update_worker(
             row.name = nm
     if pin is not None:
         p = pin.strip()
-        if len(p) < 4:
-            raise ValueError("PIN must be at least 4 characters")
-        row.pin_hash = hash_pin(p)
+        if p:
+            row.pin_hash = hash_pin(validate_new_site_worker_pin(p))
     if active is not None:
         row.active = bool(active)
     if role is not None and role in ("worker", "admin"):
@@ -236,7 +234,7 @@ async def _project_exists(db: AsyncSession, project_id: int) -> bool:
 
 
 async def ensure_dev_seed_worker(db: AsyncSession) -> None:
-    """Optional demo worker (PIN 1234) on first project when enabled."""
+    """Optional demo worker (PIN 123456) on first project when enabled."""
     if not should_run_demo_seed_logic():
         logger.info("Production mode detected: skipping dev worker seed logic.")
         return
@@ -253,7 +251,7 @@ async def ensure_dev_seed_worker(db: AsyncSession) -> None:
     row = Project_workers(
         project_id=pid,
         name="PIN dev worker",
-        pin_hash=hash_pin("1234"),
+        pin_hash=hash_pin("123456"),
         role="worker",
         active=True,
         created_at=datetime.now(timezone.utc),
@@ -261,7 +259,7 @@ async def ensure_dev_seed_worker(db: AsyncSession) -> None:
     )
     db.add(row)
     await db.commit()
-    logger.info("Seeded demo project worker on project_id=%s (PIN 1234)", pid)
+    logger.info("Seeded demo project worker on project_id=%s (PIN 123456)", pid)
 
 
 def public_worker_dict(row: Project_workers) -> Dict[str, Any]:

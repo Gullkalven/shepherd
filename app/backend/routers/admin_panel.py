@@ -1,5 +1,4 @@
 import logging
-import re
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -9,6 +8,7 @@ from pydantic import BaseModel, Field
 from routers.admin_roles import require_admin
 from schemas.auth import UserResponse
 from services import project_workers as pw_svc
+from services.pin_policy import validate_new_site_worker_pin
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,13 +65,15 @@ class SiteWorkerCardResponse(BaseModel):
 
 class SiteWorkerCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    pin: str = Field(..., min_length=4, max_length=8)
+    pin: str = Field(..., min_length=1, max_length=32)
     active: Optional[bool] = True
+
+
 def _validate_worker_pin(pin: str) -> str:
-    normalized = (pin or "").strip()
-    if not re.fullmatch(r"\d{4,8}", normalized):
-        raise HTTPException(status_code=400, detail="PIN must be 4-8 digits")
-    return normalized
+    try:
+        return validate_new_site_worker_pin(pin)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 

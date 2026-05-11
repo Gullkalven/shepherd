@@ -9,6 +9,7 @@ from dependencies.auth import get_current_user
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from schemas.auth import UserResponse
+from services.pin_policy import validate_worker_login_pin_plaintext
 from services.project_workers import verify_worker_login
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +25,7 @@ WORKER_TOKEN_MINUTES = 60 * 24 * 14
 
 class WorkerLoginRequest(BaseModel):
     project_id: int = Field(..., ge=1)
-    pin: str = Field(..., min_length=4, max_length=32)
+    pin: str = Field(..., min_length=1, max_length=32)
 
 
 class WorkerLoginProject(BaseModel):
@@ -53,7 +54,12 @@ async def worker_login(body: WorkerLoginRequest, db: AsyncSession = Depends(get_
     if not proj:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    row = await verify_worker_login(db, project_id=body.project_id, pin=body.pin)
+    try:
+        login_pin = validate_worker_login_pin_plaintext(body.pin)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    row = await verify_worker_login(db, project_id=body.project_id, pin=login_pin)
     if row is None:
         raise HTTPException(status_code=401, detail="Wrong PIN or inactive worker")
 

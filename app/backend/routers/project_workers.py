@@ -19,13 +19,13 @@ router = APIRouter(prefix="/api/v1/projects/{project_id}/workers", tags=["projec
 
 class ProjectWorkerCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
-    pin: str = Field(..., min_length=4, max_length=32)
+    pin: str = Field(..., min_length=1, max_length=32)
     role: str = Field(default="worker", pattern="^(worker|admin)$")
 
 
 class ProjectWorkerPatch(BaseModel):
     name: Optional[str] = Field(default=None, max_length=255)
-    pin: Optional[str] = Field(default=None, min_length=4, max_length=32)
+    pin: Optional[str] = Field(default=None, min_length=1, max_length=32)
     active: Optional[bool] = None
     role: Optional[str] = None
 
